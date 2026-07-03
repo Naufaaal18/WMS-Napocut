@@ -3463,24 +3463,24 @@ async function eksekusiAddSkuOutbound() {
       btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Memvalidasi...`;
       
       (async () => { try {
-        const _r = await (await _supabase.rpc("check_login", { p_username: u, p_password: p })).data;
-        (res => {
-          btn.disabled = false;
-          btn.innerHTML = `<i class="fa-solid fa-right-to-bracket me-2"></i>Masuk Ke Aplikasi`;
-          
-          // Simpan sesi ke local storage HP
-          try { sessionStorage.setItem("wms_napocut_session", JSON.stringify(res)); } catch(e) { window._wmsSession = res; }
-          DEKLARASI_USER = res;
-          
-          inisialisasiAplikasi(res);
-          document.getElementById('form-login').reset();
-        })(_r);
-      } catch (_e) { (err => {
-          btn.disabled = false;
-          btn.innerHTML = `<i class="fa-solid fa-right-to-bracket me-2"></i>Masuk Ke Aplikasi`;
+        const res = (await _supabase.rpc("check_login", { p_username: u, p_password: p })).data;
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-right-to-bracket me-2"></i>Masuk Ke Aplikasi`;
+        if (!res || !res.success) {
           const container = document.getElementById('login-alert-container');
-          container.innerHTML = `<div class="alert alert-danger small fw-bold" role="alert">${err.message}</div>`;
-        })(_e); } })();
+          container.innerHTML = `<div class="alert alert-danger small fw-bold" role="alert">${(res && res.message) || 'Username atau Password salah.'}</div>`;
+          return;
+        }
+        try { sessionStorage.setItem("wms_napocut_session", JSON.stringify(res)); } catch(e) { window._wmsSession = res; }
+        DEKLARASI_USER = res;
+        inisialisasiAplikasi(res);
+        document.getElementById('form-login').reset();
+      } catch (_e) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-right-to-bracket me-2"></i>Masuk Ke Aplikasi`;
+        const container = document.getElementById('login-alert-container');
+        container.innerHTML = `<div class="alert alert-danger small fw-bold" role="alert">${_e.message}</div>`;
+      } })();
     }
 
     // LOGOUT & HAPUS SESI — kembali ke halaman login tanpa reload
@@ -3575,7 +3575,7 @@ async function eksekusiAddSkuOutbound() {
 
       const r = user.role;
 
-      if (r === "Admin Gudang" || r === "Supervisor Gudang" || r === "Admin" || r === "Supervisor" || r === "Manager Gudang") {
+      if (r === "Admin Gudang" || r === "Supervisor Gudang" || r === "Admin" || r === "Supervisor" || r === "Manager Gudang" || r === "SPV" || r === "Manager") {
         // Tampilkan semua modul di home
         ['home-group-inbound','home-group-qc','home-group-openpo','home-group-outbound',
          'home-group-ops','home-group-checking','home-group-inventory','home-group-dashob','home-group-export'].forEach(id => {
@@ -3620,7 +3620,7 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('sub-validate-qc').classList.remove('d-none');
         document.getElementById('sub-putaway-return').classList.remove('d-none');
 
-      } else if (r === "Staff Inbound") {
+      } else if (r === "Staff Inbound" || r === "Operator") {
         // Inbound Receiving (Validasi Inbound TIDAK diberikan — hanya Admin/SPV/Manager)
         document.getElementById('home-group-inbound').style.display = 'block';
         document.getElementById('tab-inbound').style.display = 'block';
