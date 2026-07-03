@@ -4365,27 +4365,24 @@ async function eksekusiAddSkuOutbound() {
         lokasiAsliAllocated: (item && item.isOverride) ? item.lokasiAsli : ""
       };
 
-      (async () => { try {
-        const _r = await (await _supabase.rpc("get_sku_list_for_picking", { p_no_request: noRequest })).data;
-        (res => {
+      (async () => {
+        try {
+          const res = (await _supabase.rpc("process_picking_sku", { p_data: payload })).data;
           showAlert(res.message, "success");
           PC_DONE_SET.add(kodeSku + '||' + lokasi);
           // Reload list dari server untuk update data terkini
-          (async () => { try {
-              const _r = await (await _supabase.rpc("process_picking_sku", { p_data: payload })).data;
-              (flatList => { 
-              PC_PICKING_LIST = flatList || [];
-              renderPickingRows();
-              // Re-mark done set
-              loadPickingPendingRequests();
-              document.getElementById('pc-req').value = noRequest;
-            })(_r);
-      } catch (_e) { (() => renderPickingRows())(_e); } })();
-         })(_r);
-            } catch (_e) { (err => {
+          try {
+            const flatList = (await _supabase.rpc("get_sku_list_for_picking", { p_no_request: noRequest })).data;
+            PC_PICKING_LIST = flatList || [];
+            renderPickingRows();
+            loadPickingPendingRequests();
+            document.getElementById('pc-req').value = noRequest;
+          } catch (eReload) { renderPickingRows(); }
+        } catch (err) {
           showAlert("🚨 Gagal Picking: " + err.message, "danger");
           if (btnProses) { btnProses.disabled = false; btnProses.innerHTML = '<i class="fa-solid fa-check me-1"></i>Proses'; }
-        })(_e); } })();
+        }
+      })();
     }
 
     // Short Pick dari baris tertentu (di-scope KHUSUS untuk lokasi baris ini)
@@ -4422,24 +4419,22 @@ async function eksekusiAddSkuOutbound() {
         qtyKetemu: qtyKetemu
       };
 
-      (async () => { try {
-        const _r = await (await _supabase.rpc("get_sku_list_for_picking", { p_no_request: noRequest })).data;
-        (res => {
+      (async () => {
+        try {
+          const res = (await _supabase.rpc("process_picking_sku", { p_data: payload })).data;
           showAlert(res.message, "success");
           PC_DONE_SET.add(kodeSku + '||' + lokasi);
-          (async () => { try {
-              const _r = await (await _supabase.rpc("process_picking_sku", { p_data: payload })).data;
-              (flatList => { 
-              PC_PICKING_LIST = flatList || [];
-              renderPickingRows();
-              loadPickingPendingRequests();
-              document.getElementById('pc-req').value = noRequest;
-            })(_r);
-      } catch (_e) { (() => renderPickingRows())(_e); } })();
-         })(_r);
-            } catch (_e) { (err => {
+          try {
+            const flatList = (await _supabase.rpc("get_sku_list_for_picking", { p_no_request: noRequest })).data;
+            PC_PICKING_LIST = flatList || [];
+            renderPickingRows();
+            loadPickingPendingRequests();
+            document.getElementById('pc-req').value = noRequest;
+          } catch (eReload) { renderPickingRows(); }
+        } catch (err) {
           showAlert("🚨 Gagal Short Pick: " + err.message, "danger");
-        })(_e); } })();
+        }
+      })();
     }
 
     // Muat daftar Request Picking & Checking saat halaman pertama kali dibuka
@@ -5051,27 +5046,25 @@ function loadStockReturnToDropdown() {
   let poSelect = document.getElementById("pwr-nopo");
   poSelect.innerHTML = '<option value="">-- Memuat Data PO Return... --</option>';
 
-  (async () => { try { const poMap = (await _supabase.rpc("get_stock_return_data_for_putaway")).data; {
-      if (poMap && poMap.error) { throw new Error(poMap.error); }
-      globalPutawayReturnData = poMap;
-      poSelect.innerHTML = '<option value="">-- Pilih Nomor PO Return --</option>';
-
-      const poKeys = Object.keys(poMap);
-      if (poKeys.length === 0) {
-        poSelect.innerHTML = '<option value="">-- Tidak Ada Data Return di Staging --</option>';
-        return;
-      }
-
-      poKeys.forEach(function(poNumber) {
-        let opt = document.createElement("option");
-        opt.value = poNumber;
-        opt.textContent = poNumber;
-        poSelect.appendChild(opt);
-      });
-    })
-    .catch(function(err) {
-      customAlert("Gagal load data return: " + err.message);
+  (async () => { try {
+    const poMap = (await _supabase.rpc("get_stock_return_data_for_putaway")).data;
+    if (poMap && poMap.error) { throw new Error(poMap.error); }
+    globalPutawayReturnData = poMap;
+    poSelect.innerHTML = '<option value="">-- Pilih Nomor PO Return --</option>';
+    const poKeys = Object.keys(poMap || {});
+    if (poKeys.length === 0) {
+      poSelect.innerHTML = '<option value="">-- Tidak Ada Data Return di Staging --</option>';
+      return;
+    }
+    poKeys.forEach(function(poNumber) {
+      let opt = document.createElement("option");
+      opt.value = poNumber;
+      opt.textContent = poNumber;
+      poSelect.appendChild(opt);
     });
+  } catch(err) {
+    customAlert("Gagal load data return: " + err.message);
+  } })();
 }
 
 // Trigger ketika No PO dipilih
@@ -5131,7 +5124,7 @@ function renderPutawayReturnList() {
 
   const keyword = (document.getElementById("pwr-filter-input").value || "").trim().toUpperCase();
 
-  let rows = Object.keys(dataPo).map(function(skuCode) {
+  let rows = Object.keys(dataPo || {}).map(function(skuCode) {
     return { sku: skuCode, qty: Number(dataPo[skuCode] || 0) };
   });
 
@@ -5407,30 +5400,30 @@ let stagingDataMaster = {};
 function loadStagingInboundToDropdown() {
   console.log("Memulai pengambilan data Staging Inbound...");
   (async () => { try {
-    const _r = await (await _supabase.rpc("submit_qc_fg", { p_data: payload })).data;
-    (function(poMap) {
-      console.log("Data PO diterima dari server:", poMap);
-      stagingDataMaster = poMap;
-      
-      let poSelect = document.getElementById("qc-nopo");
-      if (!poSelect) return;
-      
-      poSelect.innerHTML = '<option value="">-- Pilih No PO --</option>';
-      let listPO = Object.keys(poMap);
-      
-      if (listPO.length === 0) {
-        poSelect.innerHTML = '<option value="">-- Data Staging Kosong --</option>';
-        return;
-      }
-      
-      listPO.forEach(function(poNum) {
-        let option = document.createElement("option");
-        option.value = poNum;
-        option.text = poNum;
-        poSelect.appendChild(option);
-      });
-    })
-    .getStagingInboundData();
+    const poMap = (await _supabase.rpc("get_staging_inbound_data")).data;
+    console.log("Data PO diterima dari server:", poMap);
+    stagingDataMaster = poMap || {};
+    
+    let poSelect = document.getElementById("qc-nopo");
+    if (!poSelect) return;
+    
+    poSelect.innerHTML = '<option value="">-- Pilih No PO --</option>';
+    let listPO = Object.keys(poMap || {});
+    
+    if (listPO.length === 0) {
+      poSelect.innerHTML = '<option value="">-- Data Staging Kosong --</option>';
+      return;
+    }
+    
+    listPO.forEach(function(poNum) {
+      let option = document.createElement("option");
+      option.value = poNum;
+      option.text = poNum;
+      poSelect.appendChild(option);
+    });
+  } catch(err) {
+    console.error("Gagal load staging inbound:", err.message);
+  } })();
 }
 
 // 2. PERBAIKAN: Fungsi pemicu saat user memilih No PO
@@ -5630,27 +5623,22 @@ function loadQCFGToValidateDropdown() {
   poSelect.innerHTML = '<option value="">-- Memuat Data PO... --</option>';
 
   (async () => { try {
-    const _r = await (await _supabase.rpc("submit_validate_qc", { p_data: payload })).data;
-    (function(poMap) {
-      globalValidateQCData = poMap;
-      poSelect.innerHTML = '<option value="">-- Pilih No PO --</option>';
-
-      const poKeys = Object.keys(poMap);
-      if (poKeys.length === 0) {
-        poSelect.innerHTML = '<option value="">-- Tidak Ada Data Menunggu Validasi --</option>';
-        return;
-      }
-
-      poKeys.forEach(function(poNumber) {
-        let opt = document.createElement("option");
-        opt.value = poNumber;
-        opt.textContent = poNumber;
-        poSelect.appendChild(opt);
-      });
-
-      resetValidateQCForm(false);
-    })(_r);
-    } catch (_e) { console.error("get_qc_fg_data_for_validate error:", _e); } })();
+    const poMap = (await _supabase.rpc("get_qc_fg_data_for_validate")).data || {};
+    globalValidateQCData = poMap;
+    poSelect.innerHTML = '<option value="">-- Pilih No PO --</option>';
+    const poKeys = Object.keys(poMap || {});
+    if (poKeys.length === 0) {
+      poSelect.innerHTML = '<option value="">-- Tidak Ada Data Menunggu Validasi --</option>';
+      return;
+    }
+    poKeys.forEach(function(poNumber) {
+      let opt = document.createElement("option");
+      opt.value = poNumber;
+      opt.textContent = poNumber;
+      poSelect.appendChild(opt);
+    });
+    resetValidateQCForm(false);
+  } catch (_e) { console.error("get_qc_fg_data_for_validate error:", _e); } })();
 }
 
 function onValidatePoSelected() {
@@ -5665,7 +5653,7 @@ function onValidatePoSelected() {
     return;
   }
 
-  const skus = Object.keys(globalValidateQCData[poSelected]);
+  const skus = Object.keys((globalValidateQCData[poSelected]) || {});
   skus.forEach(function(skuCode) {
     let opt = document.createElement("option");
     opt.value = skuCode;
@@ -5775,16 +5763,16 @@ function submitFormValidateQC(event) {
   };
 
   (async () => { try {
-      const _r = (await _supabase.rpc("get_qc_fg_data_for_putaway")).data;
-      (function(response) {
-      if (response.success) {
-        customAlert(response.message);
-        loadQCFGToValidateDropdown();
-      }
-    })(_r);
-  } catch (_e) { (function(error) {
-      customAlert("Gagal Memproses Validasi: " + error.message);
-    })(_e); } })();
+    const response = (await _supabase.rpc("submit_validate_qc", { p_data: payload })).data;
+    if (response && response.success) {
+      customAlert(response.message);
+      loadQCFGToValidateDropdown();
+    } else {
+      customAlert("Gagal Memproses Validasi: " + (response && response.message || "Error tidak diketahui"));
+    }
+  } catch (_e) {
+    customAlert("Gagal Memproses Validasi: " + _e.message);
+  } })();
 }
 
 //PROSES QC
@@ -5808,7 +5796,7 @@ function loadStockFGToRequestQcDropdown() {
       globalRequestQcData = response.data || {};
       datalistEl.innerHTML = "";
 
-      Object.keys(globalRequestQcData).sort().forEach(function(sku) {
+      Object.keys(globalRequestQcData || {}).sort().forEach(function(sku) {
         let opt = document.createElement("option");
         opt.value = sku;
         datalistEl.appendChild(opt);
@@ -6050,7 +6038,7 @@ function loadStagingQCToRecheckDropdown() {
       let maxInfo = document.getElementById("rqc-max-info");
       if (maxInfo) maxInfo.style.display = "none";
 
-      const listNoReq = Object.keys(globalStagingQCData);
+      const listNoReq = Object.keys(globalStagingQCData || {});
       if (listNoReq.length === 0) {
         noReqSelect.innerHTML = '<option value="">-- Tidak Ada Data di Staging QC --</option>';
         return;
@@ -6233,25 +6221,21 @@ function loadQCFGToPutawayDropdown() {
   poSelect.innerHTML = '<option value="">-- Memuat Data PO... --</option>';
 
   (async () => { try {
-    const _r = await (await _supabase.rpc("get_lokasi_rak_by_sku_grade", { p_sku: kodeSku, p_grade: grade })).data;
-    (function(poMap) {
-      globalPutawayData = poMap;
-      poSelect.innerHTML = '<option value="">-- Pilih Nomor PO --</option>';
-      
-      const poKeys = Object.keys(poMap);
-      if (poKeys.length === 0) {
-        poSelect.innerHTML = '<option value="">-- Tidak Ada Data PO Aktif --</option>';
-        return;
-      }
-
-      poKeys.forEach(function(poNumber) {
-        let opt = document.createElement("option");
-        opt.value = poNumber;
-        opt.textContent = poNumber;
-        poSelect.appendChild(opt);
-      });
-    })(_r);
-    } catch (_e) { console.error("get_qc_fg_data_for_putaway error:", _e); } })();
+    const poMap = (await _supabase.rpc("get_qc_fg_data_for_putaway")).data || {};
+    globalPutawayData = poMap;
+    poSelect.innerHTML = '<option value="">-- Pilih Nomor PO --</option>';
+    const poKeys = Object.keys(poMap || {});
+    if (poKeys.length === 0) {
+      poSelect.innerHTML = '<option value="">-- Tidak Ada Data PO Aktif --</option>';
+      return;
+    }
+    poKeys.forEach(function(poNumber) {
+      let opt = document.createElement("option");
+      opt.value = poNumber;
+      opt.textContent = poNumber;
+      poSelect.appendChild(opt);
+    });
+  } catch (_e) { console.error("get_qc_fg_data_for_putaway error:", _e.message); } })();
 }
 
 // Saat PO Dipilih -> Mengisi List Dropdown SKU murni tanpa data Tanggal
@@ -6276,7 +6260,7 @@ function onPutawayPoSelected() {
   }
 
   // Mengambil daftar nama kunci SKU dari map PO terkait
-  const skus = Object.keys(globalPutawayData[poSelected]);
+  const skus = Object.keys((globalPutawayData[poSelected]) || {});
   skus.forEach(function(skuCode) {
     let opt = document.createElement("option");
     opt.value = skuCode;
@@ -6313,7 +6297,7 @@ function renderPutawayList() {
 
   const keyword = (document.getElementById("pw-filter-input").value || "").trim().toUpperCase();
 
-  let rows = Object.keys(dataPo).map(function(skuCode) {
+  let rows = Object.keys(dataPo || {}).map(function(skuCode) {
     const g = dataPo[skuCode] || {};
     return {
       sku: skuCode,
@@ -6476,20 +6460,16 @@ function loadPutawaySuggestion() {
   box.innerHTML = '<span class="text-muted" style="font-size:10px;"><i class="fa-solid fa-spinner fa-spin me-1"></i>Mencari lokasi existing SKU+Grade ini di Stock_FG...</span>';
 
   (async () => { try {
-      const _r = (await _supabase.rpc("then", { p_data: { r => r.json())
-        .then(res => {
-          if (INV_LOAD_TIMEOUT_ID) { clearTimeout(INV_LOAD_TIMEOUT_ID } })).data;
-      (lokasiList => {
-      if (!lokasiList || lokasiList.length === 0) {
-        box.innerHTML = '<span class="text-muted" style="font-size:10px;"><i class="fa-solid fa-circle-info me-1"></i>Belum ada lokasi existing untuk SKU + Grade ini. Silakan ketik/scan lokasi baru.</span>';
-        return;
-      }
-      box.innerHTML = '<div class="small text-muted mb-1" style="font-size:10px;"><i class="fa-solid fa-lightbulb me-1"></i>Saran lokasi "teman" (SKU+Grade sama, klik utk isi otomatis — cek fisik dulu, kalau penuh ketik/scan lokasi lain):</div>' +
-        lokasiList.map(l => `<button type="button" class="btn btn-outline-info btn-sm me-1 mb-1" style="font-size:10.5px;" onclick="pilihLokasiSuggestionPutaway('${l.lokasi.toString().replace(/'/g, "\\'")}')">${l.lokasi} <span class="badge bg-info text-dark ms-1">${l.qty} Pcs</span></button>`).join('');
-    })(_r);
-  } catch (_e) { (err => {
-      box.innerHTML = '<span class="text-danger" style="font-size:10px;">Gagal memuat saran lokasi: ' + err.message + '</span>';
-    })(_e); } })();
+    const lokasiList = (await _supabase.rpc("get_lokasi_rak_by_sku_grade", { p_sku: skuTarget, p_grade: gradeTarget })).data;
+    if (!lokasiList || lokasiList.length === 0) {
+      box.innerHTML = '<span class="text-muted" style="font-size:10px;"><i class="fa-solid fa-circle-info me-1"></i>Belum ada lokasi existing untuk SKU + Grade ini. Silakan ketik/scan lokasi baru.</span>';
+      return;
+    }
+    box.innerHTML = '<div class="small text-muted mb-1" style="font-size:10px;"><i class="fa-solid fa-lightbulb me-1"></i>Saran lokasi "teman" (SKU+Grade sama, klik utk isi otomatis — cek fisik dulu, kalau penuh ketik/scan lokasi lain):</div>' +
+      lokasiList.map(l => `<button type="button" class="btn btn-outline-info btn-sm me-1 mb-1" style="font-size:10.5px;" onclick="pilihLokasiSuggestionPutaway('${l.lokasi.toString().replace(/'/g, "\'")}')">${l.lokasi} <span class="badge bg-info text-dark ms-1">${l.qty} Pcs</span></button>`).join('');
+  } catch (err) {
+    box.innerHTML = '<span class="text-danger" style="font-size:10px;">Gagal memuat saran lokasi: ' + err.message + '</span>';
+  } })();
 }
 
 // Klik tombol saran -> auto-isi field Target Lokasi Rak (field tetap bisa diketik ulang manual)
@@ -6603,27 +6583,23 @@ function loadOpenPOToInboundDropdown() {
   poSelect.innerHTML = '<option value="">-- Memuat Data Open PO... --</option>';
 
   (async () => { try {
-    const _r = await (await _supabase.rpc("get_open_po_data_for_inbound")).data;
-    (function(poMap) {
-      globalInboundPOData = poMap;
-      poSelect.innerHTML = '<option value="">-- Pilih Nomor PO --</option>';
-      
-      const poKeys = Object.keys(poMap);
-      if (poKeys.length === 0) {
-        poSelect.innerHTML = '<option value="">-- Tidak Ada Open PO Aktif --</option>';
-        return;
-      }
-
-      poKeys.forEach(function(poNumber) {
-        let opt = document.createElement("option");
-        opt.value = poNumber;
-        opt.textContent = poNumber;
-        poSelect.appendChild(opt);
-      });
-    })(_r);
-  } catch (_e) { (function(err) {
-      customAlert("Gagal memuat data Open PO: " + err.message);
-    })(_e); } })();
+    const poMap = (await _supabase.rpc("get_open_po_data_for_inbound")).data || {};
+    globalInboundPOData = poMap;
+    poSelect.innerHTML = '<option value="">-- Pilih Nomor PO --</option>';
+    const poKeys = Object.keys(poMap || {});
+    if (poKeys.length === 0) {
+      poSelect.innerHTML = '<option value="">-- Tidak Ada Open PO Aktif --</option>';
+      return;
+    }
+    poKeys.forEach(function(poNumber) {
+      let opt = document.createElement("option");
+      opt.value = poNumber;
+      opt.textContent = poNumber;
+      poSelect.appendChild(opt);
+    });
+  } catch (_e) {
+    customAlert("Gagal memuat data Open PO: " + _e.message);
+  } })();
 }
 
 // Dipanggil otomatis saat PO dipilih — FITUR BARU (poin 6): membangun daftar SEMUA SKU
@@ -7217,34 +7193,27 @@ async function eksekusiCancelOutbound() {
         inventoryDashboardGagalTotal("Server tidak merespon dalam waktu yang wajar (kemungkinan koneksi lambat/timeout). Silakan klik tombol Muat Ulang.");
       }, 25000);
 
-      (async () => { try {
-        const _r = (await _supabase.rpc("get_inventory_dashboard_data")).data;
-    } catch (_e) { console.error("then error:", _e); } })(); INV_LOAD_TIMEOUT_ID = null; }
-          try {
-            if (res && res.error && !res.stockFG) { throw new Error(res.error); }
-            INV_DATA_FG = (res && res.stockFG) || [];
-            INV_DATA_INBOUND = (res && res.stockInbound) || [];
-            INV_DATA_RETURN = (res && res.stockReturn) || [];
-            INV_DATA_OPENPO = (res && res.stockOpenPO) || [];
-            INV_DEBUG_INFO = (res && res.debugInfo) || null;
-
-            try { isiDatalistInventory(); } catch (e1) { console.error('isiDatalistInventory error:', e1); }
-            try { renderInventoryTable(); } catch (e2) { console.error('renderInventoryTable error:', e2); }
-            try { renderInventorySupplementary(); } catch (e3) { console.error('renderInventorySupplementary error:', e3); }
-
-            // Jika server berhasil balas tapi ada 1/lebih section yang gagal (lihat getInventoryDashboardData),
-            // tampilkan peringatan supaya Admin tahu bagian mana yang datanya tidak lengkap.
-            if (res && res.errors && res.errors.length > 0) {
-              showAlert('Sebagian data Dashboard Inventory gagal dimuat: ' + res.errors.join(' | '), 'warning');
-            }
-          } catch (eRender) {
-            inventoryDashboardGagalTotal("Terjadi kesalahan saat menampilkan data: " + eRender.message);
+      (async () => {
+        try {
+          const res = (await _supabase.rpc("get_inventory_dashboard_data")).data;
+          if (INV_LOAD_TIMEOUT_ID) { clearTimeout(INV_LOAD_TIMEOUT_ID); INV_LOAD_TIMEOUT_ID = null; }
+          if (res && res.error && !res.stockFG) { throw new Error(res.error); }
+          INV_DATA_FG      = (res && res.stockFG)      || [];
+          INV_DATA_INBOUND = (res && res.stockInbound)  || [];
+          INV_DATA_RETURN  = (res && res.stockReturn)   || [];
+          INV_DATA_OPENPO  = (res && res.stockOpenPO)   || [];
+          INV_DEBUG_INFO   = (res && res.debugInfo)     || null;
+          try { isiDatalistInventory(); }       catch (e1) { console.error('isiDatalistInventory error:', e1); }
+          try { renderInventoryTable(); }       catch (e2) { console.error('renderInventoryTable error:', e2); }
+          try { renderInventorySupplementary(); } catch (e3) { console.error('renderInventorySupplementary error:', e3); }
+          if (res && res.errors && res.errors.length > 0) {
+            showAlert('Sebagian data Dashboard Inventory gagal dimuat: ' + res.errors.join(' | '), 'warning');
           }
-        })
-        .catch(err => {
+        } catch (err) {
           if (INV_LOAD_TIMEOUT_ID) { clearTimeout(INV_LOAD_TIMEOUT_ID); INV_LOAD_TIMEOUT_ID = null; }
           inventoryDashboardGagalTotal(err.message);
-        });
+        }
+      })();
     }
 
     // Helper: tampilkan pesan gagal di SEMUA 4 tabel Dashboard Inventory sekaligus,
@@ -7397,7 +7366,9 @@ async function eksekusiCancelOutbound() {
     // TIDAK menampilkan tabel/preview apa pun — preview hanya muncul setelah
     // tombol "Generate Laporan" ditekan.
     function preloadMovementHistoryFilters() {
-      (async () => { try { const res = (await _supabase.rpc("get_movement_history_data")).data; ((res) => {
+      (async () => {
+        try {
+          const res = (await _supabase.rpc("get_movement_history_data")).data;
           if (res && res.error) throw new Error(res.error);
           const data = res || [];
           const setSku = new Set(), setUser = new Set(), setType = new Set();
@@ -7406,10 +7377,10 @@ async function eksekusiCancelOutbound() {
             if (r.user) setUser.add(r.user);
             if (r.type) setType.add(r.type);
           });
-          const listSku = document.getElementById('mhexp-list-sku');
+          const listSku  = document.getElementById('mhexp-list-sku');
           const listUser = document.getElementById('mhexp-list-user');
-          const selType = document.getElementById('mhexp-filter-type');
-          if (listSku) listSku.innerHTML = [...setSku].sort().map(s => `<option value="${s}">`).join('');
+          const selType  = document.getElementById('mhexp-filter-type');
+          if (listSku)  listSku.innerHTML  = [...setSku].sort().map(s => `<option value="${s}">`).join('');
           if (listUser) listUser.innerHTML = [...setUser].sort().map(u => `<option value="${u}">`).join('');
           if (selType) {
             const valSaatIni = selType.value;
@@ -7417,8 +7388,8 @@ async function eksekusiCancelOutbound() {
               [...setType].sort().map(t => `<option value="${t}">${t}</option>`).join('');
             selType.value = setType.has(valSaatIni) ? valSaatIni : "";
           }
-        })
-        .catch(() => { /* gagal diam-diam; operator tetap bisa isi filter manual & Generate */ });
+        } catch(e) { /* gagal diam-diam; operator tetap bisa isi filter manual & Generate */ }
+      })();
     }
 
     // Generate laporan Movement History sesuai filter aktif — SELALU mengambil data
@@ -7429,16 +7400,16 @@ async function eksekusiCancelOutbound() {
       alertEl.innerHTML = '<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat & menyusun laporan...</div>';
       document.getElementById('mhexp-preview').style.display = 'none';
 
-      (async () => { try { const res = (await _supabase.rpc("get_movement_history_data")).data; ((res) => {
-          if (res && res.error) throw new Error(res.error);
-          alertEl.innerHTML = '';
-          renderMovementHistoryExport(res || []);
-          document.getElementById('mhexp-preview').style.display = 'block';
-          document.getElementById('mhexp-preview').scrollIntoView({ behavior: 'smooth' });
-        })
-        .catch(err => {
-          alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal memuat data: ${err.message}</div>`;
-        });
+      (async () => { try {
+        const res = (await _supabase.rpc("get_movement_history_data")).data;
+        if (res && res.error) throw new Error(res.error);
+        alertEl.innerHTML = '';
+        renderMovementHistoryExport(res || []);
+        document.getElementById('mhexp-preview').style.display = 'block';
+        document.getElementById('mhexp-preview').scrollIntoView({ behavior: 'smooth' });
+      } catch(err) {
+        alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal memuat data: ${err.message}</div>`;
+      } })();
     }
 
     // Terapkan filter No SKU / No. Referensi / Tipe Transaksi / User ke data mentah
@@ -8441,7 +8412,7 @@ async function eksekusiCancelOutbound() {
         storeMap[r.kodeStore].stockout += r.qtyStockout || 0;
       });
       const tbodyStore = document.getElementById('ob-dash-store-tbody');
-      const storeKeys = Object.keys(storeMap).sort();
+      const storeKeys = Object.keys(storeMap || {}).sort();
       tbodyStore.innerHTML = storeKeys.length === 0
         ? '<tr><td colspan="5" class="text-center text-muted py-2">-</td></tr>'
         : storeKeys.map(s => `<tr>
