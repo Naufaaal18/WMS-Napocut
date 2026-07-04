@@ -674,13 +674,26 @@ Object.assign(ENDPOINTS, {
     return reqMap;
   },
 
+  importOpenPoExcel: (payload) => _callRpc('import_open_po_excel', {
+    p_rows: payload.excelRows, p_user_login: payload.userLogin || 'Operator PO'
+  }),
+
+  // --- MODUL BARU: Admin Validate ---
+  getAdminValidateInboundPending: () => _callRpc('get_admin_validate_inbound_pending', {}),
+  submitAdminValidateInbound: (payload) => _callRpc('submit_admin_validate_inbound', {
+    p_ids: payload.ids, p_no_so: payload.noSo, p_validator: payload.validator
+  }),
+  getAdminValidateQCPending: () => _callRpc('get_admin_validate_qc_pending', {}),
+  submitAdminValidateQC: (payload) => _callRpc('submit_admin_validate_qc', {
+    p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
+  }),
+
 });
 
 // =========================================================================
-// MASIH BELUM ADA (fitur import Excel massal) -- fitur lain semua sudah jalan.
-// Kalau butuh ini, tinggal bilang, nanti dibuatkan RPC khusus untuk batch import.
+// MASIH BELUM ADA (fitur import Excel massal untuk adjustment) -- fitur lain semua sudah jalan.
 // =========================================================================
-['importOpenPoExcel', 'processAdjustmentStockFGImportExcel'].forEach(name => {
+['processAdjustmentStockFGImportExcel'].forEach(name => {
   ENDPOINTS[name] = () => Promise.reject(new Error(
     `Fungsi '${name}' (import Excel massal) belum dipindahkan ke Supabase. Untuk sementara gunakan input manual satu-per-satu.`
   ));
@@ -3917,6 +3930,103 @@ async function eksekusiAddSkuOutbound() {
     </div>
     <!-- ===== AKHIR MODUL EXPORT ===== -->
 
+    <!-- ===== MODUL BARU: ADMIN VALIDATE (assign No SO ke Data_Inbound & Data_QC) ===== -->
+    <div id="modul-adminvalidate" class="form-section">
+      <div class="card p-3 mb-3 border-start border-4" style="border-color:#6f42c1!important;">
+        <h6 class="fw-bold mb-1" style="color:#6f42c1;"><i class="fa-solid fa-user-shield me-2"></i>Admin Validate</h6>
+        <p class="small text-muted mb-2">Berikan Nomor Transaksi SO untuk data Inbound &amp; QC sebagai catatan/audit trail Admin.
+          Centang beberapa baris yang mau digabung, ketik 1 Nomor SO, lalu submit. Baris yang belum diisi No SO akan tetap
+          muncul di daftar "Pending" di bawah ini.</p>
+        <div class="d-flex gap-2 mb-1">
+          <button type="button" class="btn btn-sm fw-bold flex-grow-1" id="av-btn-inbound" onclick="avSwitchSubTab('inbound')">
+            <i class="fa-solid fa-download me-1"></i>Validate Inbound
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm fw-bold flex-grow-1" id="av-btn-qc" onclick="avSwitchSubTab('qc')">
+            <i class="fa-solid fa-shield-heart me-1"></i>Validate QC
+          </button>
+        </div>
+      </div>
+
+      <!-- SUB: VALIDATE INBOUND -->
+      <div id="av-sub-inbound" class="card p-3 mb-3 border-start border-4" style="border-color:#6f42c1!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate Inbound</h6>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateInbound()" title="Muat Ulang">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+        <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
+          <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+            <thead class="table-light" style="position: sticky; top: 0;">
+              <tr>
+                <th class="text-center" style="width: 34px;">
+                  <input type="checkbox" id="av-inbound-check-all" onchange="avToggleAllInbound(this)">
+                </th>
+                <th>No PO</th>
+                <th>SKU</th>
+                <th>Supplier</th>
+                <th class="text-center">Qty</th>
+                <th>Lokasi</th>
+                <th>Waktu</th>
+              </tr>
+            </thead>
+            <tbody id="av-inbound-tbody">
+              <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-bold mb-1">Nomor Transaksi SO</label>
+          <input type="text" id="av-inbound-noso" class="form-control form-control-sm fw-bold" placeholder="Contoh: SO-2026-001">
+        </div>
+        <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background-color:#6f42c1;" onclick="submitAdminValidateInboundTerpilih()">
+          <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
+        </button>
+        <div id="av-inbound-alert" class="mt-2"></div>
+      </div>
+
+      <!-- SUB: VALIDATE QC -->
+      <div id="av-sub-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#6f42c1!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate QC</h6>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateQC()" title="Muat Ulang">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+        <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>Daftar dipecah per <strong>Grade</strong> — SKU
+          berbeda dengan Grade yang sama boleh dicentang &amp; digabung jadi 1 Nomor SO (contoh: SKU A dan SKU B sama-sama
+          Grade Bagus bisa divalidasi bersamaan).</p>
+        <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
+          <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+            <thead class="table-light" style="position: sticky; top: 0;">
+              <tr>
+                <th class="text-center" style="width: 34px;">
+                  <input type="checkbox" id="av-qc-check-all" onchange="avToggleAllQC(this)">
+                </th>
+                <th>No QC</th>
+                <th>No PO</th>
+                <th>SKU</th>
+                <th>Grade</th>
+                <th class="text-center">Qty</th>
+                <th>Waktu</th>
+              </tr>
+            </thead>
+            <tbody id="av-qc-tbody">
+              <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-bold mb-1">Nomor Transaksi SO</label>
+          <input type="text" id="av-qc-noso" class="form-control form-control-sm fw-bold" placeholder="Contoh: SO-2026-001">
+        </div>
+        <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background-color:#6f42c1;" onclick="submitAdminValidateQCTerpilih()">
+          <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
+        </button>
+        <div id="av-qc-alert" class="mt-2"></div>
+      </div>
+    </div>
+    <!-- ===== AKHIR MODUL ADMIN VALIDATE ===== -->
 
   </div>
 
@@ -3995,6 +4105,9 @@ async function eksekusiAddSkuOutbound() {
       </a>
       <a href="#" id="tab-export" class="nav-link" onclick="switchTab(this, 'modul-export')">
         <i class="fa-solid fa-file-arrow-down"></i>Export
+      </a>
+      <a href="#" id="tab-adminvalidate" class="nav-link" onclick="switchTab(this, 'modul-adminvalidate')">
+        <i class="fa-solid fa-user-shield"></i>Admin Validate
       </a>
     </div>
   </nav>
@@ -4475,7 +4588,7 @@ async function eksekusiAddSkuOutbound() {
         stopLiveCheckerMonitorPolling();
       }
       // 1. Masukkan 'modul-openpo' ke dalam daftar pembersihan agar ikut dikendalikan
-      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export'];
+      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate'];
       semuaModul.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -4517,7 +4630,8 @@ async function eksekusiAddSkuOutbound() {
         'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests],
         'modul-inventory': [loadInventoryDashboard],
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
-        'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters]
+        'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters],
+        'modul-adminvalidate' : [loadAdminValidateInbound]
       };
 
       const daftarFungsi = mapRefresh[modulId];
@@ -9264,6 +9378,165 @@ async function eksekusiCancelOutbound() {
       document.getElementById('ib-sum-receive').textContent = totalReceive.toLocaleString('id-ID');
       document.getElementById('ib-sum-qc').textContent = totalQC.toLocaleString('id-ID');
       document.getElementById('ib-sum-putaway').textContent = totalPutaway.toLocaleString('id-ID');
+    }
+
+    // ==========================================
+    // MODUL BARU: ADMIN VALIDATE (No SO untuk Data_Inbound & Data_QC)
+    // ==========================================
+    let AV_DATA_INBOUND = [];
+    let AV_DATA_QC = [];
+
+    function avSwitchSubTab(tujuan) {
+      const btnInbound = document.getElementById('av-btn-inbound');
+      const btnQc = document.getElementById('av-btn-qc');
+      const subInbound = document.getElementById('av-sub-inbound');
+      const subQc = document.getElementById('av-sub-qc');
+      if (tujuan === 'inbound') {
+        subInbound.classList.remove('d-none');
+        subQc.classList.add('d-none');
+        btnInbound.classList.remove('btn-outline-secondary'); btnInbound.style.backgroundColor = '#6f42c1'; btnInbound.classList.add('text-white');
+        btnQc.classList.add('btn-outline-secondary'); btnQc.style.backgroundColor = ''; btnQc.classList.remove('text-white');
+        loadAdminValidateInbound();
+      } else {
+        subQc.classList.remove('d-none');
+        subInbound.classList.add('d-none');
+        btnQc.classList.remove('btn-outline-secondary'); btnQc.style.backgroundColor = '#6f42c1'; btnQc.classList.add('text-white');
+        btnInbound.classList.add('btn-outline-secondary'); btnInbound.style.backgroundColor = ''; btnInbound.classList.remove('text-white');
+        loadAdminValidateQC();
+      }
+    }
+
+    function showAVAlert(containerId, message, type = "success") {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show small fw-bold mb-0" role="alert">
+          ${message}
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+        </div>`;
+    }
+
+    // ----- SUB: VALIDATE INBOUND -----
+    function loadAdminValidateInbound() {
+      const tbody = document.getElementById('av-inbound-tbody');
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          AV_DATA_INBOUND = rows || [];
+          if (AV_DATA_INBOUND.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data Inbound yang pending validasi.</td></tr>';
+            return;
+          }
+          tbody.innerHTML = AV_DATA_INBOUND.map((r, idx) => `
+            <tr>
+              <td class="text-center"><input type="checkbox" class="av-inbound-check" data-idx="${idx}"></td>
+              <td>${r.no_po || '-'}</td>
+              <td class="fw-bold">${r.kode_sku}</td>
+              <td>${r.supplier || '-'}</td>
+              <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
+              <td>${r.lokasi || '-'}</td>
+              <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
+            </tr>`).join('');
+        })
+        .withFailureHandler(function(err) {
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat: ${err.message}</td></tr>`;
+        })
+        .getAdminValidateInboundPending();
+    }
+
+    function avToggleAllInbound(checkboxAll) {
+      document.querySelectorAll('.av-inbound-check').forEach(cb => cb.checked = checkboxAll.checked);
+    }
+
+    async function submitAdminValidateInboundTerpilih() {
+      const idxTerpilih = Array.from(document.querySelectorAll('.av-inbound-check:checked')).map(cb => Number(cb.dataset.idx));
+      if (idxTerpilih.length === 0) {
+        showAVAlert('av-inbound-alert', 'Pilih minimal 1 baris untuk divalidasi.', 'danger');
+        return;
+      }
+      const noSo = document.getElementById('av-inbound-noso').value.trim();
+      if (!noSo) {
+        showAVAlert('av-inbound-alert', 'Nomor Transaksi SO wajib diisi.', 'danger');
+        return;
+      }
+      const ids = idxTerpilih.map(i => AV_DATA_INBOUND[i].id);
+      const validator = DEKLARASI_USER.nama || "Admin";
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .submitAdminValidateInbound({ ids: ids, noSo: noSo, validator: validator });
+        });
+        showAVAlert('av-inbound-alert', res.message, 'success');
+        document.getElementById('av-inbound-noso').value = '';
+        loadAdminValidateInbound();
+      } catch (err) {
+        showAVAlert('av-inbound-alert', 'Gagal: ' + err.message, 'danger');
+      }
+    }
+
+    // ----- SUB: VALIDATE QC -----
+    function loadAdminValidateQC() {
+      const tbody = document.getElementById('av-qc-tbody');
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          AV_DATA_QC = rows || [];
+          if (AV_DATA_QC.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data QC yang pending validasi.</td></tr>';
+            return;
+          }
+          tbody.innerHTML = AV_DATA_QC.map((r, idx) => `
+            <tr>
+              <td class="text-center"><input type="checkbox" class="av-qc-check" data-idx="${idx}"></td>
+              <td>${r.no_qc}</td>
+              <td>${r.ref || '-'}</td>
+              <td class="fw-bold">${r.kode_sku}</td>
+              <td>${r.grade}</td>
+              <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
+              <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
+            </tr>`).join('');
+        })
+        .withFailureHandler(function(err) {
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat: ${err.message}</td></tr>`;
+        })
+        .getAdminValidateQCPending();
+    }
+
+    function avToggleAllQC(checkboxAll) {
+      document.querySelectorAll('.av-qc-check').forEach(cb => cb.checked = checkboxAll.checked);
+    }
+
+    async function submitAdminValidateQCTerpilih() {
+      const idxTerpilih = Array.from(document.querySelectorAll('.av-qc-check:checked')).map(cb => Number(cb.dataset.idx));
+      if (idxTerpilih.length === 0) {
+        showAVAlert('av-qc-alert', 'Pilih minimal 1 baris untuk divalidasi.', 'danger');
+        return;
+      }
+      const noSo = document.getElementById('av-qc-noso').value.trim();
+      if (!noSo) {
+        showAVAlert('av-qc-alert', 'Nomor Transaksi SO wajib diisi.', 'danger');
+        return;
+      }
+      const items = idxTerpilih.map(i => {
+        const r = AV_DATA_QC[i];
+        return { noQc: r.no_qc, kodeSku: r.kode_sku, grade: r.grade, qty: r.qty };
+      });
+      const validator = DEKLARASI_USER.nama || "Admin";
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .submitAdminValidateQC({ items: items, noSo: noSo, validator: validator });
+        });
+        showAVAlert('av-qc-alert', res.message, 'success');
+        document.getElementById('av-qc-noso').value = '';
+        loadAdminValidateQC();
+      } catch (err) {
+        showAVAlert('av-qc-alert', 'Gagal: ' + err.message, 'danger');
+      }
     }
 
   </script>
