@@ -716,6 +716,26 @@ Object.defineProperty(window.google.script, 'run', {
   configurable: true
 });
 
+// =========================================================================
+// TAMBAHAN: beberapa fungsi lama (getStockReturnDataForPutaway,
+// getInventoryDashboardData, getMovementHistoryData) TIDAK dipanggil lewat
+// google.script.run, tapi lewat fetch(WEBAPP_URL + '?action=namaFungsi')
+// langsung ke URL Apps Script. Kita tangkap juga panggilan fetch() semacam
+// ini dan alihkan ke Supabase, supaya tidak perlu ubah kode lama sama sekali.
+// =========================================================================
+const _originalFetch = window.fetch.bind(window);
+window.fetch = function (url, options) {
+  const urlStr = (typeof url === 'string') ? url : (url && url.url) || '';
+  const m = urlStr.match(/[?&]action=([^&]+)/);
+  const action = m ? decodeURIComponent(m[1]) : null;
+  if (action && ENDPOINTS[action]) {
+    return Promise.resolve(ENDPOINTS[action]())
+      .then((data) => ({ ok: true, status: 200, json: () => Promise.resolve(data) }))
+      .catch((err) => ({ ok: true, status: 200, json: () => Promise.resolve({ error: err.message }) }));
+  }
+  return _originalFetch(url, options);
+};
+
 </script>
 
   <meta charset="UTF-8">
@@ -6264,6 +6284,16 @@ function loadQCFGToValidateDropdown() {
       globalValidateQCData = poMap;
       poSelect.innerHTML = '<option value="">-- Pilih No PO --</option>';
 
+      // PERBAIKAN: selalu kosongkan dropdown SKU & form total setiap kali daftar
+      // PO dimuat ulang (baik saat pertama buka, klik refresh, maupun setelah
+      // validasi sukses), supaya tidak ada SKU/Tanggal lama yang nyangkut.
+      let skuSelect = document.getElementById("vq-sku");
+      if (skuSelect) {
+        skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
+        skuSelect.disabled = true;
+      }
+      resetValidateQCForm(true);
+
       const poKeys = Object.keys(poMap);
       if (poKeys.length === 0) {
         poSelect.innerHTML = '<option value="">-- Tidak Ada Data Menunggu Validasi --</option>';
@@ -6276,8 +6306,6 @@ function loadQCFGToValidateDropdown() {
         opt.textContent = poNumber;
         poSelect.appendChild(opt);
       });
-
-      resetValidateQCForm(false);
     })
     .getQCFGDataForValidate();
 }
@@ -6869,6 +6897,7 @@ function loadQCFGToPutawayDropdown() {
       const poKeys = Object.keys(poMap);
       if (poKeys.length === 0) {
         poSelect.innerHTML = '<option value="">-- Tidak Ada Data PO Aktif --</option>';
+        renderPutawayList();
         return;
       }
 
