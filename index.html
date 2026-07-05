@@ -1120,6 +1120,8 @@ window.fetch = function (url, options) {
     }
     .icon-export   { background: #FBE9E7; color: #BF360C; }
     .dot-export    { background: #BF360C; }
+    .icon-adminvalidate { background: #EDE7F6; color: #6f42c1; }
+    .dot-adminvalidate  { background: #6f42c1; }
     .icon-recheckqc{ background: #FFF3E0; color: #EF6C00; }
     .dot-recheckqc { background: #EF6C00; }
     .icon-dashob   { background: #E8F5E9; color: #1B5E20; }
@@ -1499,6 +1501,30 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-export', 'modul-export'); setTimeout(()=>bukaSubExport('sub-export-movhistory'),300)">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Movement History (Audit Trail)</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODUL: ADMIN VALIDATE -->
+    <div class="module-list-group" id="home-group-adminvalidate" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-adminvalidate', this)">
+        <div class="module-icon-wrap icon-adminvalidate"><i class="fa-solid fa-user-shield"></i></div>
+        <div class="module-row-text">
+          <div class="module-row-name">Admin Validate</div>
+          <div class="module-row-desc">Assign No SO untuk Inbound & QC</div>
+        </div>
+        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
+      </div>
+      <div class="sub-module-list" id="home-sub-adminvalidate">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('inbound'),300)">
+          <span class="sub-dot dot-adminvalidate"></span>
+          <span class="sub-module-name">Validate Inbound</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('qc'),300)">
+          <span class="sub-dot dot-adminvalidate"></span>
+          <span class="sub-module-name">Validate QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -4381,6 +4407,9 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('home-subrow-ops-putawayreturn').style.display = 'flex';
         document.getElementById('sub-validate-qc').classList.remove('d-none');
         document.getElementById('sub-putaway-return').classList.remove('d-none');
+
+        // Modul baru: Admin Validate (khusus Admin/SPV/Manager)
+        document.getElementById('home-group-adminvalidate').style.display = 'block';
 
       } else if (r === "Staff Inbound") {
         // Inbound Receiving (Validasi Inbound TIDAK diberikan — hanya Admin/SPV/Manager)
