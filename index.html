@@ -396,7 +396,7 @@ Object.assign(ENDPOINTS, {
       (po.data || []).forEach(r => {
         if (!r.no_po || !r.kode_sku || !_cocokBulanTahun(r.created_date, bulan, tahun)) return;
         const key = r.no_po + '||' + r.kode_sku;
-        if (!poData[key]) poData[key] = { noPo: r.no_po, sku: r.kode_sku, supplier: r.supplier, qtyOpenPO: 0, statusPo: r.status_po, qtyReceive: 0, qtyQC: 0, qtyPutaway: 0 };
+        if (!poData[key]) poData[key] = { noPo: r.no_po, kodeSku: r.kode_sku, supplier: r.supplier, qtyOpenPO: 0, statusPo: r.status_po, qtyReceive: 0, qtyQC: 0, qtyPutaway: 0 };
         poData[key].qtyOpenPO += Number(r.qty_awal || 0);
       });
       (mh.data || []).forEach(r => {
@@ -1159,6 +1159,8 @@ window.fetch = function (url, options) {
     .dot-recheckqc { background: #EF6C00; }
     .icon-dashob   { background: #E8F5E9; color: #1B5E20; }
     .dot-dashob    { background: #1B5E20; }
+    .icon-livemovement { background: #E3F2FD; color: #0D47A1; }
+    .dot-livemovement  { background: #0D47A1; }
 
     /* ===== INVENTORY EXPORT PRINT STYLES ===== */
     .inv-export-doc { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
@@ -1476,6 +1478,26 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-subrow-inv-transfer" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
           <span class="sub-dot dot-inventory"></span>
           <span class="sub-module-name">Transfer Lokasi / Grade</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODUL: LIVE MOVEMENT HISTORY (menu utama baru, feed real-time - beda dari
+         Movement History (Audit Trail)/Export Movement History yang perlu generate laporan) -->
+    <div class="module-list-group" id="home-group-livemovement">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-livemovement', this)">
+        <div class="module-icon-wrap icon-livemovement"><i class="fa-solid fa-tower-broadcast"></i></div>
+        <div class="module-row-text">
+          <div class="module-row-name">Live Movement History</div>
+          <div class="module-row-desc">Feed real-time pergerakan stok</div>
+        </div>
+        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
+      </div>
+      <div class="sub-module-list" id="home-sub-livemovement">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-livemovement', 'modul-livemovement')">
+          <span class="sub-dot dot-livemovement"></span>
+          <span class="sub-module-name">Live Feed Semua Pergerakan</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -3217,9 +3239,14 @@ async function eksekusiAddSkuOutbound() {
       <div id="sub-dashob-outbound" class="card p-3 mb-3 border-start border-4 border-danger">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h6 class="fw-bold text-danger mb-0"><i class="fa-solid fa-arrow-up-from-bracket me-2"></i>Dashboard Outbound Request</h6>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadDashboardOutbound()" title="Muat Ulang">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportDashboardOutboundExcel()" title="Export ke Excel (sesuai filter No Request/Store/SKU/Grade yang aktif)">
+              <i class="fa-solid fa-file-excel"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadDashboardOutbound()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
         </div>
 
         <!-- Filter Bulan & Tahun -->
@@ -4101,6 +4128,28 @@ async function eksekusiAddSkuOutbound() {
     </div>
     <!-- ===== AKHIR MODUL ADMIN VALIDATE ===== -->
 
+    <!-- ===== MODUL: LIVE MOVEMENT HISTORY (feed real-time, BUKAN laporan/export -->
+    <!-- untuk laporan lengkap dengan filter tanggal & unduh Excel, tetap pakai menu -->
+    <!-- Export > Movement History yang sudah ada) ===== -->
+    <div id="modul-livemovement" class="form-section">
+      <div class="card p-3 mb-3 border-start border-4" style="border-color:#0D47A1!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Live Movement History</h6>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success"><i class="fa-solid fa-circle me-1" style="font-size:6px;"></i>Live</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadLiveMovementHistory()" title="Muat Ulang Sekarang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+        <p class="small text-muted mb-2">Feed pergerakan stok terbaru (otomatis diperbarui setiap beberapa detik). Ini <b>bukan</b> laporan — untuk laporan lengkap dengan filter tanggal &amp; unduh Excel, gunakan menu <b>Export &gt; Movement History (Audit Trail)</b>.</p>
+        <input type="text" id="lmh-filter" class="form-control form-control-sm mb-2" placeholder="Cari SKU / No Referensi / Tipe / Lokasi / User..." oninput="renderLiveMovementHistory()">
+        <div id="lmh-list-area" style="max-height:520px; overflow-y:auto;">
+          <div class="text-muted small text-center py-4 border rounded">Memuat data...</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- MODAL: KONFIRMASI KUSTOM (PENGGANTI window.confirm() BAWAAN BROWSER) -->
@@ -4181,6 +4230,9 @@ async function eksekusiAddSkuOutbound() {
       </a>
       <a href="#" id="tab-adminvalidate" class="nav-link" onclick="switchTab(this, 'modul-adminvalidate')">
         <i class="fa-solid fa-user-shield"></i>Admin Validate
+      </a>
+      <a href="#" id="tab-livemovement" class="nav-link" onclick="switchTab(this, 'modul-livemovement')">
+        <i class="fa-solid fa-tower-broadcast"></i>Live Movement
       </a>
     </div>
   </nav>
@@ -4413,7 +4465,7 @@ async function eksekusiAddSkuOutbound() {
       if (r === "Admin Gudang" || r === "Supervisor Gudang" || r === "Admin" || r === "Supervisor" || r === "Manager Gudang") {
         // Tampilkan semua modul di home
         ['home-group-inbound','home-group-qc','home-group-openpo','home-group-outbound',
-         'home-group-ops','home-group-checking','home-group-inventory','home-group-dashob','home-group-export'].forEach(id => {
+         'home-group-ops','home-group-checking','home-group-inventory','home-group-dashob','home-group-export','home-group-livemovement'].forEach(id => {
           document.getElementById(id).style.display = 'block';
         });
         document.getElementById('home-sub-picking-row').style.display = 'flex';
@@ -4486,6 +4538,9 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('sub-export-movhistory').classList.remove('d-none');
         document.getElementById('tab-export').style.display = 'block';
 
+        document.getElementById('home-group-livemovement').style.display = 'block';
+        document.getElementById('tab-livemovement').style.display = 'block';
+
       } else if (r === "Petugas QC") {
         // QC Finish Good & Re-Check QC (TANPA Request-QC Ulang).
         // Validate QC (Sebelum Putaway) TIDAK lagi diakses dari sini — modul tsb kini ada di
@@ -4528,6 +4583,9 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('home-subrow-export-movhistory').style.display = 'flex';
         document.getElementById('sub-export-movhistory').classList.remove('d-none');
         document.getElementById('tab-export').style.display = 'block';
+
+        document.getElementById('home-group-livemovement').style.display = 'block';
+        document.getElementById('tab-livemovement').style.display = 'block';
 
       } else if (r === "Checker") {
         // Dashboard Checker & Live Monitor Checker
@@ -4576,6 +4634,9 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('sub-export-movhistory').classList.remove('d-none');
         document.getElementById('tab-export').style.display = 'block';
 
+        document.getElementById('home-group-livemovement').style.display = 'block';
+        document.getElementById('tab-livemovement').style.display = 'block';
+
       } else if (r === "Demand Planner" || r === "RnD") {
         // Inventory Dashboard Stock FG, Export Dokumen Laporan Inventory, Outbound Request
         document.getElementById('home-group-outbound').style.display = 'block';
@@ -4588,6 +4649,9 @@ async function eksekusiAddSkuOutbound() {
         document.getElementById('home-group-export').style.display = 'block';
         document.getElementById('home-subrow-export-laporan').style.display = 'flex';
         document.getElementById('tab-export').style.display = 'block';
+
+        document.getElementById('home-group-livemovement').style.display = 'block';
+        document.getElementById('tab-livemovement').style.display = 'block';
       }
 
       // Juga simpan user-display untuk konten-aplikasi (dipakai saat masuk modul)
@@ -4649,6 +4713,7 @@ async function eksekusiAddSkuOutbound() {
     // Tombol back ke home dari dalam modul (dipanggil dari header konten-aplikasi)
     function kembaliKeHome() {
       stopLiveCheckerMonitorPolling();
+      stopLiveMovementPolling();
       document.getElementById('konten-aplikasi').style.display = 'none';
       document.querySelector('.nav-bottom').style.display = 'none';
       document.getElementById('halaman-home').style.display = 'block';
@@ -4663,8 +4728,14 @@ async function eksekusiAddSkuOutbound() {
       if (modulId !== 'modul-checking') {
         stopLiveCheckerMonitorPolling();
       }
+      // FITUR BARU: sama seperti Live Monitor Checker, hentikan polling Live Movement
+      // History setiap kali pindah tab ke modul lain (supaya tidak terus mengirim
+      // request ke server saat user sedang di modul lain).
+      if (modulId !== 'modul-livemovement') {
+        stopLiveMovementPolling();
+      }
       // 1. Masukkan 'modul-openpo' ke dalam daftar pembersihan agar ikut dikendalikan
-      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate'];
+      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate', 'modul-livemovement'];
       semuaModul.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -4707,7 +4778,8 @@ async function eksekusiAddSkuOutbound() {
         'modul-inventory': [loadInventoryDashboard],
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
         'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters],
-        'modul-adminvalidate' : [loadAdminValidateInbound]
+        'modul-adminvalidate' : [loadAdminValidateInbound],
+        'modul-livemovement' : [startLiveMovementPolling]
       };
 
       const daftarFungsi = mapRefresh[modulId];
@@ -9317,20 +9389,168 @@ async function eksekusiCancelOutbound() {
     }
 
     // =========================================================================
+    // FITUR BARU: EXPORT DASHBOARD OUTBOUND REQUEST KE EXCEL
+    // Mengekspor data yang SEDANG tampil di tabel Dashboard Outbound Request,
+    // artinya otomatis ikut filter yang sedang aktif di kolom "Filter No/Store/SKU/Grade"
+    // (termasuk filter berdasarkan No Request). Kalau filter dikosongkan, semua baris
+    // pada periode Bulan/Tahun yang dipilih akan ter-export.
+    // =========================================================================
+    function exportDashboardOutboundExcel() {
+      if (typeof XLSX === 'undefined') {
+        customAlert("Error: Library XLSX belum termuat di sistem. Mohon periksa script import sheetjs.");
+        return;
+      }
+      const filter = (document.getElementById('ob-dash-filter').value || '').trim().toLowerCase();
+      const rows = DASHOB_DATA_OB.filter(r =>
+        !filter ||
+        r.noRequest.toLowerCase().includes(filter) ||
+        r.kodeStore.toLowerCase().includes(filter) ||
+        r.kodeSku.toLowerCase().includes(filter) ||
+        (r.grade || '').toLowerCase().includes(filter)
+      );
+
+      if (!rows.length) {
+        customAlert("Tidak ada data untuk diexport (cek filter No Request/Store/SKU/Grade atau periode Bulan/Tahun yang dipilih).");
+        return;
+      }
+
+      const dataExport = rows.map(r => ({
+        'No Request': r.noRequest,
+        'Tanggal': r.tglRequest,
+        'Store': r.kodeStore,
+        'SKU': r.kodeSku,
+        'Grade': r.grade || '-',
+        'Qty Request': r.qtyRequest,
+        'Qty Allocated': r.qtyAllocated,
+        'Qty Stockout': r.qtyStockout || 0,
+        'Status': r.status
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(dataExport);
+      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
+
+      const bulan = document.getElementById('ob-dash-bulan').value;
+      const tahun = document.getElementById('ob-dash-tahun').value;
+      const namaFileFilter = filter ? `_filter-${filter.replace(/[^a-z0-9]/gi, '')}` : '';
+      const namaFile = `Dashboard_Outbound_${tahun}-${String(bulan).padStart(2, '0')}${namaFileFilter}.xlsx`;
+      XLSX.writeFile(wb, namaFile);
+    }
+
+    // =========================================================================
     // FITUR RE-ALLOCATE STOCKOUT (dari Dashboard Outbound)
     // =========================================================================
 
-    // Escape karakter HTML khusus supaya aman disisipkan ke dalam atribut data-*
-    // (mis. No Request/SKU/Grade yang mengandung tanda kutip, &, <, > tidak lagi
-    // merusak/memutus atribut HTML sehingga tombol gagal ter-render/ter-klik).
-    function escapeHtmlAttr(str) {
-      return (str === null || str === undefined ? '' : str.toString())
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    // =========================================================================
+    // FITUR BARU: LIVE MOVEMENT HISTORY (menu utama sendiri, sejajar dengan
+    // Inventory/Outbound/Inbound). Berbeda dari "Movement History (Audit Trail)"
+    // & "Export Movement History" yang sudah ada (yang mengharuskan isi filter
+    // tanggal lalu generate/unduh laporan): fitur ini HANYA menampilkan feed
+    // baris-baris pergerakan stok terbaru secara live (auto-refresh), tanpa
+    // perlu generate/export apapun. Sumbernya sama (tabel movement_history).
+    // Catatan: escapeHtmlAttr() dipakai di sini didefinisikan di bagian lain file ini.
+    // =========================================================================
+    const LMH_REFRESH_MS = 8000;
+    const LMH_MAX_ROWS = 100;
+    let lmhIntervalId = null;
+    let lmhDataTerakhir = [];
+
+    // Kategori tipe transaksi -> warna badge (hijau=stok masuk, merah=stok keluar,
+    // kuning=short/stockout, biru=transfer/koreksi, abu=administratif).
+    const LMH_TIPE_STYLE = {
+      RECEIVING_INBOUND: { warna: 'success', label: 'Inbound Diterima' },
+      PUTAWAY_FG: { warna: 'success', label: 'Putaway FG' },
+      PUTAWAY_RETURN: { warna: 'success', label: 'Putaway Return' },
+      QC_FG_SUBMIT: { warna: 'success', label: 'QC Submit' },
+      VALIDATE_QC_FG: { warna: 'success', label: 'Validate QC' },
+      ADJUSTMENT_IN_FG: { warna: 'success', label: 'Adjustment Masuk' },
+      PO_CREATE_IMPORT: { warna: 'secondary', label: 'PO Dibuat (Import)' },
+      PO_CREATE_MANUAL: { warna: 'secondary', label: 'PO Dibuat (Manual)' },
+      'Validate Admin': { warna: 'secondary', label: 'Validate Admin' },
+      OUTBOUND_REQUEST_ALLOC: { warna: 'danger', label: 'Alokasi Outbound' },
+      OUTBOUND_REQUEST_REALLOC: { warna: 'danger', label: 'Re-Alokasi Outbound' },
+      PICKING_OUT: { warna: 'danger', label: 'Picking Keluar' },
+      CHECKING_OUT: { warna: 'danger', label: 'Checking Keluar' },
+      ADJUSTMENT_OUT_FG: { warna: 'danger', label: 'Adjustment Keluar' },
+      CANCEL_OUTBOUND: { warna: 'dark', label: 'Cancel Outbound' },
+      CANCEL_PO: { warna: 'dark', label: 'Cancel PO' },
+      SHORT_PICK_OOS: { warna: 'warning', label: 'Short Pick (Stockout)' },
+      SHORT_PUTAWAY: { warna: 'warning', label: 'Short Putaway' },
+      TRANSFER_LOKASI_FG: { warna: 'info', label: 'Transfer Lokasi' },
+      TRANSFER_DOWNGRADE_FG: { warna: 'info', label: 'Transfer/Downgrade Grade' },
+      OVERRIDE_LOKASI_KOREKSI: { warna: 'info', label: 'Koreksi Lokasi' }
+    };
+
+    // Ambil baris terbaru langsung dari Supabase (bukan lewat WEBAPP_URL/Apps Script)
+    function loadLiveMovementHistory() {
+      const area = document.getElementById('lmh-list-area');
+      if (!area) return;
+      _sb.from('movement_history')
+        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
+        .order('waktu', { ascending: false })
+        .limit(LMH_MAX_ROWS)
+        .then(({ data, error }) => {
+          if (error) { area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(error.message)}</div>`; return; }
+          lmhDataTerakhir = data || [];
+          renderLiveMovementHistory();
+        })
+        .catch(err => {
+          area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(err.message)}</div>`;
+        });
     }
+
+    function renderLiveMovementHistory() {
+      const area = document.getElementById('lmh-list-area');
+      if (!area) return;
+      const q = (document.getElementById('lmh-filter').value || '').trim().toLowerCase();
+
+      let rows = lmhDataTerakhir;
+      if (q) {
+        rows = rows.filter(r =>
+          (r.kode_sku || '').toLowerCase().includes(q) ||
+          (r.ref || '').toLowerCase().includes(q) ||
+          (r.tipe || '').toLowerCase().includes(q) ||
+          (r.user_login || '').toLowerCase().includes(q) ||
+          (r.lokasi || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (!rows || rows.length === 0) {
+        area.innerHTML = '<div class="text-muted small text-center py-4 border rounded">Belum ada pergerakan stok untuk ditampilkan.</div>';
+        return;
+      }
+
+      area.innerHTML = rows.map(r => {
+        const gaya = LMH_TIPE_STYLE[r.tipe] || { warna: 'secondary', label: r.tipe || '-' };
+        const waktu = r.waktu ? new Date(r.waktu).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+        return `
+          <div class="d-flex align-items-start gap-2 border-bottom py-2">
+            <span class="badge bg-${gaya.warna}" style="min-width:118px;">${escapeHtmlAttr(gaya.label)}</span>
+            <div class="flex-grow-1" style="font-size:12px;">
+              <div><b>${escapeHtmlAttr(r.kode_sku || '-')}</b> &middot; Qty: <b>${Number(r.qty || 0).toLocaleString('id-ID')}</b>${r.lokasi ? ' &middot; ' + escapeHtmlAttr(r.lokasi) : ''}</div>
+              <div class="text-muted">Ref: ${escapeHtmlAttr(r.ref || '-')} &middot; Oleh: ${escapeHtmlAttr(r.user_login || '-')} &middot; ${waktu}</div>
+              ${r.catatan ? `<div class="text-muted fst-italic">${escapeHtmlAttr(r.catatan)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Mulai auto-refresh berkala (dipanggil saat modul ini dibuka)
+    function startLiveMovementPolling() {
+      stopLiveMovementPolling(); // pastikan tidak dobel interval
+      loadLiveMovementHistory();
+      lmhIntervalId = setInterval(loadLiveMovementHistory, LMH_REFRESH_MS);
+    }
+
+    // Hentikan auto-refresh (dipanggil saat pindah ke tab/modul lain agar tidak boros request)
+    function stopLiveMovementPolling() {
+      if (lmhIntervalId) {
+        clearInterval(lmhIntervalId);
+        lmhIntervalId = null;
+      }
+    }
+
 
     // Event delegation: 1 listener terpasang SEKALI di tbody (elemen ini statis, tidak
     // pernah dihapus/diganti — hanya innerHTML-nya yang berubah tiap render), sehingga
