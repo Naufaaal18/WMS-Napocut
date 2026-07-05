@@ -447,17 +447,40 @@ Object.assign(ENDPOINTS, {
     return poMap;
   },
 
+  // FITUR PERBAIKAN (Dashboard Inventory - total Qty Available/Qty On Hand/SKU Aktif tidak sesuai data asli):
+  // Root cause: query `_sb.from('stock_fg').select(...)` di bawah ini TIDAK di-paginate, sehingga
+  // kena limit default Supabase/PostgREST (maksimal 1000 baris per request). Karena stock_fg berisi
+  // ribuan baris, hanya 1000 baris pertama yang benar-benar terbaca -> kartu ringkasan (yang dihitung
+  // dari data ini di sisi client) jadi jauh lebih kecil dari total asli di database.
+  // Perbaikan: (1) ambil SEMUA baris stock_fg dengan paging pakai .range() sampai habis, dan
+  // (2) ambil juga angka ringkasan resmi langsung dari VIEW `dashboard_stock_summary` di database
+  // (SUM/COUNT dihitung oleh Postgres atas SELURUH tabel, sama sekali tidak terpengaruh limit baris API)
+  // supaya kartu ringkasan pasti akurat walau suatu saat jumlah baris stock_fg jauh lebih besar lagi.
+  _fetchAllRows: async (tableName, selectCols) => {
+    const pageSize = 1000;
+    let from = 0;
+    let semuaBaris = [];
+    while (true) {
+      const { data, error } = await _sb.from(tableName).select(selectCols).range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      semuaBaris = semuaBaris.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return semuaBaris;
+  },
+
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
-    const [fg, ib, rt, po] = await Promise.all([
-      _sb.from('stock_fg').select('kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
+    const [fgRows, ib, rt, po, summaryRes] = await Promise.all([
+      ENDPOINTS._fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
       _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
       _sb.from('stock_return').select('kode_sku, qty, lokasi, grade'),
-      _sb.from('open_po').select('no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po')
+      _sb.from('open_po').select('no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
+      _sb.from('dashboard_stock_summary').select('sku_aktif, total_qty_available, total_qty_on_hand').single()
     ]);
-    if (fg.error) throw new Error(fg.error.message);
     const mapFG = {}; const orderFG = [];
-    (fg.data || []).forEach(r => {
+    (fgRows || []).forEach(r => {
       if (!r.kode_sku) return;
       const key = r.kode_sku + '||' + r.grade + '||' + r.kode_lokasi;
       if (!mapFG[key]) { mapFG[key] = { sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', grade: r.grade, lokasi: r.kode_lokasi, qtyOnHand: 0, status: r.status, lastUpdate: r.last_update, qtyAvailable: 0 }; orderFG.push(key); }
@@ -468,7 +491,12 @@ Object.assign(ENDPOINTS, {
     const stockReturn = (rt.data || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
     const stockOpenPO = (po.data || []).filter(r => r.kode_sku && r.qty_order > 0 && (r.status_po || '').toLowerCase() === 'active')
       .map(r => ({ noPo: r.no_po, supplier: r.supplier, sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', qtyOpenPO: r.qty_order, kategori: r.kategori, tanggal: _tglDMY(r.created_date), status: r.status_po }));
-    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO };
+    const stockSummary = summaryRes && summaryRes.data ? {
+      skuAktif: Number(summaryRes.data.sku_aktif || 0),
+      totalQtyAvailable: Number(summaryRes.data.total_qty_available || 0),
+      totalQtyOnHand: Number(summaryRes.data.total_qty_on_hand || 0)
+    } : null;
+    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary };
   },
 
   getMovementHistoryData: async () => {
@@ -7993,6 +8021,7 @@ async function eksekusiCancelOutbound() {
     let INV_DATA_INBOUND = [];
     let INV_DATA_RETURN = [];
     let INV_DATA_OPENPO = [];
+    let INV_SUMMARY = null; // FITUR PERBAIKAN: total resmi (SKU Aktif/Qty Available/Qty On Hand) dari view dashboard_stock_summary, dihitung Postgres atas SELURUH tabel stock_fg (tidak terpengaruh limit baris API)
 
     // Ambil seluruh data dashboard dari server (Stock_FG, Stock_Inbound, Stock_Return, Open_PO Active) sekaligus
     // FITUR PERBAIKAN (poin 1 - Dashboard Inventory tidak terbuka / macet "Memuat data..."):
@@ -8025,6 +8054,7 @@ async function eksekusiCancelOutbound() {
             INV_DATA_RETURN = (res && res.stockReturn) || [];
             INV_DATA_OPENPO = (res && res.stockOpenPO) || [];
             INV_DEBUG_INFO = (res && res.debugInfo) || null;
+            INV_SUMMARY = (res && res.stockSummary) || null;
 
             try { isiDatalistInventory(); } catch (e1) { console.error('isiDatalistInventory error:', e1); }
             try { renderInventoryTable(); } catch (e2) { console.error('renderInventoryTable error:', e2); }
@@ -8116,9 +8146,20 @@ async function eksekusiCancelOutbound() {
         `).join('');
       }
 
-      const totalSku = new Set(filtered.map(r => r.sku)).size;
-      const totalOnHand = filtered.reduce((a, r) => a + Number(r.qtyOnHand || 0), 0);
-      const totalAvailable = filtered.reduce((a, r) => a + Number(r.qtyAvailable || 0), 0);
+      // FITUR PERBAIKAN: kalau tidak ada filter aktif, tampilkan total RESMI dari view
+      // dashboard_stock_summary (akurat, dihitung Postgres atas seluruh tabel stock_fg).
+      // Kalau sedang filter SKU/Lokasi/Grade, baru dihitung dari data yang cocok filter tsb.
+      const tanpaFilter = (fSku === "" && fLokasi === "" && fGrade === "");
+      let totalSku, totalOnHand, totalAvailable;
+      if (tanpaFilter && INV_SUMMARY) {
+        totalSku = INV_SUMMARY.skuAktif;
+        totalOnHand = INV_SUMMARY.totalQtyOnHand;
+        totalAvailable = INV_SUMMARY.totalQtyAvailable;
+      } else {
+        totalSku = new Set(filtered.map(r => r.sku)).size;
+        totalOnHand = filtered.reduce((a, r) => a + Number(r.qtyOnHand || 0), 0);
+        totalAvailable = filtered.reduce((a, r) => a + Number(r.qtyAvailable || 0), 0);
+      }
 
       document.getElementById('inv-sum-sku').innerText = totalSku.toLocaleString('id-ID');
       document.getElementById('inv-sum-onhand').innerText = totalOnHand.toLocaleString('id-ID');
