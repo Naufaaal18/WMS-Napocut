@@ -9442,6 +9442,18 @@ async function eksekusiCancelOutbound() {
     // FITUR RE-ALLOCATE STOCKOUT (dari Dashboard Outbound)
     // =========================================================================
 
+    // Escape karakter HTML khusus supaya aman disisipkan ke dalam atribut data-*
+    // (mis. No Request/SKU/Grade yang mengandung tanda kutip, &, <, > tidak lagi
+    // merusak/memutus atribut HTML sehingga tombol gagal ter-render/ter-klik).
+    function escapeHtmlAttr(str) {
+      return (str === null || str === undefined ? '' : str.toString())
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
     // =========================================================================
     // FITUR BARU: LIVE MOVEMENT HISTORY (menu utama sendiri, sejajar dengan
     // Inventory/Outbound/Inbound). Berbeda dari "Movement History (Audit Trail)"
@@ -9449,7 +9461,6 @@ async function eksekusiCancelOutbound() {
     // tanggal lalu generate/unduh laporan): fitur ini HANYA menampilkan feed
     // baris-baris pergerakan stok terbaru secara live (auto-refresh), tanpa
     // perlu generate/export apapun. Sumbernya sama (tabel movement_history).
-    // Catatan: escapeHtmlAttr() dipakai di sini didefinisikan di bagian lain file ini.
     // =========================================================================
     const LMH_REFRESH_MS = 8000;
     const LMH_MAX_ROWS = 100;
