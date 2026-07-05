@@ -368,15 +368,31 @@ Object.assign(ENDPOINTS, {
   },
 
   getDashboardOutboundData: async (bulan, tahun) => {
-    const { data, error } = await _sb.from('outbound_request')
-      .select('no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status');
-    if (error) return { success: false, message: 'Gagal memuat data Dashboard Outbound: ' + error.message };
-    const result = (data || [])
+    const [obRes, ckRes] = await Promise.all([
+      _sb.from('outbound_request').select('no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status'),
+      _sb.from('checking').select('no_request, kode_sku, qty_picker, qty_checker')
+    ]);
+    if (obRes.error) return { success: false, message: 'Gagal memuat data Dashboard Outbound: ' + obRes.error.message };
+    if (ckRes.error) return { success: false, message: 'Gagal memuat data Checking untuk Qty Checker (Klop): ' + ckRes.error.message };
+
+    // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
+    // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
+    // tidak ada selisih). Dikelompokkan per No Request + SKU supaya bisa ditotal ulang
+    // sesuai filter yang aktif di tabel Dashboard Outbound.
+    const klopMap = {};
+    (ckRes.data || []).forEach(r => {
+      if (!r.no_request || !r.kode_sku) return;
+      if (Number(r.qty_checker) !== Number(r.qty_picker)) return; // bukan klop, dilewati
+      const key = r.no_request + '||' + r.kode_sku;
+      klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
+    });
+
+    const result = (obRes.data || [])
       .filter(r => r.no_request && r.tanggal_request && _cocokBulanTahun(r.tanggal_request, bulan, tahun))
       .map(r => ({
         noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
         grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-        qtyStockout: r.qty_oos, status: r.status
+        qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
       }));
     return { success: true, data: result };
   },
@@ -3270,22 +3286,28 @@ async function eksekusiAddSkuOutbound() {
 
         <!-- Summary Cards Outbound -->
         <div class="row g-2 mb-3 text-center" id="ob-dash-summary">
-          <div class="col-4">
+          <div class="col-3">
             <div class="border rounded p-2">
               <div class="small text-muted">Total Request</div>
               <div class="fw-bold fs-5 text-danger" id="ob-sum-request">-</div>
             </div>
           </div>
-          <div class="col-4">
+          <div class="col-3">
             <div class="border rounded p-2">
               <div class="small text-muted">Total SKU</div>
               <div class="fw-bold fs-5" id="ob-sum-sku">-</div>
             </div>
           </div>
-          <div class="col-4">
+          <div class="col-3">
             <div class="border rounded p-2">
               <div class="small text-muted">Total Qty</div>
               <div class="fw-bold fs-5 text-primary" id="ob-sum-qty">-</div>
+            </div>
+          </div>
+          <div class="col-3">
+            <div class="border rounded p-2" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">
+              <div class="small text-muted">Qty Checker (Klop)</div>
+              <div class="fw-bold fs-5 text-success" id="ob-sum-checkerklop">-</div>
             </div>
           </div>
         </div>
@@ -9291,6 +9313,7 @@ async function eksekusiCancelOutbound() {
       document.getElementById('ob-sum-request').textContent = '-';
       document.getElementById('ob-sum-sku').textContent = '-';
       document.getElementById('ob-sum-qty').textContent = '-';
+      document.getElementById('ob-sum-checkerklop').textContent = '-';
       document.getElementById('ob-dash-stockout-box').style.display = 'none';
 
       google.script.run
@@ -9356,9 +9379,11 @@ async function eksekusiCancelOutbound() {
       const setRequest = new Set(rows.map(r => r.noRequest));
       const totalQty = rows.reduce((a, r) => a + (r.qtyRequest || 0), 0);
       const totalStockout = rows.reduce((a, r) => a + (r.qtyStockout || 0), 0);
+      const totalCheckerKlop = rows.reduce((a, r) => a + (r.qtyCheckerKlop || 0), 0);
       document.getElementById('ob-sum-request').textContent = setRequest.size;
       document.getElementById('ob-sum-sku').textContent = rows.length;
       document.getElementById('ob-sum-qty').textContent = totalQty.toLocaleString('id-ID');
+      document.getElementById('ob-sum-checkerklop').textContent = totalCheckerKlop.toLocaleString('id-ID');
 
       if (totalStockout > 0) {
         const boxSo = document.getElementById('ob-dash-stockout-box');
@@ -9423,11 +9448,12 @@ async function eksekusiCancelOutbound() {
         'Qty Request': r.qtyRequest,
         'Qty Allocated': r.qtyAllocated,
         'Qty Stockout': r.qtyStockout || 0,
+        'Qty Checker (Klop)': r.qtyCheckerKlop || 0,
         'Status': r.status
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 16 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
 
