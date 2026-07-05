@@ -4008,6 +4008,9 @@ async function eksekusiAddSkuOutbound() {
             <i class="fa-solid fa-rotate"></i>
           </button>
         </div>
+        <div class="mb-2">
+          <input type="text" id="av-inbound-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateInboundTable()">
+        </div>
         <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
           <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
@@ -4049,6 +4052,17 @@ async function eksekusiAddSkuOutbound() {
         <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>Daftar dipecah per <strong>Grade</strong> — SKU
           berbeda dengan Grade yang sama boleh dicentang &amp; digabung jadi 1 Nomor SO (contoh: SKU A dan SKU B sama-sama
           Grade Bagus bisa divalidasi bersamaan).</p>
+        <div class="mb-2 d-flex gap-2">
+          <input type="text" id="av-qc-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateQCTable()" style="flex:2;">
+          <select id="av-qc-filter-grade" class="form-select form-select-sm" onchange="renderAdminValidateQCTable()" style="flex:1;">
+            <option value="">Semua Grade</option>
+            <option value="Bagus">Bagus</option>
+            <option value="Minor">Minor</option>
+            <option value="Reject">Reject</option>
+            <option value="Kotor">Kotor</option>
+            <option value="Perbaikan">Perbaikan</option>
+          </select>
+        </div>
         <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
           <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
@@ -9493,25 +9507,46 @@ async function eksekusiCancelOutbound() {
       google.script.run
         .withSuccessHandler(function(rows) {
           AV_DATA_INBOUND = rows || [];
-          if (AV_DATA_INBOUND.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data Inbound yang pending validasi.</td></tr>';
-            return;
-          }
-          tbody.innerHTML = AV_DATA_INBOUND.map((r, idx) => `
-            <tr>
-              <td class="text-center"><input type="checkbox" class="av-inbound-check" data-idx="${idx}"></td>
-              <td>${r.no_po || '-'}</td>
-              <td class="fw-bold">${r.kode_sku}</td>
-              <td>${r.supplier || '-'}</td>
-              <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
-              <td>${r.lokasi || '-'}</td>
-              <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
-            </tr>`).join('');
+          renderAdminValidateInboundTable();
         })
         .withFailureHandler(function(err) {
           tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat: ${err.message}</td></tr>`;
         })
         .getAdminValidateInboundPending();
+    }
+
+    function renderAdminValidateInboundTable() {
+      const tbody = document.getElementById('av-inbound-tbody');
+      const filterInput = document.getElementById('av-inbound-filter-po');
+      const keyword = (filterInput ? filterInput.value : '').trim().toLowerCase();
+
+      if (AV_DATA_INBOUND.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data Inbound yang pending validasi.</td></tr>';
+        return;
+      }
+
+      const dataTampil = keyword
+        ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword))
+        : AV_DATA_INBOUND;
+
+      if (dataTampil.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada No PO yang cocok dengan "${keyword}".</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = dataTampil.map((r) => {
+        const idx = AV_DATA_INBOUND.indexOf(r);
+        return `
+        <tr>
+          <td class="text-center"><input type="checkbox" class="av-inbound-check" data-idx="${idx}"></td>
+          <td>${r.no_po || '-'}</td>
+          <td class="fw-bold">${r.kode_sku}</td>
+          <td>${r.supplier || '-'}</td>
+          <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
+          <td>${r.lokasi || '-'}</td>
+          <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
+        </tr>`;
+      }).join('');
     }
 
     function avToggleAllInbound(checkboxAll) {
@@ -9553,20 +9588,7 @@ async function eksekusiCancelOutbound() {
       google.script.run
         .withSuccessHandler(function(rows) {
           AV_DATA_QC = rows || [];
-          if (AV_DATA_QC.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data QC yang pending validasi.</td></tr>';
-            return;
-          }
-          tbody.innerHTML = AV_DATA_QC.map((r, idx) => `
-            <tr>
-              <td class="text-center"><input type="checkbox" class="av-qc-check" data-idx="${idx}"></td>
-              <td>${r.no_qc}</td>
-              <td>${r.ref || '-'}</td>
-              <td class="fw-bold">${r.kode_sku}</td>
-              <td>${r.grade}</td>
-              <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
-              <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
-            </tr>`).join('');
+          renderAdminValidateQCTable();
         })
         .withFailureHandler(function(err) {
           tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat: ${err.message}</td></tr>`;
@@ -9576,6 +9598,42 @@ async function eksekusiCancelOutbound() {
 
     function avToggleAllQC(checkboxAll) {
       document.querySelectorAll('.av-qc-check').forEach(cb => cb.checked = checkboxAll.checked);
+    }
+
+    function renderAdminValidateQCTable() {
+      const tbody = document.getElementById('av-qc-tbody');
+      const filterInput = document.getElementById('av-qc-filter-po');
+      const keyword = (filterInput ? filterInput.value : '').trim().toLowerCase();
+      const gradeSelect = document.getElementById('av-qc-filter-grade');
+      const gradeTerpilih = (gradeSelect ? gradeSelect.value : '').trim().toLowerCase();
+
+      if (AV_DATA_QC.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data QC yang pending validasi.</td></tr>';
+        return;
+      }
+
+      let dataTampil = AV_DATA_QC;
+      if (keyword) dataTampil = dataTampil.filter(r => (r.ref || '').toLowerCase().includes(keyword));
+      if (gradeTerpilih) dataTampil = dataTampil.filter(r => (r.grade || '').toLowerCase() === gradeTerpilih);
+
+      if (dataTampil.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data yang cocok dengan filter saat ini.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = dataTampil.map((r) => {
+        const idx = AV_DATA_QC.indexOf(r);
+        return `
+        <tr>
+          <td class="text-center"><input type="checkbox" class="av-qc-check" data-idx="${idx}"></td>
+          <td>${r.no_qc}</td>
+          <td>${r.ref || '-'}</td>
+          <td class="fw-bold">${r.kode_sku}</td>
+          <td>${r.grade}</td>
+          <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
+          <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
+        </tr>`;
+      }).join('');
     }
 
     async function submitAdminValidateQCTerpilih() {
