@@ -514,11 +514,16 @@ Object.assign(ENDPOINTS, {
   getListNoRequestReadyToShip: async () => {
     try {
       const [chk, req] = await Promise.all([
-        _sb.from('checking').select('no_request, kode_sku, qty_checker, status'),
+        _sb.from('checking').select('no_request, kode_sku, qty_checker, status, no_so'),
         _sb.from('outbound_request').select('no_request, tanggal_request, tujuan, kode_sku, status')
       ]);
       if (chk.error) throw new Error(chk.error.message);
       if (req.error) throw new Error(req.error.message);
+
+      // BARU: kumpulkan No Request yang SUDAH divalidasi (sudah ada No SO-nya) -- ini tidak akan ditampilkan lagi.
+      const sudahDivalidasiSet = new Set(
+        (chk.data || []).filter(r => (r.no_so || '').trim() !== '').map(r => r.no_request)
+      );
 
       const statusMap = {};
       (req.data || []).forEach(r => {
@@ -529,6 +534,7 @@ Object.assign(ENDPOINTS, {
       const mapRequest = {};
       (chk.data || []).forEach(r => {
         if (!r.no_request || r.status !== 'Ready to Ship') return;
+        if (sudahDivalidasiSet.has(r.no_request)) return;
         if (!mapRequest[r.no_request]) mapRequest[r.no_request] = { skuSet: new Set(), totalQty: 0 };
         mapRequest[r.no_request].skuSet.add(r.kode_sku);
         mapRequest[r.no_request].totalQty += Number(r.qty_checker || 0);
