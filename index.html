@@ -516,33 +516,10 @@ Object.assign(ENDPOINTS, {
     return poMap;
   },
 
-  // FITUR PERBAIKAN (Dashboard Inventory - total Qty Available/Qty On Hand/SKU Aktif tidak sesuai data asli):
-  // Root cause: query `_sb.from('stock_fg').select(...)` di bawah ini TIDAK di-paginate, sehingga
-  // kena limit default Supabase/PostgREST (maksimal 1000 baris per request). Karena stock_fg berisi
-  // ribuan baris, hanya 1000 baris pertama yang benar-benar terbaca -> kartu ringkasan (yang dihitung
-  // dari data ini di sisi client) jadi jauh lebih kecil dari total asli di database.
-  // Perbaikan: (1) ambil SEMUA baris stock_fg dengan paging pakai .range() sampai habis, dan
-  // (2) ambil juga angka ringkasan resmi langsung dari VIEW `dashboard_stock_summary` di database
-  // (SUM/COUNT dihitung oleh Postgres atas SELURUH tabel, sama sekali tidak terpengaruh limit baris API)
-  // supaya kartu ringkasan pasti akurat walau suatu saat jumlah baris stock_fg jauh lebih besar lagi.
-  _fetchAllRows: async (tableName, selectCols) => {
-    const pageSize = 1000;
-    let from = 0;
-    let semuaBaris = [];
-    while (true) {
-      const { data, error } = await _sb.from(tableName).select(selectCols).range(from, from + pageSize - 1);
-      if (error) throw new Error(error.message);
-      semuaBaris = semuaBaris.concat(data || []);
-      if (!data || data.length < pageSize) break;
-      from += pageSize;
-    }
-    return semuaBaris;
-  },
-
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
     const [fgRows, ib, rt, po, summaryRes] = await Promise.all([
-      ENDPOINTS._fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
+      _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
       _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
       _sb.from('stock_return').select('kode_sku, qty, lokasi, grade'),
       _sb.from('open_po').select('no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
@@ -569,11 +546,14 @@ Object.assign(ENDPOINTS, {
   },
 
   getMovementHistoryData: async () => {
-    const { data, error } = await _sb.from('movement_history')
-      .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
-      .order('id', { ascending: false }).limit(2000);
-    if (error) throw new Error(error.message);
-    return (data || []).reverse().map(r => ({
+    // PERBAIKAN BUG: sebelumnya query dibatasi keras `.limit(2000)`, jadi Export
+    // Movement History TIDAK PERNAH mengambil seluruh riwayat kalau tabel sudah
+    // punya lebih dari 2000 baris (sekarang sudah 5000+ baris) -- data lama yang
+    // lebih tua dari 2000 transaksi terakhir otomatis tidak pernah ikut ke-export.
+    // Sekarang pakai _fetchAllRows supaya SEMUA baris di movement_history terambil,
+    // berapa pun jumlahnya, lalu diurutkan ascending (lama -> baru) seperti semula.
+    const data = await _fetchAllRows('movement_history', 'tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan');
+    return (data || []).map(r => ({
       type: r.tipe, ref: r.ref, sku: r.kode_sku, qty: r.qty, lokasi: r.lokasi, user: r.user_login,
       timestamp: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '',
       timestampRaw: r.waktu ? new Date(r.waktu).toISOString() : '', catatan: r.catatan
