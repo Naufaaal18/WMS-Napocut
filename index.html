@@ -46,8 +46,7 @@ const ENDPOINTS = {
   checkLogin: (u, p) => _callRpc('check_login', { p_username: u, p_password: p }),
 
   // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
-  getAllUsers: () => _sb.from('master_user').select('id, username, nama, role, status, akses, created_at').order('created_at', { ascending: true })
-    .then(({ data, error }) => { if (error) throw new Error(error.message); return { success: true, data: data || [] }; }),
+  getAllUsers: () => _callRpc('get_all_users', {}).then((data) => ({ success: true, data: data || [] })),
   createUser: (payload) => _callRpc('create_user', {
     p_username: payload.username, p_password: payload.password, p_nama: payload.nama,
     p_role: payload.role, p_status: payload.status || 'Active', p_akses: payload.akses || null
@@ -770,15 +769,10 @@ Object.assign(ENDPOINTS, {
     p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
   }),
 
-});
+  processAdjustmentStockFGImportExcel: (payload) => _callRpc('process_adjustment_stock_fg_import_excel', {
+    p_rows: payload.rows, p_user_login: payload.userLogin || 'Operator Inventory'
+  }),
 
-// =========================================================================
-// MASIH BELUM ADA (fitur import Excel massal untuk adjustment) -- fitur lain semua sudah jalan.
-// =========================================================================
-['processAdjustmentStockFGImportExcel'].forEach(name => {
-  ENDPOINTS[name] = () => Promise.reject(new Error(
-    `Fungsi '${name}' (import Excel massal) belum dipindahkan ke Supabase. Untuk sementara gunakan input manual satu-per-satu.`
-  ));
 });
 
 // =========================================================================
