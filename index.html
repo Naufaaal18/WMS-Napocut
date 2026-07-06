@@ -209,6 +209,29 @@ function _cocokBulanTahun(rawDate, bulan, tahun) {
   return (dt.getMonth() + 1 === Number(bulan)) && (dt.getFullYear() === Number(tahun));
 }
 
+// PERBAIKAN BUG: Supabase (PostgREST) hanya mengembalikan maksimal 1000 baris
+// per request secara default. Kalau tabel sudah punya lebih dari 1000 baris,
+// query biasa (_sb.from(...).select(...)) akan diam-diam memotong sisanya,
+// sehingga data yang tampil di dashboard jadi kurang (contoh: outbound_request
+// sudah 1153 baris tapi hanya 1000 baris pertama yang kebaca -> beberapa
+// No Request "hilang" dari Dashboard). Fungsi ini melakukan paging otomatis
+// via .range() sampai semua baris di tabel benar-benar terambil.
+async function _fetchAllRows(tableName, selectCols, extra) {
+  const PAGE_SIZE = 1000;
+  let from = 0;
+  let semua = [];
+  while (true) {
+    let q = _sb.from(tableName).select(selectCols).order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    if (typeof extra === 'function') q = extra(q);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    semua = semua.concat(data || []);
+    if (!data || data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return semua;
+}
+
 async function _getMasterSkuDescMap() {
   const { data, error } = await _sb.from('master_sku').select('kode_sku, nama_product');
   if (error) throw new Error(error.message);
@@ -383,33 +406,48 @@ Object.assign(ENDPOINTS, {
   },
 
   getDashboardOutboundData: async (bulan, tahun) => {
-    const [obRes, ckRes] = await Promise.all([
-      _sb.from('outbound_request').select('no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status'),
-      _sb.from('checking').select('no_request, kode_sku, qty_picker, qty_checker')
-    ]);
-    if (obRes.error) return { success: false, message: 'Gagal memuat data Dashboard Outbound: ' + obRes.error.message };
-    if (ckRes.error) return { success: false, message: 'Gagal memuat data Checking untuk Qty Checker (Klop): ' + ckRes.error.message };
+    try {
+      // PERBAIKAN BUG: sebelumnya pakai _sb.from(...).select(...) langsung tanpa
+      // paging, sehingga kalau baris di tabel sudah lewat 1000 (limit default
+      // Supabase/PostgREST), sisanya diam-diam tidak kebaca -> Total Request di
+      // Dashboard jadi lebih sedikit dari jumlah No Request yang sebenarnya ada
+      // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
+      // berapa pun jumlahnya.
+      const [obData, ckData] = await Promise.all([
+        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status'),
+        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker')
+      ]);
 
-    // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
-    // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
-    // tidak ada selisih). Dikelompokkan per No Request + SKU supaya bisa ditotal ulang
-    // sesuai filter yang aktif di tabel Dashboard Outbound.
-    const klopMap = {};
-    (ckRes.data || []).forEach(r => {
-      if (!r.no_request || !r.kode_sku) return;
-      if (Number(r.qty_checker) !== Number(r.qty_picker)) return; // bukan klop, dilewati
-      const key = r.no_request + '||' + r.kode_sku;
-      klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
-    });
+      // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
+      // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
+      // tidak ada selisih). Dikelompokkan per No Request + SKU supaya bisa ditotal ulang
+      // sesuai filter yang aktif di tabel Dashboard Outbound.
+      const klopMap = {};
+      (ckData || []).forEach(r => {
+        if (!r.no_request || !r.kode_sku) return;
+        if (Number(r.qty_checker) !== Number(r.qty_picker)) return; // bukan klop, dilewati
+        const key = r.no_request + '||' + r.kode_sku;
+        klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
+      });
 
-    const result = (obRes.data || [])
-      .filter(r => r.no_request && r.tanggal_request && _cocokBulanTahun(r.tanggal_request, bulan, tahun))
-      .map(r => ({
-        noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
-        grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-        qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
-      }));
-    return { success: true, data: result };
+      // FITUR BARU: sort hasil akhir berdasarkan No Request (naik, natural/numeric-aware
+      // supaya "000009" tetap sebelum "000010") lalu diikuti sort berdasarkan Kode SKU.
+      const result = (obData || [])
+        .filter(r => r.no_request && r.tanggal_request && _cocokBulanTahun(r.tanggal_request, bulan, tahun))
+        .map(r => ({
+          noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
+          grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
+          qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
+        }))
+        .sort((a, b) => {
+          const c = String(a.noRequest).localeCompare(String(b.noRequest), 'id', { numeric: true, sensitivity: 'base' });
+          if (c !== 0) return c;
+          return String(a.kodeSku).localeCompare(String(b.kodeSku), 'id', { numeric: true, sensitivity: 'base' });
+        });
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, message: 'Gagal memuat data Dashboard Outbound: ' + err.message };
+    }
   },
 
   getDashboardInboundData: async (bulan, tahun) => {
