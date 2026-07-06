@@ -4090,9 +4090,14 @@ async function eksekusiAddSkuOutbound() {
       <div id="av-sub-inbound" class="card p-3 mb-3 border-start border-4" style="border-color:#6f42c1!important;">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate Inbound</h6>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateInbound()" title="Muat Ulang">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportAdminValidateInboundExcel()" title="Export ke Excel (sesuai filter No PO yang aktif)">
+              <i class="fa-solid fa-file-excel"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateInbound()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
         </div>
         <div class="mb-2">
           <input type="text" id="av-inbound-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateInboundTable()">
@@ -4131,9 +4136,14 @@ async function eksekusiAddSkuOutbound() {
       <div id="av-sub-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#6f42c1!important;">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate QC</h6>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateQC()" title="Muat Ulang">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportAdminValidateQCExcel()" title="Export ke Excel (sesuai filter No PO/Grade yang aktif)">
+              <i class="fa-solid fa-file-excel"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateQC()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
         </div>
         <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>Daftar dipecah per <strong>Grade</strong> — SKU
           berbeda dengan Grade yang sama boleh dicentang &amp; digabung jadi 1 Nomor SO (contoh: SKU A dan SKU B sama-sama
@@ -9605,6 +9615,76 @@ async function eksekusiCancelOutbound() {
           customAlert(`Password user ${username} berhasil direset.`, 'success');
         })
         .catch(err => customAlert('Gagal reset password: ' + err.message, 'danger'));
+    }
+
+    // =========================================================================
+    // FITUR BARU: EXPORT ADMIN VALIDATE (INBOUND & QC) KE EXCEL
+    // Mengekspor data yang SEDANG tampil di masing-masing tabel (mengikuti filter
+    // No PO / Grade yang sedang aktif), supaya Admin bisa menyimpan/mengirim
+    // daftar pending validasi tanpa perlu screenshot.
+    // =========================================================================
+    function exportAdminValidateInboundExcel() {
+      if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
+      const keyword = (document.getElementById('av-inbound-filter-po').value || '').trim().toLowerCase();
+      const rows = keyword
+        ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword))
+        : AV_DATA_INBOUND;
+
+      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO, atau memang tidak ada yang pending)."); return; }
+
+      const dataExport = rows.map(r => ({
+        'No PO': r.no_po || '-',
+        'SKU': r.kode_sku,
+        'Supplier': r.supplier || '-',
+        'Qty': Number(r.qty),
+        'Lokasi': r.lokasi || '-',
+        'Waktu': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(dataExport);
+      ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 20 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Pending Validate Inbound");
+
+      const namaFileFilter = keyword ? `_filter-${keyword.replace(/[^a-z0-9]/gi, '')}` : '';
+      XLSX.writeFile(wb, `Pending_Validate_Inbound${namaFileFilter}_${_tglFileSekarang()}.xlsx`);
+    }
+
+    function exportAdminValidateQCExcel() {
+      if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
+      const keyword = (document.getElementById('av-qc-filter-po').value || '').trim().toLowerCase();
+      const gradeTerpilih = (document.getElementById('av-qc-filter-grade').value || '').trim().toLowerCase();
+
+      let rows = AV_DATA_QC;
+      if (keyword) rows = rows.filter(r => (r.ref || '').toLowerCase().includes(keyword));
+      if (gradeTerpilih) rows = rows.filter(r => (r.grade || '').toLowerCase() === gradeTerpilih);
+
+      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO/Grade, atau memang tidak ada yang pending)."); return; }
+
+      const dataExport = rows.map(r => ({
+        'No QC': r.no_qc,
+        'No PO': r.ref || '-',
+        'SKU': r.kode_sku,
+        'Grade': r.grade,
+        'Qty': Number(r.qty),
+        'Waktu': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(dataExport);
+      ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 20 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Pending Validate QC");
+
+      const filterBag = [keyword, gradeTerpilih].filter(Boolean).join('-').replace(/[^a-z0-9-]/gi, '');
+      const namaFileFilter = filterBag ? `_filter-${filterBag}` : '';
+      XLSX.writeFile(wb, `Pending_Validate_QC${namaFileFilter}_${_tglFileSekarang()}.xlsx`);
+    }
+
+    // Helper kecil: format tanggal-jam sekarang untuk nama file export (YYYY-MM-DD_HHmm)
+    function _tglFileSekarang() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
     }
 
     // =========================================================================
