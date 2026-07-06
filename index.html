@@ -215,6 +215,19 @@ function _cocokBulanTahun(rawDate, bulan, tahun) {
 // sudah 1153 baris tapi hanya 1000 baris pertama yang kebaca -> beberapa
 // No Request "hilang" dari Dashboard). Fungsi ini melakukan paging otomatis
 // via .range() sampai semua baris di tabel benar-benar terambil.
+// FITUR BARU: Receiving/Picking/Putaway sekarang mendukung Qty desimal (mis. 12.5 atau
+// 802,72 meter kain), karena kolom qty di database (stock_fg, stock_inbound, picking, dll)
+// memang sudah bertipe "numeric" (mendukung desimal). Sebelumnya input Qty di beberapa form
+// masih dibaca pakai parseInt(), yang diam-diam MEMOTONG angka di belakang koma (12,5 jadi 12).
+// Helper ini menggantikan parseInt() khusus untuk field Qty di modul-modul tersebut, dan juga
+// menerima koma (",") sebagai pemisah desimal ala Indonesia selain titik (".").
+function _parseQtyDesimal(val) {
+  if (val === null || val === undefined) return NaN;
+  const bersih = String(val).trim().replace(',', '.');
+  if (bersih === '') return NaN;
+  return parseFloat(bersih);
+}
+
 async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
   const PAGE_SIZE = 1000;
   const kolomUrut = orderCol || 'id'; // sebagian tabel (mis. master_sku) primary key-nya BUKAN "id"
@@ -2250,7 +2263,7 @@ window.fetch = function (url, options) {
 
               <div class="col-6">
                 <label class="form-label small fw-bold mb-0">Qty Putaway</label>
-                <input type="number" id="pw-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="1" disabled>
+                <input type="number" id="pw-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="0.01" step="any" disabled>
                 <div id="pw-max-info" class="text-danger small fw-bold mt-1" style="font-size: 10px; display: none;">
                 </div>
               </div>
@@ -2352,7 +2365,7 @@ window.fetch = function (url, options) {
 
               <div class="col-6">
                 <label class="form-label small fw-bold mb-0">Qty Putaway</label>
-                <input type="number" id="pwr-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="1" disabled>
+                <input type="number" id="pwr-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="0.01" step="any" disabled>
                 <div id="pwr-max-info" class="text-danger small fw-bold mt-1" style="font-size: 10px; display: none;">
                 </div>
               </div>
@@ -5401,10 +5414,10 @@ async function eksekusiAddSkuOutbound() {
       const noRequest = PC_CURRENT_REQUEST;
       if (!noRequest) return;
 
-      const inputQty = prompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
+      const inputQty = prompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh desimal, mis. 12.5 atau 12,5; boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
       if (inputQty === null) return;
 
-      const qtyKetemu = parseInt(inputQty);
+      const qtyKetemu = _parseQtyDesimal(inputQty);
       // FITUR: qtyKetemu boleh 0 (kasus barang di-allocate sistem tapi fisiknya benar-benar
       // tidak ada di lokasi tsb). Yang tidak boleh hanya nilai negatif atau bukan angka.
       if (isNaN(qtyKetemu) || qtyKetemu < 0) {
@@ -6359,7 +6372,7 @@ function submitPutawayReturn(event) {
   let skuScannedVal = document.getElementById("pwr-confirm-sku").value;
   let gradeVal = document.getElementById("pwr-grade").value;
   let qtyInput = document.getElementById("pwr-qty");
-  let qtyVal = parseInt(qtyInput.value) || 0;
+  let qtyVal = _parseQtyDesimal(qtyInput.value) || 0;
   let locVal = document.getElementById("pwr-lokasi").value;
 
   if(!poSelected || !skuSelected || qtyVal <= 0 || !locVal) {
@@ -7563,7 +7576,7 @@ function submitPutawayFG(event) {
   let tglQcVal = document.getElementById("pw-tanggal-qc").value; // Format: YYYY-MM-DD
   let gradeVal = document.getElementById("pw-grade").value;
   let qtyInput = document.getElementById("pw-qty");
-  let qtyVal = parseInt(qtyInput.value) || 0;
+  let qtyVal = _parseQtyDesimal(qtyInput.value) || 0;
   let locVal = document.getElementById("pw-lokasi").value;
 
   if(!poSelected || !skuSelected || !tglQcVal || qtyVal <= 0 || !locVal) {
@@ -7701,7 +7714,7 @@ function onInboundPoSelected() {
         <td class="text-center"><input type="checkbox" class="ib-row-check" data-sku="${skuCode}"></td>
         <td class="fw-bold">${skuCode}<input type="hidden" class="ib-row-grade" data-sku="${skuCode}" value="${gradeAuto}"></td>
         <td class="text-center text-muted">${maxQty}</td>
-        <td><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0"></td>
+        <td><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" step="any" placeholder="0"></td>
         <td>${kolomLokasi}</td>
         <td class="text-center"><input type="checkbox" class="ib-row-short" data-sku="${skuCode}" title="Short Putaway SKU ini. Bisa dicentang dengan Qty tetap 0/kosong jika barang SAMA SEKALI tidak diterima dari Supplier."></td>
       </tr>`;
@@ -7748,7 +7761,7 @@ async function submitInboundReceivingList() {
   rows.forEach(tr => {
     const sku = tr.getAttribute('data-sku-row');
     const qtyInput = tr.querySelector('.ib-row-qty');
-    const qty = parseInt(qtyInput.value) || 0;
+    const qty = _parseQtyDesimal(qtyInput.value) || 0;
     const isChecked = tr.querySelector('.ib-row-check').checked;
     const isShort = tr.querySelector('.ib-row-short').checked;
 
