@@ -45,6 +45,21 @@ const ENDPOINTS = {
 
   checkLogin: (u, p) => _callRpc('check_login', { p_username: u, p_password: p }),
 
+  // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
+  getAllUsers: () => _sb.from('master_user').select('id, username, nama, role, status, akses, created_at').order('created_at', { ascending: true })
+    .then(({ data, error }) => { if (error) throw new Error(error.message); return { success: true, data: data || [] }; }),
+  createUser: (payload) => _callRpc('create_user', {
+    p_username: payload.username, p_password: payload.password, p_nama: payload.nama,
+    p_role: payload.role, p_status: payload.status || 'Active', p_akses: payload.akses || null
+  }),
+  updateUserProfile: (payload) => _callRpc('update_user_profile', {
+    p_username: payload.username, p_nama: payload.nama, p_role: payload.role,
+    p_status: payload.status, p_akses: payload.akses || null
+  }),
+  updateUserPassword: (username, passwordBaru) => _callRpc('update_user_password', {
+    p_username: username, p_password_baru: passwordBaru
+  }),
+
   processInboundReceiving: (data) => _callRpc('process_inbound_receiving', {
     p_no_po: data.noPo, p_kode_sku: data.kodeSku, p_kategori: data.kategori,
     p_qty: Number(data.qty), p_lokasi_rak: data.lokasiRak || null, p_grade: data.grade || null,
@@ -1177,6 +1192,8 @@ window.fetch = function (url, options) {
     .dot-dashob    { background: #1B5E20; }
     .icon-livemovement { background: #E3F2FD; color: #0D47A1; }
     .dot-livemovement  { background: #0D47A1; }
+    .icon-kelolauser { background: #FCE4EC; color: #880E4F; }
+    .dot-kelolauser  { background: #880E4F; }
 
     /* ===== INVENTORY EXPORT PRINT STYLES ===== */
     .inv-export-doc { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
@@ -1300,6 +1317,25 @@ window.fetch = function (url, options) {
     </div>
 
     <div class="home-section-label">Menu Utama</div>
+
+    <!-- MODUL: KELOLA USER (BARU, khusus role Administrator) -->
+    <div class="module-list-group" id="home-group-kelolauser" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-kelolauser', this)">
+        <div class="module-icon-wrap icon-kelolauser"><i class="fa-solid fa-users-gear"></i></div>
+        <div class="module-row-text">
+          <div class="module-row-name">Kelola User</div>
+          <div class="module-row-desc">Tambah, ubah role &amp; reset password user</div>
+        </div>
+        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
+      </div>
+      <div class="sub-module-list" id="home-sub-kelolauser">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-kelolauser', 'modul-kelolauser')">
+          <span class="sub-dot dot-kelolauser"></span>
+          <span class="sub-module-name">Daftar &amp; Kelola User</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+      </div>
+    </div>
 
     <!-- MODUL: INBOUND -->
     <div class="module-list-group" id="home-group-inbound" style="display:none;">
@@ -4167,6 +4203,94 @@ async function eksekusiAddSkuOutbound() {
       </div>
     </div>
 
+    <!-- ===== MODUL BARU: KELOLA USER (khusus Administrator) ===== -->
+    <div id="modul-kelolauser" class="form-section">
+      <div class="card p-3 mb-3 border-start border-4" style="border-color:#880E4F!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#880E4F;"><i class="fa-solid fa-users-gear me-2"></i>Kelola User</h6>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-danger btn-sm" onclick="bukaFormTambahUser()" title="Tambah User Baru">
+              <i class="fa-solid fa-user-plus"></i> Tambah
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadKelolaUserData()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+        <p class="small text-muted mb-2">Hanya role <b>Administrator</b> yang bisa membuka modul ini. Perubahan role akan langsung memengaruhi menu yang bisa diakses user tersebut setelah mereka login ulang.</p>
+
+        <!-- FORM TAMBAH/EDIT USER (disembunyikan sampai tombol Tambah/Edit ditekan) -->
+        <div id="ku-form-wrapper" class="border rounded p-3 mb-3 bg-light" style="display:none;">
+          <h6 class="fw-bold small mb-2" id="ku-form-title">Tambah User Baru</h6>
+          <input type="hidden" id="ku-form-mode" value="tambah">
+          <input type="hidden" id="ku-form-username-asli" value="">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-1">Username</label>
+              <input type="text" id="ku-username" class="form-control form-control-sm" placeholder="mis. BudiP" autocomplete="off">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-1">Nama Lengkap</label>
+              <input type="text" id="ku-nama" class="form-control form-control-sm" placeholder="mis. Budi Prasetyo" autocomplete="off">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-1">Role</label>
+              <select id="ku-role" class="form-select form-select-sm">
+                <option value="Administrator">Administrator (Akses Mutlak + Kelola User)</option>
+                <option value="Admin">Admin (Semua Akses kecuali Kelola User)</option>
+                <option value="Supervisor Gudang">Supervisor Gudang / SPV Gudang (Semua Akses kecuali Kelola User)</option>
+                <option value="Manager Gudang">Manager Gudang (Semua Akses kecuali Kelola User)</option>
+                <option value="Admin QC">Admin QC (Inbound Validasi, Modul QC Produk)</option>
+                <option value="Petugas QC">Petugas QC (QC Finish Good, Re-Check QC)</option>
+                <option value="Petugas Putaway">Petugas Putaway (Inbound Receiving, Putaway, Dashboard Stock FG, Transfer Lokasi)</option>
+                <option value="Picker">Picker (Putaway Return, Request-QC Ulang, Picking, Dashboard Stock FG, Transfer)</option>
+                <option value="Checker">Checker (Dashboard &amp; Live Monitor Checker)</option>
+                <option value="Staff Inbound">Staff Inbound (Inbound Receiving)</option>
+                <option value="Inventory Controller">Inventory Controller (Inbound, QC Ulang, Putaway Return, Picking, Inventory, Movement History)</option>
+                <option value="Demand Planner">Demand Planner (Dashboard Stock FG, Export Laporan, Outbound Request)</option>
+                <option value="RnD">RnD (Dashboard Stock FG, Export Laporan, Outbound Request)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-1">Status</label>
+              <select id="ku-status" class="form-select form-select-sm">
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive (nonaktif, tidak bisa login)</option>
+              </select>
+            </div>
+            <div class="col-6" id="ku-password-wrapper">
+              <label class="form-label small fw-bold mb-1">Password</label>
+              <input type="password" id="ku-password" class="form-control form-control-sm" placeholder="Minimal 6 karakter" autocomplete="new-password">
+            </div>
+          </div>
+          <div id="ku-form-alert" class="mt-2"></div>
+          <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-sm fw-bold text-white" style="background-color:#880E4F;" onclick="submitFormUser()">
+              <i class="fa-solid fa-floppy-disk me-1"></i>Simpan
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupFormUser()">Batal</button>
+          </div>
+        </div>
+
+        <div class="table-responsive" style="max-height:480px;">
+          <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+            <thead class="table-light" style="position:sticky;top:0;">
+              <tr>
+                <th>Username</th>
+                <th>Nama</th>
+                <th>Role</th>
+                <th class="text-center">Status</th>
+                <th class="text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="ku-tbody">
+              <tr><td colspan="5" class="text-center text-muted py-3">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- MODAL: KONFIRMASI KUSTOM (PENGGANTI window.confirm() BAWAAN BROWSER) -->
@@ -4244,6 +4368,9 @@ async function eksekusiAddSkuOutbound() {
       </a>
       <a href="#" id="tab-export" class="nav-link" onclick="switchTab(this, 'modul-export')">
         <i class="fa-solid fa-file-arrow-down"></i>Export
+      </a>
+      <a href="#" id="tab-kelolauser" class="nav-link" onclick="switchTab(this, 'modul-kelolauser')">
+        <i class="fa-solid fa-users-gear"></i>Kelola User
       </a>
       <a href="#" id="tab-adminvalidate" class="nav-link" onclick="switchTab(this, 'modul-adminvalidate')">
         <i class="fa-solid fa-user-shield"></i>Admin Validate
@@ -4477,198 +4604,91 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('sub-validate-qc').classList.add('d-none');
       document.getElementById('sub-putaway-return').classList.add('d-none');
 
+      // =========================================================================
+      // KONFIGURASI HAK AKSES PER ROLE (RBAC) - terpusat & deklaratif.
+      // Setiap "fitur" berikut punya definisi: grup (module-list-group), tab (nav-link
+      // di bottom nav), dan opsional subrow (baris sub-modul di Home) + subcard
+      // (kartu konten di dalam modul) untuk fitur yang granular di dalam 1 modul.
+      // Menambah/mengubah akses role di masa depan cukup edit RBAC_PER_ROLE di bawah,
+      // TIDAK perlu menambah if/else baru.
+      // =========================================================================
+      const RBAC_FITUR = {
+        INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
+        INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
+        QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
+        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcard: 'sub-request-qc-ulang' },
+        QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
+        MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
+        OUTBOUND_REQUEST:     { grup: 'home-group-outbound',     tab: 'tab-outbound' },
+        OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
+        OPS_PUTAWAY:          { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putaway',       subcard: 'sub-putaway' },
+        OPS_PUTAWAYRETURN:    { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putawayreturn', subcard: 'sub-putaway-return' },
+        CHECKING_PICKING:     { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-picking-row',          subcard: 'sub-picking' },
+        CHECKING_DASHBOARD:   { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-dashchecker-row',      subcard: 'sub-dashboard-checker' },
+        CHECKING_LIVEMONITOR: { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-livechecker-row',      subcard: 'sub-live-checker-monitor' },
+        INV_DASHBOARD:        { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-dashboard' },
+        INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-adjustment',    subcard: 'sub-inventory-adjustment' },
+        INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-transfer',      subcard: 'sub-inventory-transfer' },
+        LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
+        DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
+        EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
+        EXPORT_LAPORAN:       { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-laporan' },
+        EXPORT_DATAQC:        { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-dataqc',     subcard: 'sub-export-dataqc' },
+        EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
+        ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
+        KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' }
+      };
+      const RBAC_SEMUA_FITUR = Object.keys(RBAC_FITUR);
+
+      // Peta akses per role. "Administrator" = akses mutlak (termasuk Kelola User).
+      // Admin/Supervisor Gudang/Manager Gudang = semua akses KECUALI Kelola User
+      // (hanya Administrator yang boleh menambah/mengubah user). "Admin Gudang" &
+      // "Supervisor" adalah nama role lama yang sebelumnya juga akses penuh -
+      // dipertahankan di tier yang sama supaya tidak ada user lama yang tiba-tiba
+      // kehilangan akses.
+      const RBAC_AKSES_PENUH_TANPA_KELOLA_USER = RBAC_SEMUA_FITUR.filter(f => f !== 'KELOLA_USER');
+      const RBAC_PER_ROLE = {
+        'Administrator':       RBAC_SEMUA_FITUR,
+        'Admin':                RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+        'Supervisor Gudang':    RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+        'Manager Gudang':       RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+        'Admin Gudang':         RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+        'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+
+        'Staff Inbound':        ['INBOUND_RECEIVING'],
+        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_RECHECK'],
+        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
+        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER'],
+        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'CHECKING_PICKING', 'INV_DASHBOARD', 'INV_TRANSFER'],
+        'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
+        'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
+        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING',
+                                  'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
+      };
+
+      function terapkanFiturRBAC(kunciFitur) {
+        const f = RBAC_FITUR[kunciFitur];
+        if (!f) return;
+        const grupEl = document.getElementById(f.grup); if (grupEl) grupEl.style.display = 'block';
+        const tabEl = document.getElementById(f.tab); if (tabEl) tabEl.style.display = 'block';
+        if (f.subrow) { const s = document.getElementById(f.subrow); if (s) s.style.display = 'flex'; }
+        if (f.subcard) { const c = document.getElementById(f.subcard); if (c) c.classList.remove('d-none'); }
+      }
+
       const r = user.role;
 
-      if (r === "Admin Gudang" || r === "Supervisor Gudang" || r === "Admin" || r === "Supervisor" || r === "Manager Gudang") {
-        // Tampilkan semua modul di home
-        ['home-group-inbound','home-group-qc','home-group-openpo','home-group-outbound',
-         'home-group-ops','home-group-checking','home-group-inventory','home-group-dashob','home-group-export','home-group-livemovement'].forEach(id => {
-          document.getElementById(id).style.display = 'block';
-        });
-        document.getElementById('home-sub-picking-row').style.display = 'flex';
-        document.getElementById('home-sub-dashchecker-row').style.display = 'flex';
-        document.getElementById('home-sub-livechecker-row').style.display = 'flex';
-        // Tampilkan sub-modul Inbound baru: Validasi Inbound (khusus Admin/SPV/Manager)
-        document.getElementById('home-subrow-inbound-validasi').style.display = 'flex';
-        document.getElementById('sub-validasi-inbound').classList.remove('d-none');
-        // Siapkan nav-bottom & sub konten-aplikasi
-        document.querySelectorAll('.nav-bottom .nav-link').forEach(n => n.style.display = 'block');
-        document.getElementById('sub-putaway').classList.remove('d-none');
-        document.getElementById('sub-picking').classList.remove('d-none');
-        document.getElementById('sub-dashboard-checker').classList.remove('d-none');
-        // Tampilkan semua sub-baris & sub-card Inventory/Export (akses penuh)
-        document.getElementById('home-subrow-inv-dashboard').style.display = 'flex';
-        document.getElementById('home-subrow-inv-adjustment').style.display = 'flex';
-        document.getElementById('home-subrow-inv-transfer').style.display = 'flex';
-        document.getElementById('sub-inventory-adjustment').classList.remove('d-none');
-        document.getElementById('sub-inventory-transfer').classList.remove('d-none');
-        document.getElementById('home-subrow-export-suratjalan').style.display = 'flex';
-        document.getElementById('home-subrow-export-laporan').style.display = 'flex';
-        document.getElementById('home-subrow-export-dataqc').style.display = 'flex';
-        document.getElementById('home-subrow-export-movhistory').style.display = 'flex';
-        document.getElementById('sub-export-suratjalan').classList.remove('d-none');
-        document.getElementById('sub-export-dataqc').classList.remove('d-none');
-        document.getElementById('sub-export-movhistory').classList.remove('d-none');
-        // Tampilkan semua sub-baris & sub-card QC (akses penuh)
-        document.getElementById('home-subrow-qc-finishgood').style.display = 'flex';
-        document.getElementById('home-subrow-qc-requestulang').style.display = 'flex';
-        document.getElementById('home-subrow-qc-recheck').style.display = 'flex';
-        document.getElementById('sub-qc-finishgood').classList.remove('d-none');
-        document.getElementById('sub-request-qc-ulang').classList.remove('d-none');
-        document.getElementById('sub-recheck-qc').classList.remove('d-none');
-        // Tampilkan semua sub-baris & sub-card Putaway (akses penuh), termasuk Validate QC
-        // (Sebelum Putaway) yang sekarang jadi bagian dari modul Putaway.
-        document.getElementById('home-subrow-ops-validate').style.display = 'flex';
-        document.getElementById('home-subrow-ops-putaway').style.display = 'flex';
-        document.getElementById('home-subrow-ops-putawayreturn').style.display = 'flex';
-        document.getElementById('sub-validate-qc').classList.remove('d-none');
-        document.getElementById('sub-putaway-return').classList.remove('d-none');
-
-        // Modul baru: Admin Validate (khusus Admin/SPV/Manager)
-        document.getElementById('home-group-adminvalidate').style.display = 'block';
-
-      } else if (r === "Staff Inbound") {
-        // Inbound Receiving (Validasi Inbound TIDAK diberikan — hanya Admin/SPV/Manager)
-        document.getElementById('home-group-inbound').style.display = 'block';
-        document.getElementById('tab-inbound').style.display = 'block';
-
-      } else if (r === "Petugas Putaway") {
-        // Validate QC (Sebelum Putaway), Putaway Hasil QC, Putaway Barang Return, Inbound Receiving,
-        // Movement History, Export Dokumen Laporan Inventory (read-only)
-        document.getElementById('home-group-ops').style.display = 'block';
-        document.getElementById('home-subrow-ops-validate').style.display = 'flex';
-        document.getElementById('home-subrow-ops-putaway').style.display = 'flex';
-        document.getElementById('home-subrow-ops-putawayreturn').style.display = 'flex';
-        document.getElementById('sub-validate-qc').classList.remove('d-none');
-        document.getElementById('sub-putaway').classList.remove('d-none');
-        document.getElementById('sub-putaway-return').classList.remove('d-none');
-        document.getElementById('tab-ops').style.display = 'block';
-
-        document.getElementById('home-group-inbound').style.display = 'block';
-        document.getElementById('tab-inbound').style.display = 'block';
-
-        // FITUR BARU: akses lihat/export Dokumen Laporan Inventory & Movement History (read-only,
-        // tidak termasuk Export Surat Jalan & Export Data QC yang tetap khusus Admin/SPV/Manager).
-        document.getElementById('home-group-export').style.display = 'block';
-        document.getElementById('home-subrow-export-laporan').style.display = 'flex';
-        document.getElementById('home-subrow-export-movhistory').style.display = 'flex';
-        document.getElementById('sub-export-movhistory').classList.remove('d-none');
-        document.getElementById('tab-export').style.display = 'block';
-
-        document.getElementById('home-group-livemovement').style.display = 'block';
-        document.getElementById('tab-livemovement').style.display = 'block';
-
-      } else if (r === "Petugas QC") {
-        // QC Finish Good & Re-Check QC (TANPA Request-QC Ulang).
-        // Validate QC (Sebelum Putaway) TIDAK lagi diakses dari sini — modul tsb kini ada di
-        // Putaway dan hanya untuk Petugas Putaway, Admin, Supervisor Gudang & Manajer Gudang.
-        document.getElementById('home-group-qc').style.display = 'block';
-        document.getElementById('home-subrow-qc-finishgood').style.display = 'flex';
-        document.getElementById('home-subrow-qc-recheck').style.display = 'flex';
-        document.getElementById('sub-qc-finishgood').classList.remove('d-none');
-        document.getElementById('sub-recheck-qc').classList.remove('d-none');
-        document.getElementById('tab-qc').style.display = 'block';
-
-      } else if (r === "Picker") {
-        // Picking, Inventory Dashboard, Transfer Lokasi/Grade, Putaway Barang Return, Request-QC Ulang,
-        // Movement History, Export Dokumen Laporan Inventory (read-only)
-        document.getElementById('home-group-checking').style.display = 'block';
-        document.getElementById('home-sub-picking-row').style.display = 'flex';
-        document.getElementById('tab-checking').style.display = 'block';
-        document.getElementById('sub-picking').classList.remove('d-none');
-
-        document.getElementById('home-group-inventory').style.display = 'block';
-        document.getElementById('home-subrow-inv-dashboard').style.display = 'flex';
-        document.getElementById('home-subrow-inv-transfer').style.display = 'flex';
-        document.getElementById('sub-inventory-transfer').classList.remove('d-none');
-        document.getElementById('tab-inventory').style.display = 'block';
-
-        document.getElementById('home-group-ops').style.display = 'block';
-        document.getElementById('home-subrow-ops-putawayreturn').style.display = 'flex';
-        document.getElementById('sub-putaway-return').classList.remove('d-none');
-        document.getElementById('tab-ops').style.display = 'block';
-
-        document.getElementById('home-group-qc').style.display = 'block';
-        document.getElementById('home-subrow-qc-requestulang').style.display = 'flex';
-        document.getElementById('sub-request-qc-ulang').classList.remove('d-none');
-        document.getElementById('tab-qc').style.display = 'block';
-
-        // FITUR BARU: akses lihat/export Dokumen Laporan Inventory & Movement History (read-only,
-        // tidak termasuk Export Surat Jalan & Export Data QC yang tetap khusus Admin/SPV/Manager).
-        document.getElementById('home-group-export').style.display = 'block';
-        document.getElementById('home-subrow-export-laporan').style.display = 'flex';
-        document.getElementById('home-subrow-export-movhistory').style.display = 'flex';
-        document.getElementById('sub-export-movhistory').classList.remove('d-none');
-        document.getElementById('tab-export').style.display = 'block';
-
-        document.getElementById('home-group-livemovement').style.display = 'block';
-        document.getElementById('tab-livemovement').style.display = 'block';
-
-      } else if (r === "Checker") {
-        // Dashboard Checker & Live Monitor Checker
+      if (r === "Checker") {
+        // Dashboard Checker & Live Monitor Checker — logika role ini dipertahankan
+        // PERSIS seperti sebelumnya (tidak ikut migrasi RBAC_PER_ROLE di atas),
+        // termasuk kartu Live Monitor yang subrow-nya tampil namun subcard-nya
+        // sengaja tidak ikut di-unhide (perilaku lama, belum diminta diubah).
         document.getElementById('home-group-checking').style.display = 'block';
         document.getElementById('home-sub-dashchecker-row').style.display = 'flex';
         document.getElementById('home-sub-livechecker-row').style.display = 'flex';
         document.getElementById('tab-checking').style.display = 'block';
         document.getElementById('sub-dashboard-checker').classList.remove('d-none');
-
-      } else if (r === "Inventory Controller") {
-        // Inventory Dashboard, Adjustment Stock, Transfer Lokasi/Grade, Picking, Request-QC Ulang,
-        // Putaway, Inbound Receiving, Movement History, Export Dokumen Laporan Inventory (read-only)
-        document.getElementById('home-group-inventory').style.display = 'block';
-        document.getElementById('home-subrow-inv-dashboard').style.display = 'flex';
-        document.getElementById('home-subrow-inv-adjustment').style.display = 'flex';
-        document.getElementById('sub-inventory-adjustment').classList.remove('d-none');
-        document.getElementById('home-subrow-inv-transfer').style.display = 'flex';
-        document.getElementById('sub-inventory-transfer').classList.remove('d-none');
-        document.getElementById('tab-inventory').style.display = 'block';
-
-        document.getElementById('home-group-inbound').style.display = 'block';
-        document.getElementById('tab-inbound').style.display = 'block';
-
-        document.getElementById('home-group-ops').style.display = 'block';
-        document.getElementById('home-subrow-ops-putaway').style.display = 'flex';
-        document.getElementById('home-subrow-ops-putawayreturn').style.display = 'flex';
-        document.getElementById('sub-putaway').classList.remove('d-none');
-        document.getElementById('sub-putaway-return').classList.remove('d-none');
-        document.getElementById('tab-ops').style.display = 'block';
-
-        document.getElementById('home-group-checking').style.display = 'block';
-        document.getElementById('home-sub-picking-row').style.display = 'flex';
-        document.getElementById('tab-checking').style.display = 'block';
-        document.getElementById('sub-picking').classList.remove('d-none');
-
-        document.getElementById('home-group-qc').style.display = 'block';
-        document.getElementById('home-subrow-qc-requestulang').style.display = 'flex';
-        document.getElementById('sub-request-qc-ulang').classList.remove('d-none');
-        document.getElementById('tab-qc').style.display = 'block';
-
-        // FITUR BARU: akses lihat/export Dokumen Laporan Inventory & Movement History (read-only,
-        // tidak termasuk Export Surat Jalan & Export Data QC yang tetap khusus Admin/SPV/Manager).
-        document.getElementById('home-group-export').style.display = 'block';
-        document.getElementById('home-subrow-export-laporan').style.display = 'flex';
-        document.getElementById('home-subrow-export-movhistory').style.display = 'flex';
-        document.getElementById('sub-export-movhistory').classList.remove('d-none');
-        document.getElementById('tab-export').style.display = 'block';
-
-        document.getElementById('home-group-livemovement').style.display = 'block';
-        document.getElementById('tab-livemovement').style.display = 'block';
-
-      } else if (r === "Demand Planner" || r === "RnD") {
-        // Inventory Dashboard Stock FG, Export Dokumen Laporan Inventory, Outbound Request
-        document.getElementById('home-group-outbound').style.display = 'block';
-        document.getElementById('tab-outbound').style.display = 'block';
-
-        document.getElementById('home-group-inventory').style.display = 'block';
-        document.getElementById('home-subrow-inv-dashboard').style.display = 'flex';
-        document.getElementById('tab-inventory').style.display = 'block';
-
-        document.getElementById('home-group-export').style.display = 'block';
-        document.getElementById('home-subrow-export-laporan').style.display = 'flex';
-        document.getElementById('tab-export').style.display = 'block';
-
-        document.getElementById('home-group-livemovement').style.display = 'block';
-        document.getElementById('tab-livemovement').style.display = 'block';
+      } else if (RBAC_PER_ROLE[r]) {
+        RBAC_PER_ROLE[r].forEach(terapkanFiturRBAC);
       }
 
       // Juga simpan user-display untuk konten-aplikasi (dipakai saat masuk modul)
@@ -4752,7 +4772,7 @@ async function eksekusiAddSkuOutbound() {
         stopLiveMovementPolling();
       }
       // 1. Masukkan 'modul-openpo' ke dalam daftar pembersihan agar ikut dikendalikan
-      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate', 'modul-livemovement'];
+      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate', 'modul-livemovement', 'modul-kelolauser'];
       semuaModul.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -4796,7 +4816,8 @@ async function eksekusiAddSkuOutbound() {
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
         'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters],
         'modul-adminvalidate' : [loadAdminValidateInbound],
-        'modul-livemovement' : [startLiveMovementPolling]
+        'modul-livemovement' : [startLiveMovementPolling],
+        'modul-kelolauser' : [loadKelolaUserData]
       };
 
       const daftarFungsi = mapRefresh[modulId];
@@ -9456,6 +9477,134 @@ async function eksekusiCancelOutbound() {
       const namaFileFilter = filter ? `_filter-${filter.replace(/[^a-z0-9]/gi, '')}` : '';
       const namaFile = `Dashboard_Outbound_${tahun}-${String(bulan).padStart(2, '0')}${namaFileFilter}.xlsx`;
       XLSX.writeFile(wb, namaFile);
+    }
+
+    // =========================================================================
+    // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
+    // =========================================================================
+    let KU_DATA = [];
+
+    // Daftar role yang valid di sistem, dipakai untuk label badge warna di tabel.
+    const KU_ROLE_WARNA = {
+      'Administrator': 'dark', 'Admin': 'danger', 'Supervisor Gudang': 'danger', 'Manager Gudang': 'danger',
+      'Admin QC': 'info', 'Petugas QC': 'primary', 'Petugas Putaway': 'primary', 'Picker': 'primary',
+      'Checker': 'primary', 'Staff Inbound': 'primary', 'Inventory Controller': 'secondary',
+      'Demand Planner': 'secondary', 'RnD': 'secondary'
+    };
+
+    function loadKelolaUserData() {
+      const tbody = document.getElementById('ku-tbody');
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+      ENDPOINTS.getAllUsers()
+        .then(res => {
+          if (!res.success) { tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
+          KU_DATA = res.data || [];
+          renderKelolaUserTable();
+        })
+        .catch(err => { tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
+    }
+
+    function renderKelolaUserTable() {
+      const tbody = document.getElementById('ku-tbody');
+      if (!KU_DATA.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Belum ada user.</td></tr>'; return; }
+      tbody.innerHTML = KU_DATA.map(u => {
+        const warnaRole = KU_ROLE_WARNA[u.role] || 'secondary';
+        const warnaStatus = u.status === 'Active' ? 'success' : 'secondary';
+        return `<tr>
+          <td class="fw-bold">${escapeHtmlAttr(u.username)}</td>
+          <td>${escapeHtmlAttr(u.nama)}</td>
+          <td><span class="badge bg-${warnaRole}">${escapeHtmlAttr(u.role)}</span></td>
+          <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(u.status)}</span></td>
+          <td class="text-center">
+            <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:9px;padding:2px 6px;" onclick="bukaFormEditUser('${escapeHtmlAttr(u.username)}')" title="Edit Nama/Role/Status">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" class="btn btn-outline-warning btn-sm" style="font-size:9px;padding:2px 6px;" onclick="resetPasswordUser('${escapeHtmlAttr(u.username)}')" title="Reset Password">
+              <i class="fa-solid fa-key"></i>
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function bukaFormTambahUser() {
+      document.getElementById('ku-form-mode').value = 'tambah';
+      document.getElementById('ku-form-username-asli').value = '';
+      document.getElementById('ku-form-title').innerText = 'Tambah User Baru';
+      document.getElementById('ku-username').value = '';
+      document.getElementById('ku-username').disabled = false;
+      document.getElementById('ku-nama').value = '';
+      document.getElementById('ku-role').value = 'Petugas QC';
+      document.getElementById('ku-status').value = 'Active';
+      document.getElementById('ku-password').value = '';
+      document.getElementById('ku-password-wrapper').style.display = 'block';
+      document.getElementById('ku-form-alert').innerHTML = '';
+      document.getElementById('ku-form-wrapper').style.display = 'block';
+    }
+
+    function bukaFormEditUser(username) {
+      const u = KU_DATA.find(x => x.username === username);
+      if (!u) return;
+      document.getElementById('ku-form-mode').value = 'edit';
+      document.getElementById('ku-form-username-asli').value = u.username;
+      document.getElementById('ku-form-title').innerText = `Edit User: ${u.username}`;
+      document.getElementById('ku-username').value = u.username;
+      document.getElementById('ku-username').disabled = true; // username tidak bisa diubah, hanya profil
+      document.getElementById('ku-nama').value = u.nama;
+      document.getElementById('ku-role').value = u.role;
+      document.getElementById('ku-status').value = u.status;
+      document.getElementById('ku-password').value = '';
+      document.getElementById('ku-password-wrapper').style.display = 'none'; // ganti password lewat tombol Reset Password terpisah
+      document.getElementById('ku-form-alert').innerHTML = '';
+      document.getElementById('ku-form-wrapper').style.display = 'block';
+    }
+
+    function tutupFormUser() {
+      document.getElementById('ku-form-wrapper').style.display = 'none';
+    }
+
+    function submitFormUser() {
+      const mode = document.getElementById('ku-form-mode').value;
+      const username = document.getElementById('ku-username').value.trim();
+      const nama = document.getElementById('ku-nama').value.trim();
+      const role = document.getElementById('ku-role').value;
+      const status = document.getElementById('ku-status').value;
+      const password = document.getElementById('ku-password').value;
+      const alertBox = document.getElementById('ku-form-alert');
+
+      if (!username || !nama) { alertBox.innerHTML = '<div class="alert alert-danger small py-1 mb-0">Username & Nama wajib diisi.</div>'; return; }
+      if (mode === 'tambah' && password.length < 6) { alertBox.innerHTML = '<div class="alert alert-danger small py-1 mb-0">Password minimal 6 karakter.</div>'; return; }
+
+      alertBox.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan...</div>';
+
+      const aksi = mode === 'tambah'
+        ? ENDPOINTS.createUser({ username, password, nama, role, status })
+        : ENDPOINTS.updateUserProfile({ username, nama, role, status });
+
+      aksi.then(res => {
+        if (res && res.success === false) { alertBox.innerHTML = `<div class="alert alert-danger small py-1 mb-0">${escapeHtmlAttr(res.message || 'Gagal menyimpan.')}</div>`; return; }
+        tutupFormUser();
+        customAlert(`Berhasil ${mode === 'tambah' ? 'menambah' : 'memperbarui'} user ${username}.`, 'success');
+        loadKelolaUserData();
+      }).catch(err => {
+        alertBox.innerHTML = `<div class="alert alert-danger small py-1 mb-0">Gagal: ${escapeHtmlAttr(err.message)}</div>`;
+      });
+    }
+
+    async function resetPasswordUser(username) {
+      const passwordBaru = prompt(`Masukkan password baru untuk user "${username}" (minimal 6 karakter):`);
+      if (passwordBaru === null) return; // dibatalkan
+      if (passwordBaru.length < 6) { customAlert('Password minimal 6 karakter. Reset dibatalkan.', 'danger'); return; }
+
+      const yakin = await customConfirm(`Reset password user "${username}" sekarang?`, 'Konfirmasi Reset Password');
+      if (!yakin) return;
+
+      ENDPOINTS.updateUserPassword(username, passwordBaru)
+        .then(res => {
+          if (res && res.success === false) { customAlert(res.message || 'Gagal reset password.', 'danger'); return; }
+          customAlert(`Password user ${username} berhasil direset.`, 'success');
+        })
+        .catch(err => customAlert('Gagal reset password: ' + err.message, 'danger'));
     }
 
     // =========================================================================
