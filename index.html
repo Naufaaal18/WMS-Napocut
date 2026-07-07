@@ -215,26 +215,12 @@ function _cocokBulanTahun(rawDate, bulan, tahun) {
 // sudah 1153 baris tapi hanya 1000 baris pertama yang kebaca -> beberapa
 // No Request "hilang" dari Dashboard). Fungsi ini melakukan paging otomatis
 // via .range() sampai semua baris di tabel benar-benar terambil.
-// FITUR BARU: Receiving/Picking/Putaway sekarang mendukung Qty desimal (mis. 12.5 atau
-// 802,72 meter kain), karena kolom qty di database (stock_fg, stock_inbound, picking, dll)
-// memang sudah bertipe "numeric" (mendukung desimal). Sebelumnya input Qty di beberapa form
-// masih dibaca pakai parseInt(), yang diam-diam MEMOTONG angka di belakang koma (12,5 jadi 12).
-// Helper ini menggantikan parseInt() khusus untuk field Qty di modul-modul tersebut, dan juga
-// menerima koma (",") sebagai pemisah desimal ala Indonesia selain titik (".").
-function _parseQtyDesimal(val) {
-  if (val === null || val === undefined) return NaN;
-  const bersih = String(val).trim().replace(',', '.');
-  if (bersih === '') return NaN;
-  return parseFloat(bersih);
-}
-
-async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
+async function _fetchAllRows(tableName, selectCols, extra) {
   const PAGE_SIZE = 1000;
-  const kolomUrut = orderCol || 'id'; // sebagian tabel (mis. master_sku) primary key-nya BUKAN "id"
   let from = 0;
   let semua = [];
   while (true) {
-    let q = _sb.from(tableName).select(selectCols).order(kolomUrut, { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    let q = _sb.from(tableName).select(selectCols).order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
     if (typeof extra === 'function') q = extra(q);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
@@ -246,12 +232,8 @@ async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
 }
 
 async function _getMasterSkuDescMap() {
-  // PERBAIKAN BUG: query langsung (tanpa paging) dibatasi diam-diam ke 1000 baris
-  // oleh Supabase/PostgREST. Pakai _fetchAllRows supaya SEMUA baris master_sku
-  // terambil (saat ini 14.000+ baris), walau tabelnya sudah lebih dari 1000 baris.
-  // Catatan: primary key master_sku adalah kode_sku (bukan "id"), jadi paging
-  // di-urutkan berdasarkan kode_sku.
-  const data = await _fetchAllRows('master_sku', 'kode_sku, nama_product', null, 'kode_sku');
+  const { data, error } = await _sb.from('master_sku').select('kode_sku, nama_product');
+  if (error) throw new Error(error.message);
   const map = {};
   (data || []).forEach(r => { map[r.kode_sku] = r.nama_product || ''; });
   return map;
@@ -396,44 +378,16 @@ Object.assign(ENDPOINTS, {
   },
 
   getCheckingPendingRequests: async () => {
-    const [pkData, obData] = await Promise.all([
-      _fetchAllRows('picking', 'no_request'),
-      _fetchAllRows('outbound_request', 'no_request, status')
-    ]);
-    const noRequestList = [...new Set((pkData || []).map(r => r.no_request))];
-    // PERBAIKAN BUG: sebelumnya list Checker diambil murni dari tabel `picking`, tanpa
-    // memandang status di `outbound_request`. Akibatnya No Request yang SUDAH di-Cancel
-    // (semua baris SKU-nya berstatus "Cancelled") tetap muncul di dropdown Checker.
-    // Sekarang No Request yang SELURUH baris SKU-nya sudah Cancelled akan disembunyikan
-    // dari daftar Checker. No Request yang cuma SEBAGIAN SKU-nya Cancelled (SKU lain masih
-    // aktif) tetap muncul, supaya SKU yang masih aktif tetap bisa di-checking.
-    const statusMap = {};
-    (obData || []).forEach(r => {
-      if (!r.no_request) return;
-      if (!statusMap[r.no_request]) statusMap[r.no_request] = [];
-      statusMap[r.no_request].push(r.status);
-    });
-    return noRequestList.filter(nr => {
-      const statuses = statusMap[nr];
-      if (!statuses || statuses.length === 0) return true; // tidak ketemu data status, tampilkan saja (fail-safe)
-      return !statuses.every(s => s === 'Cancelled');
-    });
+    const { data, error } = await _sb.from('picking').select('no_request');
+    if (error) throw new Error(error.message);
+    return [...new Set((data || []).map(r => r.no_request))];
   },
 
   getSkuListForChecking: async (noRequest) => {
     if (!noRequest) return [];
-    const [pkData, obData] = await Promise.all([
-      _sb.from('picking').select('kode_sku').eq('no_request', noRequest),
-      _sb.from('outbound_request').select('kode_sku, status').eq('no_request', noRequest)
-    ]);
-    if (pkData.error) throw new Error(pkData.error.message);
-    if (obData.error) throw new Error(obData.error.message);
-    // PERBAIKAN BUG: SKU yang baris outbound_request-nya berstatus "Cancelled" untuk No
-    // Request ini tidak lagi ditampilkan di checklist Checker (tidak perlu di-checking).
-    const cancelledSkus = new Set((obData.data || []).filter(r => r.status === 'Cancelled').map(r => r.kode_sku));
-    return [...new Set((pkData.data || []).map(r => r.kode_sku))]
-      .filter(sku => !cancelledSkus.has(sku))
-      .map(sku => ({ kodeSku: sku }));
+    const { data, error } = await _sb.from('picking').select('kode_sku').eq('no_request', noRequest);
+    if (error) throw new Error(error.message);
+    return [...new Set((data || []).map(r => r.kode_sku))].map(sku => ({ kodeSku: sku }));
   },
 
   getLiveCheckerMonitor: async (jumlahBaris) => {
@@ -458,21 +412,10 @@ Object.assign(ENDPOINTS, {
       // Dashboard jadi lebih sedikit dari jumlah No Request yang sebenarnya ada
       // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
       // berapa pun jumlahnya.
-      const [obData, ckData, pkData] = await Promise.all([
+      const [obData, ckData] = await Promise.all([
         _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status'),
-        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker'),
-        _fetchAllRows('picking', 'no_request, kode_sku, qty_diambil')
+        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker')
       ]);
-
-      // FITUR BARU: Qty Picking = total qty_diambil dari tabel `picking` (hasil scan
-      // Picker), dikelompokkan per No Request + SKU. Ini murni angka yang sudah
-      // diambil dari rak, belum tentu sudah melewati proses Checker.
-      const pickingMap = {};
-      (pkData || []).forEach(r => {
-        if (!r.no_request || !r.kode_sku) return;
-        const key = r.no_request + '||' + r.kode_sku;
-        pickingMap[key] = (pickingMap[key] || 0) + Number(r.qty_diambil || 0);
-      });
 
       // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
       // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
@@ -493,8 +436,7 @@ Object.assign(ENDPOINTS, {
         .map(r => ({
           noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-          qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0,
-          qtyPicking: pickingMap[r.no_request + '||' + r.kode_sku] || 0
+          qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
         }))
         .sort((a, b) => {
           const c = String(a.noRequest).localeCompare(String(b.noRequest), 'id', { numeric: true, sensitivity: 'base' });
@@ -738,24 +680,19 @@ Object.assign(ENDPOINTS, {
 
   getInventoryExportData: async () => {
     try {
-      // PERBAIKAN BUG: sebelumnya query stock_fg/stock_inbound/stock_return dikirim
-      // langsung tanpa paging, jadi Supabase/PostgREST diam-diam memotong hasil ke
-      // maksimal 1000 baris (makanya Laporan Inventory selalu mentok di "1000 baris"
-      // walau stock_fg sudah >1000 baris). Sekarang pakai _fetchAllRows supaya
-      // SELURUH baris di ketiga tabel benar-benar terambil, tanpa batasan.
       const mapDesc = await _getMasterSkuDescMap();
       const [fg, ib, rt] = await Promise.all([
-        _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
-        _fetchAllRows('stock_inbound', 'kode_sku, lokasi, qty_sisa'),
-        _fetchAllRows('stock_return', 'kode_sku, qty, lokasi, grade')
+        _sb.from('stock_fg').select('kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
+        _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
+        _sb.from('stock_return').select('kode_sku, qty, lokasi, grade')
       ]);
-      const stockFG = (fg || []).filter(r => r.kode_sku).map(r => ({
+      const stockFG = (fg.data || []).filter(r => r.kode_sku).map(r => ({
         sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', grade: r.grade, lokasi: r.kode_lokasi,
         qtyOnHand: r.qty_on_hand, qtyAvailable: r.qty_available, status: r.status,
         lastUpdate: r.last_update ? new Date(r.last_update).toLocaleString('id-ID') : ''
       }));
-      const stockInbound = (ib || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
-      const stockReturn = (rt || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
+      const stockInbound = (ib.data || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
+      const stockReturn = (rt.data || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
       return {
         success: true, printedAt: new Date().toLocaleString('id-ID'), stockFG, stockInbound, stockReturn,
         summary: {
@@ -834,6 +771,24 @@ Object.assign(ENDPOINTS, {
 
   processAdjustmentStockFGImportExcel: (payload) => _callRpc('process_adjustment_stock_fg_import_excel', {
     p_rows: payload.rows, p_user_login: payload.userLogin || 'Operator Inventory'
+  }),
+
+  // --- FITUR BARU: Request QC Ulang (mirip Outbound Request + Picking) ---
+  submitQCUlangRequestMulti: (payload) => _callRpc('submit_qc_ulang_request_multi', {
+    p_items: payload.items, p_tujuan: payload.tujuan || 'RECHECK_QC', p_keterangan: payload.keterangan || null, p_user_login: payload.userLogin
+  }),
+  getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {}),
+  getSkuListForQCUlangPicking: (noRequest) => _callRpc('get_sku_list_for_qc_ulang_picking', { p_no_request: noRequest }),
+  processPickingQCUlangSKU: (payload) => _callRpc('process_picking_qc_ulang_sku', {
+    p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
+    p_qty_pick: Number(payload.qtyPick), p_picker: payload.picker
+  }),
+
+  // --- FITUR BARU: QC Swarovski ---
+  getStagingQCSwarovskiData: () => _callRpc('get_staging_qc_swarovski_data', {}),
+  submitQCSwarovski: (payload) => _callRpc('submit_qc_swarovski', {
+    p_no_request: payload.noRequest, p_kode_sku_asal: payload.kodeSkuAsal, p_kode_sku_baru: payload.kodeSkuBaru,
+    p_grade: payload.grade, p_qty: Number(payload.qty), p_petugas_qc: payload.petugasQc, p_user_login: payload.userLogin
   }),
 
 });
@@ -1476,6 +1431,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Re-Check QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-subrow-qc-swarovski" onclick="bukaModulDariHome('tab-qc', 'modul-qc', 'sub-qc-swarovski')">
+          <span class="sub-dot dot-recheckqc"></span>
+          <span class="sub-module-name">QC Swarovski</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -1590,6 +1550,11 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-sub-livechecker-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-live-checker-monitor')" style="display:none;">
           <span class="sub-dot dot-checking"></span>
           <span class="sub-module-name">Live Monitor Checker</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" id="home-sub-picking-qculang-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-picking-qc-ulang')" style="display:none;">
+          <span class="sub-dot dot-checking"></span>
+          <span class="sub-module-name">Picking QC Ulang</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -1928,7 +1893,7 @@ window.fetch = function (url, options) {
                   <tr>
                     <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required>
                     </td>
-                    <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required>
+                    <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required>
                     </td>
                     <td class="po-grade-td" style="display:none;"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus">
                     </td>
@@ -2093,6 +2058,67 @@ window.fetch = function (url, options) {
           </button>
         </div>
 
+        <div id="sub-request-qc-ulang-v2" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#8E24AA !important;">
+          <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Request QC Ulang (Alokasi Otomatis + Picking)</h6>
+          <p class="text-muted mb-3" style="font-size: 11px;">Cukup isi SKU, Grade &amp; Qty — sistem otomatis mengalokasikan stok dari Stock_FG (tidak perlu tahu lokasi persisnya). Setelah Request dibuat, Picker akan mengambil barangnya lewat modul <strong>Picking QC Ulang</strong> (Picking &amp; Checking), baru masuk Staging QC.</p>
+
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label mb-0 fw-bold small">Daftar Item SKU (Multi SKU)</label>
+            <button type="button" class="btn btn-primary btn-xs py-1 px-2" onclick="tambahBarisRequestQcV2()" style="font-size: 11px;">
+              <i class="fa-solid fa-plus me-1"></i>Tambah Baris
+            </button>
+          </div>
+          <div class="table-responsive mb-2" style="max-height: 320px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 12px;">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="min-width: 150px;">Kode SKU</th>
+                  <th style="width: 110px;">Grade</th>
+                  <th style="width: 85px;">Qty Request</th>
+                  <th class="text-center" style="width: 36px;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-rqv2-items">
+                <tr>
+                  <td><input type="text" class="form-control form-control-sm rqv2-item-sku" placeholder="Kode SKU"></td>
+                  <td>
+                    <select class="form-select form-select-sm rqv2-item-grade">
+                      <option value="">-- Grade --</option>
+                      <option value="Bagus">Bagus</option>
+                      <option value="Minor">Minor</option>
+                      <option value="Reject">Reject</option>
+                      <option value="Kotor">Kotor</option>
+                      <option value="Perbaikan">Perbaikan</option>
+                    </select>
+                  </td>
+                  <td><input type="number" class="form-control form-control-sm rqv2-item-qty" placeholder="0" min="1"></td>
+                  <td class="text-center">
+                    <button type="button" class="btn btn-outline-danger btn-sm border-0 py-0" onclick="hapusBarisRequestQcV2(this)"><i class="fa-solid fa-trash"></i></button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-0">Tujuan</label>
+            <select id="rqv2-tujuan" class="form-select form-select-sm fw-bold">
+              <option value="RECHECK_QC">Re-Check QC</option>
+              <option value="QC_SWAROVSKI">QC Swarovski</option>
+            </select>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-0">Keterangan (opsional)</label>
+            <input type="text" id="rqv2-keterangan" class="form-control form-control-sm" placeholder="Contoh: Request Re-Check hasil komplain customer">
+          </div>
+
+          <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#8E24AA;" onclick="submitFormRequestQcUlangV2()">
+            <i class="fa-solid fa-paper-plane me-1"></i>Kirim Request QC Ulang
+          </button>
+          <div id="rqv2-alert" class="mt-2"></div>
+        </div>
+
         <div id="sub-recheck-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#EF6C00 !important;">
           <h6 class="fw-bold mb-2" style="color:#EF6C00;"><i class="fa-solid fa-magnifying-glass-arrow-right me-2"></i>Re-Check QC</h6>
           <p class="text-muted mb-3" style="font-size: 11px;">Daftar di bawah hanya menampilkan barang yang sudah berada di Staging QC (hasil Request-QC Ulang). Input breakdown grade hasil pemeriksaan ulang, hasilnya masuk ke QC_FG / Data_QC dengan status "Re-QC Passed".</p>
@@ -2154,6 +2180,63 @@ window.fetch = function (url, options) {
               <i class="fa-solid fa-paper-plane me-1"></i>Kirim Hasil Re-Check QC
             </button>
           </div>
+        </div>
+
+        <div id="sub-qc-swarovski" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#00838F !important;">
+          <h6 class="fw-bold mb-2" style="color:#00838F;"><i class="fa-solid fa-gem me-2"></i>QC Swarovski</h6>
+          <p class="text-muted mb-3" style="font-size: 11px;">Sama seperti Re-Check QC, tapi bisa mengonversi SKU Awal menjadi SKU Baru. Hasilnya (SKU Baru) tetap perlu diproses lewat <strong>Validate QC</strong> dan <strong>Putaway Hasil QC</strong> seperti biasa sebelum masuk Stock_FG.</p>
+
+          <div class="mb-3">
+            <label class="form-label">No Request QC Ulang</label>
+            <div class="input-group">
+              <input type="text" id="swa-noreq" class="form-control" placeholder="Contoh: RQC-000001">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">SKU Awal (dari Staging QC Swarovski)</label>
+            <div class="input-group">
+              <select id="swa-sku-asal" class="form-select" onchange="onSwarovskiSkuAsalSelected()">
+                <option value="">-- Pilih SKU Awal --</option>
+              </select>
+              <button type="button" class="btn btn-outline-secondary" onclick="loadStagingQCSwarovskiDropdown()" title="Muat Ulang Daftar">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+            <small id="swa-max-info" class="text-muted"></small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">SKU Baru (Hasil Konversi)</label>
+            <input type="text" id="swa-sku-baru" class="form-control" placeholder="Kode SKU baru hasil QC">
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Grade</label>
+              <select id="swa-grade" class="form-select">
+                <option value="Bagus">Bagus</option>
+                <option value="Minor">Minor</option>
+                <option value="Reject">Reject</option>
+                <option value="Kotor">Kotor</option>
+                <option value="Perbaikan">Perbaikan</option>
+              </select>
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Qty Hasil QC</label>
+              <input type="number" id="swa-qty" class="form-control" placeholder="0" min="1">
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-0">Petugas QC</label>
+            <input type="text" id="swa-petugas" class="form-control form-control-sm" placeholder="Nama petugas QC">
+          </div>
+
+          <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#00838F;" onclick="submitFormQCSwarovski()">
+            <i class="fa-solid fa-paper-plane me-1"></i>Kirim Hasil QC Swarovski
+          </button>
+          <div id="swa-alert" class="mt-2"></div>
         </div>
 
       </div>
@@ -2291,7 +2374,7 @@ window.fetch = function (url, options) {
 
               <div class="col-6">
                 <label class="form-label small fw-bold mb-0">Qty Putaway</label>
-                <input type="number" id="pw-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="0.01" step="any" disabled>
+                <input type="number" id="pw-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="1" disabled>
                 <div id="pw-max-info" class="text-danger small fw-bold mt-1" style="font-size: 10px; display: none;">
                 </div>
               </div>
@@ -2393,7 +2476,7 @@ window.fetch = function (url, options) {
 
               <div class="col-6">
                 <label class="form-label small fw-bold mb-0">Qty Putaway</label>
-                <input type="number" id="pwr-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="0.01" step="any" disabled>
+                <input type="number" id="pwr-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="1" disabled>
                 <div id="pwr-max-info" class="text-danger small fw-bold mt-1" style="font-size: 10px; display: none;">
                 </div>
               </div>
@@ -3102,6 +3185,33 @@ async function eksekusiAddSkuOutbound() {
           <div class="text-muted small text-center py-4 border rounded">Memuat hasil checking...</div>
         </div>
       </div>
+      <div id="sub-picking-qc-ulang" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#8E24AA !important;">
+        <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Picking QC Ulang</h6>
+        <p class="text-muted small mb-2">Ambil barang dari lokasi rak untuk Request QC Ulang yang sudah dialokasikan sistem. Setelah diproses, barang langsung masuk Staging QC (siap diperiksa ulang di modul QC Produk &gt; Re-Check QC).</p>
+
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small fw-bold mb-0">No Request QC Ulang (Status: Picking Pending)</label>
+            <div class="input-group input-group-sm">
+              <select id="pcqc-req" class="form-select form-select-sm fw-bold" onchange="onPickingQcUlangRequestSelected()">
+                <option value="">-- Memuat Daftar Request... --</option>
+              </select>
+              <button type="button" class="btn btn-outline-secondary" onclick="loadPickingQcUlangPendingRequests()" title="Muat Ulang Daftar">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="pcqc-sku-list-container" class="mt-3" style="display:none;">
+          <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-list-ol me-2"></i>Daftar SKU yang Perlu Di-Picking:</h6>
+          <div id="pcqc-picking-rows"></div>
+        </div>
+        <div id="pcqc-empty-info" class="text-muted small text-center py-3" style="display:none;">
+          Pilih Nomor Request QC Ulang di atas untuk menampilkan daftar SKU yang perlu di-picking.
+        </div>
+      </div>
+
       <!-- Tombol keluar Full Screen, hanya tampil saat mode Full Screen aktif -->
       <button type="button" id="lcm-exit-fullscreen-btn" class="btn btn-light shadow d-none" onclick="toggleLiveCheckerFullscreen()" style="position:fixed; top:12px; right:12px; z-index:2000; font-weight:700;">
         <i class="fa-solid fa-compress me-1"></i>Keluar Full Screen
@@ -3455,7 +3565,6 @@ async function eksekusiAddSkuOutbound() {
                 <th>Grade</th>
                 <th class="text-center">Qty Req</th>
                 <th class="text-center">Qty Alloc</th>
-                <th class="text-center" title="Total qty yang sudah diambil Picker (dari modul Picking), belum tentu sudah dicek Checker">Qty Picking</th>
                 <th class="text-center" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">Qty Checker (Klop)</th>
                 <th class="text-center">Stockout</th>
                 <th>Status</th>
@@ -3463,7 +3572,7 @@ async function eksekusiAddSkuOutbound() {
               </tr>
             </thead>
             <tbody id="ob-dash-tbody">
-              <tr><td colspan="12" class="text-center text-muted py-3">Memuat data...</td></tr>
+              <tr><td colspan="11" class="text-center text-muted py-3">Memuat data...</td></tr>
             </tbody>
           </table>
         </div>
@@ -4658,6 +4767,7 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-sub-picking-row').style.display = 'none';
       document.getElementById('home-sub-dashchecker-row').style.display = 'none';
       document.getElementById('home-sub-livechecker-row').style.display = 'none';
+      document.getElementById('home-sub-picking-qculang-row').style.display = 'none';
 
       // Siapkan juga nav-bottom & sub-form di konten-aplikasi (RBAC asli tetap jalan)
       document.querySelectorAll('.nav-bottom .nav-link').forEach(n => n.style.display = 'none');
@@ -4665,6 +4775,7 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('sub-picking').classList.add('d-none');
       document.getElementById('sub-dashboard-checker').classList.add('d-none');
       document.getElementById('sub-live-checker-monitor').classList.add('d-none');
+      document.getElementById('sub-picking-qc-ulang').classList.add('d-none');
 
       // Sembunyikan dulu sub-baris & sub-card Inventory/Export yang bisa dibatasi per-role
       // (Admin/Supervisor/Manager akan menampilkan semuanya kembali di bawah)
@@ -4691,9 +4802,12 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-subrow-qc-finishgood').style.display = 'none';
       document.getElementById('home-subrow-qc-requestulang').style.display = 'none';
       document.getElementById('home-subrow-qc-recheck').style.display = 'none';
+      document.getElementById('home-subrow-qc-swarovski').style.display = 'none';
       document.getElementById('sub-qc-finishgood').classList.add('d-none');
       document.getElementById('sub-request-qc-ulang').classList.add('d-none');
+      document.getElementById('sub-request-qc-ulang-v2').classList.add('d-none');
       document.getElementById('sub-recheck-qc').classList.add('d-none');
+      document.getElementById('sub-qc-swarovski').classList.add('d-none');
 
       // Sembunyikan dulu sub-baris & sub-card Putaway (Validate QC / Hasil QC / Barang Return)
       // yang bisa dibatasi per-role. Validate QC (Sebelum Putaway) sekarang bagian dari modul
@@ -4716,8 +4830,9 @@ async function eksekusiAddSkuOutbound() {
         INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
         INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
         QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
-        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcard: 'sub-request-qc-ulang' },
+        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcards: ['sub-request-qc-ulang', 'sub-request-qc-ulang-v2'] },
         QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
+        QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
         MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
         OUTBOUND_REQUEST:     { grup: 'home-group-outbound',     tab: 'tab-outbound' },
         OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
@@ -4736,7 +4851,8 @@ async function eksekusiAddSkuOutbound() {
         EXPORT_DATAQC:        { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-dataqc',     subcard: 'sub-export-dataqc' },
         EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
         ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
-        KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' }
+        KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
+        CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
       };
       const RBAC_SEMUA_FITUR = Object.keys(RBAC_FITUR);
 
@@ -4756,13 +4872,13 @@ async function eksekusiAddSkuOutbound() {
         'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
 
         'Staff Inbound':        ['INBOUND_RECEIVING'],
-        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_RECHECK'],
-        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
-        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
-        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'CHECKING_PICKING', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_RECHECK', 'QC_SWAROVSKI'],
+        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK', 'QC_SWAROVSKI'],
+        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
         'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING',
+        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                   'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
       };
 
@@ -4773,6 +4889,7 @@ async function eksekusiAddSkuOutbound() {
         const tabEl = document.getElementById(f.tab); if (tabEl) tabEl.style.display = 'block';
         if (f.subrow) { const s = document.getElementById(f.subrow); if (s) s.style.display = 'flex'; }
         if (f.subcard) { const c = document.getElementById(f.subcard); if (c) c.classList.remove('d-none'); }
+        if (f.subcards) { f.subcards.forEach(id => { const c = document.getElementById(id); if (c) c.classList.remove('d-none'); }); }
       }
 
       const r = user.role;
@@ -4824,8 +4941,8 @@ async function eksekusiAddSkuOutbound() {
         // Daftar semua kemungkinan sub-card per modul yang memang punya lebih dari 1 card bertoggle.
         const mapSubCards = {
           'modul-inbound': ['sub-inbound', 'sub-validasi-inbound'],
-          'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor'],
-          'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-recheck-qc'],
+          'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
+          'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound']
         };
@@ -4909,9 +5026,9 @@ async function eksekusiAddSkuOutbound() {
     function refreshDataForModul(modulId) {
       const mapRefresh = {
         'modul-inbound': [loadOpenPOToInboundDropdown, loadValidasiInboundData],
-        'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown],
+        'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown, loadStagingQCSwarovskiDropdown],
         'modul-ops': [loadQCFGToPutawayDropdown, loadStockReturnToDropdown, loadQCFGToValidateDropdown],
-        'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests],
+        'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests, loadPickingQcUlangPendingRequests],
         'modul-inventory': [loadInventoryDashboard],
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
         'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters],
@@ -5442,10 +5559,10 @@ async function eksekusiAddSkuOutbound() {
       const noRequest = PC_CURRENT_REQUEST;
       if (!noRequest) return;
 
-      const inputQty = prompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh desimal, mis. 12.5 atau 12,5; boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
+      const inputQty = prompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
       if (inputQty === null) return;
 
-      const qtyKetemu = _parseQtyDesimal(inputQty);
+      const qtyKetemu = parseInt(inputQty);
       // FITUR: qtyKetemu boleh 0 (kasus barang di-allocate sistem tapi fisiknya benar-benar
       // tidak ada di lokasi tsb). Yang tidak boleh hanya nilai negatif atau bukan angka.
       if (isNaN(qtyKetemu) || qtyKetemu < 0) {
@@ -5915,7 +6032,7 @@ async function eksekusiAddSkuOutbound() {
       const tampilkanGrade = document.getElementById('po-grade-th').style.display !== 'none';
       tr.innerHTML = `
         <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required></td>
-        <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required></td>
+        <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required></td>
         <td class="po-grade-td" style="display:${tampilkanGrade ? 'table-cell' : 'none'};"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus"></td>
         <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="this.closest('tr').remove()"><i class="fa-solid fa-trash"></i></button></td>
       `;
@@ -5959,7 +6076,7 @@ async function eksekusiAddSkuOutbound() {
         if (skuInput && qtyInput) {
           itemsArray.push({
             sku: skuInput.value.trim(),
-            qty: _parseQtyDesimal(qtyInput.value) || 0,
+            qty: parseInt(qtyInput.value) || 0,
             grade: gradeVal // Kosong untuk Finish Good, akan disimpan "-" oleh server
           });
         }
@@ -5988,7 +6105,7 @@ async function eksekusiAddSkuOutbound() {
           document.getElementById('tbody-po-items').innerHTML = `
             <tr>
               <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required></td>
-              <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required></td>
+              <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required></td>
               <td class="po-grade-td" style="display:none;"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus"></td>
               <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="if(document.querySelectorAll('#tbody-po-items tr').length > 1) this.closest('tr').remove();"><i class="fa-solid fa-trash"></i></button></td>
             </tr>
@@ -6400,7 +6517,7 @@ function submitPutawayReturn(event) {
   let skuScannedVal = document.getElementById("pwr-confirm-sku").value;
   let gradeVal = document.getElementById("pwr-grade").value;
   let qtyInput = document.getElementById("pwr-qty");
-  let qtyVal = _parseQtyDesimal(qtyInput.value) || 0;
+  let qtyVal = parseInt(qtyInput.value) || 0;
   let locVal = document.getElementById("pwr-lokasi").value;
 
   if(!poSelected || !skuSelected || qtyVal <= 0 || !locVal) {
@@ -7604,7 +7721,7 @@ function submitPutawayFG(event) {
   let tglQcVal = document.getElementById("pw-tanggal-qc").value; // Format: YYYY-MM-DD
   let gradeVal = document.getElementById("pw-grade").value;
   let qtyInput = document.getElementById("pw-qty");
-  let qtyVal = _parseQtyDesimal(qtyInput.value) || 0;
+  let qtyVal = parseInt(qtyInput.value) || 0;
   let locVal = document.getElementById("pw-lokasi").value;
 
   if(!poSelected || !skuSelected || !tglQcVal || qtyVal <= 0 || !locVal) {
@@ -7742,7 +7859,7 @@ function onInboundPoSelected() {
         <td class="text-center"><input type="checkbox" class="ib-row-check" data-sku="${skuCode}"></td>
         <td class="fw-bold">${skuCode}<input type="hidden" class="ib-row-grade" data-sku="${skuCode}" value="${gradeAuto}"></td>
         <td class="text-center text-muted">${maxQty}</td>
-        <td><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" step="any" placeholder="0"></td>
+        <td><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0"></td>
         <td>${kolomLokasi}</td>
         <td class="text-center"><input type="checkbox" class="ib-row-short" data-sku="${skuCode}" title="Short Putaway SKU ini. Bisa dicentang dengan Qty tetap 0/kosong jika barang SAMA SEKALI tidak diterima dari Supplier."></td>
       </tr>`;
@@ -7789,7 +7906,7 @@ async function submitInboundReceivingList() {
   rows.forEach(tr => {
     const sku = tr.getAttribute('data-sku-row');
     const qtyInput = tr.querySelector('.ib-row-qty');
-    const qty = _parseQtyDesimal(qtyInput.value) || 0;
+    const qty = parseInt(qtyInput.value) || 0;
     const isChecked = tr.querySelector('.ib-row-check').checked;
     const isShort = tr.querySelector('.ib-row-short').checked;
 
@@ -9425,7 +9542,7 @@ async function eksekusiCancelOutbound() {
       const bulan = parseInt(document.getElementById('ob-dash-bulan').value);
       const tahun = parseInt(document.getElementById('ob-dash-tahun').value);
       const tbody = document.getElementById('ob-dash-tbody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
       document.getElementById('ob-sum-request').textContent = '-';
       document.getElementById('ob-sum-sku').textContent = '-';
       document.getElementById('ob-sum-qty').textContent = '-';
@@ -9458,7 +9575,7 @@ async function eksekusiCancelOutbound() {
 
       const tbody = document.getElementById('ob-dash-tbody');
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
       } else {
         tbody.innerHTML = rows.map(r => {
           const statusColor = r.status === 'Stockout' ? 'text-danger fw-bold' : r.status === 'Picking Pending' ? 'text-warning' : r.status === 'In Packing' ? 'text-info' : r.status === 'Closed' ? 'text-success' : '';
@@ -9476,7 +9593,6 @@ async function eksekusiCancelOutbound() {
                </td>`
             : '<td class="text-center text-muted">-</td>';
           const checkerKlopTd = r.qtyCheckerKlop > 0 ? `<td class="text-center text-success fw-bold">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
-          const pickingTd = r.qtyPicking > 0 ? `<td class="text-center fw-bold">${r.qtyPicking.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           return `<tr>
             <td class="fw-bold">${r.noRequest}</td>
             <td style="white-space:nowrap;">${r.tglRequest}</td>
@@ -9485,7 +9601,6 @@ async function eksekusiCancelOutbound() {
             <td>${r.grade || '-'}</td>
             <td class="text-center">${r.qtyRequest}</td>
             <td class="text-center">${r.qtyAllocated}</td>
-            ${pickingTd}
             ${checkerKlopTd}
             ${stockoutTd}
             <td class="${statusColor}" style="font-size:10px;">${r.status}</td>
@@ -9564,7 +9679,6 @@ async function eksekusiCancelOutbound() {
         'Grade': r.grade || '-',
         'Qty Request': r.qtyRequest,
         'Qty Allocated': r.qtyAllocated,
-        'Qty Picking': r.qtyPicking || 0,
         'Qty Stockout': r.qtyStockout || 0,
         'Qty Checker (Klop)': r.qtyCheckerKlop || 0,
         'Status': r.status
@@ -10242,6 +10356,234 @@ async function eksekusiCancelOutbound() {
         loadAdminValidateQC();
       } catch (err) {
         showAVAlert('av-qc-alert', 'Gagal: ' + err.message, 'danger');
+      }
+    }
+
+    // ==========================================
+    // FITUR BARU: REQUEST QC ULANG V2 (Alokasi Otomatis + Picking)
+    // ==========================================
+    function tambahBarisRequestQcV2() {
+      const tbody = document.getElementById('tbody-rqv2-items');
+      const row = tbody.rows[0].cloneNode(true);
+      row.querySelectorAll('input').forEach(el => el.value = '');
+      row.querySelector('.rqv2-item-grade').value = '';
+      tbody.appendChild(row);
+    }
+    function hapusBarisRequestQcV2(btn) {
+      const tbody = document.getElementById('tbody-rqv2-items');
+      if (tbody.rows.length > 1) btn.closest('tr').remove();
+    }
+
+    async function submitFormRequestQcUlangV2() {
+      const rows = Array.from(document.querySelectorAll('#tbody-rqv2-items tr'));
+      const items = rows.map(row => ({
+        sku: row.querySelector('.rqv2-item-sku').value.trim(),
+        grade: row.querySelector('.rqv2-item-grade').value,
+        qty: Number(row.querySelector('.rqv2-item-qty').value || 0)
+      })).filter(it => it.sku && it.grade && it.qty > 0);
+
+      if (items.length === 0) {
+        showAVAlert2('rqv2-alert', 'Isi minimal 1 baris SKU, Grade, dan Qty dengan benar.', 'danger');
+        return;
+      }
+      const keterangan = document.getElementById('rqv2-keterangan').value.trim();
+      const tujuan = document.getElementById('rqv2-tujuan').value;
+      const userLogin = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .submitQCUlangRequestMulti({ items, tujuan, keterangan, userLogin });
+        });
+        showAVAlert2('rqv2-alert', res.message, 'success');
+        document.querySelectorAll('#tbody-rqv2-items tr').forEach((row, idx) => { if (idx > 0) row.remove(); });
+        document.querySelectorAll('#tbody-rqv2-items input').forEach(el => el.value = '');
+        document.querySelector('#tbody-rqv2-items .rqv2-item-grade').value = '';
+        document.getElementById('rqv2-keterangan').value = '';
+      } catch (err) {
+        showAVAlert2('rqv2-alert', 'Gagal: ' + err.message, 'danger');
+      }
+    }
+
+    function showAVAlert2(containerId, message, type) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = `
+        <div class="alert alert-${type} alert-dismissible fade show small fw-bold mb-0" role="alert">
+          ${message}
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+        </div>`;
+    }
+
+    // ==========================================
+    // FITUR BARU: PICKING QC ULANG
+    // ==========================================
+    let PCQC_CURRENT_REQUEST = null;
+
+    function loadPickingQcUlangPendingRequests() {
+      const selectReq = document.getElementById('pcqc-req');
+      selectReq.innerHTML = '<option value="">-- Memuat Daftar Request... --</option>';
+      document.getElementById('pcqc-sku-list-container').style.display = 'none';
+      document.getElementById('pcqc-empty-info').style.display = 'none';
+
+      google.script.run
+        .withSuccessHandler(list => {
+          if (!list || list.length === 0) {
+            selectReq.innerHTML = '<option value="">-- Tidak Ada Request QC Ulang "Picking Pending" --</option>';
+            return;
+          }
+          selectReq.innerHTML = '<option value="">-- Pilih No Request QC Ulang --</option>';
+          list.forEach(item => {
+            let opt = document.createElement('option');
+            opt.value = item.no_request;
+            opt.textContent = `${item.no_request}  —  ${item.tanggal_request || ''}`;
+            selectReq.appendChild(opt);
+          });
+        })
+        .withFailureHandler(err => {
+          selectReq.innerHTML = '<option value="">-- Gagal Memuat --</option>';
+          showAlert("Gagal memuat daftar Request QC Ulang: " + err.message, "danger");
+        })
+        .getQCUlangRequestPending();
+    }
+
+    function onPickingQcUlangRequestSelected() {
+      const noRequest = document.getElementById('pcqc-req').value;
+      const container = document.getElementById('pcqc-sku-list-container');
+      const emptyInfo = document.getElementById('pcqc-empty-info');
+      PCQC_CURRENT_REQUEST = noRequest;
+
+      if (!noRequest) {
+        container.style.display = 'none';
+        emptyInfo.style.display = 'block';
+        return;
+      }
+
+      document.getElementById('pcqc-picking-rows').innerHTML = '<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Memuat...</div>';
+      container.style.display = 'block';
+      emptyInfo.style.display = 'none';
+
+      google.script.run
+        .withSuccessHandler(list => renderPickingQcUlangRows(list || []))
+        .withFailureHandler(err => {
+          document.getElementById('pcqc-picking-rows').innerHTML = '<div class="text-center text-danger py-3">Gagal memuat data</div>';
+        })
+        .getSkuListForQCUlangPicking(noRequest);
+    }
+
+    function renderPickingQcUlangRows(list) {
+      const container = document.getElementById('pcqc-picking-rows');
+      if (list.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-3 small">Tidak ada SKU tersisa untuk di-picking pada Request ini.</div>';
+        return;
+      }
+      container.innerHTML = list.map((r, idx) => `
+        <div class="border rounded p-2 mb-2">
+          <div class="d-flex justify-content-between fw-bold small mb-1">
+            <span>${r.kode_sku} <span class="badge bg-secondary">${r.grade}</span></span>
+            <span class="text-muted">Sisa: ${r.sisa_kebutuhan} / ${r.qty_wajib} Pcs</span>
+          </div>
+          <div class="text-muted small mb-2">Saran lokasi: <strong>${r.lokasi_saran || '-'}</strong> (tersedia ${r.qty_di_lokasi} Pcs)</div>
+          <div class="row g-1">
+            <div class="col-5"><input type="text" class="form-control form-control-sm pcqc-lokasi" placeholder="Lokasi" value="${r.lokasi_saran || ''}"></div>
+            <div class="col-4"><input type="number" class="form-control form-control-sm pcqc-qty" placeholder="Qty" min="1" max="${r.sisa_kebutuhan}"></div>
+            <div class="col-3"><button type="button" class="btn btn-sm w-100 text-white" style="background:#8E24AA;" onclick="prosesPickingQcUlang(this, '${r.kode_sku}')"><i class="fa-solid fa-check"></i></button></div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function prosesPickingQcUlang(btn, kodeSku) {
+      const row = btn.closest('.border');
+      const lokasi = row.querySelector('.pcqc-lokasi').value.trim();
+      const qtyPick = Number(row.querySelector('.pcqc-qty').value || 0);
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+
+      if (!lokasi || qtyPick <= 0) {
+        alert('Lokasi dan Qty Pick wajib diisi (lebih besar dari 0).');
+        return;
+      }
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .processPickingQCUlangSKU({ noRequest: PCQC_CURRENT_REQUEST, kodeSku, lokasi, qtyPick, picker });
+        });
+        alert(res.message);
+        onPickingQcUlangRequestSelected();
+      } catch (err) {
+        alert('Gagal: ' + err.message);
+      }
+    }
+
+    // ==========================================
+    // FITUR BARU: QC SWAROVSKI
+    // ==========================================
+    let SWA_STAGING_DATA = [];
+
+    function loadStagingQCSwarovskiDropdown() {
+      const sel = document.getElementById('swa-sku-asal');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">-- Memuat... --</option>';
+
+      google.script.run
+        .withSuccessHandler(rows => {
+          SWA_STAGING_DATA = rows || [];
+          if (SWA_STAGING_DATA.length === 0) {
+            sel.innerHTML = '<option value="">-- Tidak Ada Data di Staging QC Swarovski --</option>';
+            return;
+          }
+          sel.innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
+          SWA_STAGING_DATA.forEach((r, idx) => {
+            let opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = `${r.kode_sku}  (Ref: ${r.ref}, Sisa: ${r.qty_sisa} Pcs)`;
+            sel.appendChild(opt);
+          });
+        })
+        .withFailureHandler(err => {
+          sel.innerHTML = '<option value="">-- Gagal Memuat --</option>';
+        })
+        .getStagingQCSwarovskiData();
+    }
+
+    function onSwarovskiSkuAsalSelected() {
+      const idx = document.getElementById('swa-sku-asal').value;
+      const info = document.getElementById('swa-max-info');
+      const noReqInput = document.getElementById('swa-noreq');
+      if (idx === '') { info.textContent = ''; return; }
+      const r = SWA_STAGING_DATA[idx];
+      info.textContent = `Maksimal Qty yang bisa diinput: ${r.qty_sisa} Pcs`;
+      noReqInput.value = r.ref;
+    }
+
+    async function submitFormQCSwarovski() {
+      const idx = document.getElementById('swa-sku-asal').value;
+      if (idx === '') { showAVAlert2('swa-alert', 'Pilih SKU Awal dari Staging QC Swarovski dulu.', 'danger'); return; }
+      const r = SWA_STAGING_DATA[idx];
+      const noRequest = document.getElementById('swa-noreq').value.trim();
+      const kodeSkuBaru = document.getElementById('swa-sku-baru').value.trim();
+      const grade = document.getElementById('swa-grade').value;
+      const qty = Number(document.getElementById('swa-qty').value || 0);
+      const petugasQc = document.getElementById('swa-petugas').value.trim();
+      const userLogin = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
+
+      if (!kodeSkuBaru || qty <= 0) {
+        showAVAlert2('swa-alert', 'SKU Baru dan Qty (lebih besar dari 0) wajib diisi.', 'danger');
+        return;
+      }
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .submitQCSwarovski({ noRequest, kodeSkuAsal: r.kode_sku, kodeSkuBaru, grade, qty, petugasQc, userLogin });
+        });
+        showAVAlert2('swa-alert', res.message, 'success');
+        document.getElementById('swa-sku-baru').value = '';
+        document.getElementById('swa-qty').value = '';
+        loadStagingQCSwarovskiDropdown();
+      } catch (err) {
+        showAVAlert2('swa-alert', 'Gagal: ' + err.message, 'danger');
       }
     }
 
