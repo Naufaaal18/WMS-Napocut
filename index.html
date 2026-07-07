@@ -1426,6 +1426,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Request-QC Ulang</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-subrow-qc-requestulang-v2" onclick="bukaModulDariHome('tab-qc', 'modul-qc', 'sub-request-qc-ulang-v2')">
+          <span class="sub-dot dot-recheckqc"></span>
+          <span class="sub-module-name">Request QC Ulang (Alokasi Otomatis + Picking)</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
         <div class="sub-module-row" id="home-subrow-qc-recheck" onclick="bukaModulDariHome('tab-qc', 'modul-qc', 'sub-recheck-qc')">
           <span class="sub-dot dot-recheckqc"></span>
           <span class="sub-module-name">Re-Check QC</span>
@@ -2062,42 +2067,70 @@ window.fetch = function (url, options) {
           <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Request QC Ulang (Alokasi Otomatis + Picking)</h6>
           <p class="text-muted mb-3" style="font-size: 11px;">Cukup isi SKU, Grade &amp; Qty — sistem otomatis mengalokasikan stok dari Stock_FG (tidak perlu tahu lokasi persisnya). Setelah Request dibuat, Picker akan mengambil barangnya lewat modul <strong>Picking QC Ulang</strong> (Picking &amp; Checking), baru masuk Staging QC.</p>
 
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0 fw-bold small">Daftar Item SKU (Multi SKU)</label>
-            <button type="button" class="btn btn-primary btn-xs py-1 px-2" onclick="tambahBarisRequestQcV2()" style="font-size: 11px;">
-              <i class="fa-solid fa-plus me-1"></i>Tambah Baris
-            </button>
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1 d-block">Metode Input Item</label>
+            <div class="btn-group w-100" role="group">
+              <input type="radio" class="btn-check" name="methodRQV2" id="rqv2-method-manual" value="manual" checked onchange="toggleRequestQcV2Method()">
+              <label class="btn btn-outline-secondary btn-sm" for="rqv2-method-manual"><i class="fa-solid fa-keyboard me-1"></i>Input Manual</label>
+
+              <input type="radio" class="btn-check" name="methodRQV2" id="rqv2-method-excel" value="excel" onchange="toggleRequestQcV2Method()">
+              <label class="btn btn-outline-secondary btn-sm" for="rqv2-method-excel"><i class="fa-solid fa-file-excel me-1"></i>Upload Excel</label>
+            </div>
           </div>
-          <div class="table-responsive mb-2" style="max-height: 320px;">
-            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 12px;">
-              <thead class="table-light sticky-top">
-                <tr>
-                  <th style="min-width: 150px;">Kode SKU</th>
-                  <th style="width: 110px;">Grade</th>
-                  <th style="width: 85px;">Qty Request</th>
-                  <th class="text-center" style="width: 36px;">Aksi</th>
-                </tr>
-              </thead>
-              <tbody id="tbody-rqv2-items">
-                <tr>
-                  <td><input type="text" class="form-control form-control-sm rqv2-item-sku" placeholder="Kode SKU"></td>
-                  <td>
-                    <select class="form-select form-select-sm rqv2-item-grade">
-                      <option value="">-- Grade --</option>
-                      <option value="Bagus">Bagus</option>
-                      <option value="Minor">Minor</option>
-                      <option value="Reject">Reject</option>
-                      <option value="Kotor">Kotor</option>
-                      <option value="Perbaikan">Perbaikan</option>
-                    </select>
-                  </td>
-                  <td><input type="number" class="form-control form-control-sm rqv2-item-qty" placeholder="0" min="1"></td>
-                  <td class="text-center">
-                    <button type="button" class="btn btn-outline-danger btn-sm border-0 py-0" onclick="hapusBarisRequestQcV2(this)"><i class="fa-solid fa-trash"></i></button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+
+          <div id="section-manual-rqv2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0 fw-bold small">Daftar Item SKU (Multi SKU)</label>
+              <button type="button" class="btn btn-primary btn-xs py-1 px-2" onclick="tambahBarisRequestQcV2()" style="font-size: 11px;">
+                <i class="fa-solid fa-plus me-1"></i>Tambah Baris
+              </button>
+            </div>
+            <div class="table-responsive mb-2" style="max-height: 320px;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 12px;">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="min-width: 150px;">Kode SKU</th>
+                    <th style="width: 110px;">Grade</th>
+                    <th style="width: 85px;">Qty Request</th>
+                    <th class="text-center" style="width: 36px;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-rqv2-items">
+                  <tr>
+                    <td><input type="text" class="form-control form-control-sm rqv2-item-sku" placeholder="Kode SKU"></td>
+                    <td>
+                      <select class="form-select form-select-sm rqv2-item-grade">
+                        <option value="">-- Grade --</option>
+                        <option value="Bagus">Bagus</option>
+                        <option value="Minor">Minor</option>
+                        <option value="Reject">Reject</option>
+                        <option value="Kotor">Kotor</option>
+                        <option value="Perbaikan">Perbaikan</option>
+                      </select>
+                    </td>
+                    <td><input type="number" class="form-control form-control-sm rqv2-item-qty" placeholder="0" min="1"></td>
+                    <td class="text-center">
+                      <button type="button" class="btn btn-outline-danger btn-sm border-0 py-0" onclick="hapusBarisRequestQcV2(this)"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="section-excel-rqv2" style="display: none;">
+            <div class="p-3 border rounded bg-light mb-3 border-start border-3 border-success">
+              <span class="small fw-bold text-success d-block mb-1"><i class="fa-solid fa-file-excel me-1"></i>Format Kolom File Excel:</span>
+              <code class="d-block small text-dark mb-3 bg-white p-2 border rounded" style="font-size: 11px;">
+                Baris 1 (Header): Kode SKU | Grade | Qty Request<br>
+                Baris 2 (Data)  : NPC-HIJAB-01 | Bagus | 100
+              </code>
+              <button type="button" class="btn btn-outline-success btn-sm w-100 fw-bold mb-2" onclick="downloadTemplateRequestQcUlangV2()">
+                <i class="fa-solid fa-download me-1"></i>Download Template Excel
+              </button>
+              <label class="form-label small fw-bold text-secondary">Pilih File Excel (.xlsx / .xls)</label>
+              <input type="file" id="rqv2-file-excel" class="form-control form-control-sm bg-white" accept=".xlsx,.xls">
+            </div>
           </div>
 
           <div class="mb-2">
@@ -4801,6 +4834,7 @@ async function eksekusiAddSkuOutbound() {
       // yang bisa dibatasi per-role
       document.getElementById('home-subrow-qc-finishgood').style.display = 'none';
       document.getElementById('home-subrow-qc-requestulang').style.display = 'none';
+      document.getElementById('home-subrow-qc-requestulang-v2').style.display = 'none';
       document.getElementById('home-subrow-qc-recheck').style.display = 'none';
       document.getElementById('home-subrow-qc-swarovski').style.display = 'none';
       document.getElementById('sub-qc-finishgood').classList.add('d-none');
@@ -4830,7 +4864,8 @@ async function eksekusiAddSkuOutbound() {
         INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
         INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
         QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
-        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcards: ['sub-request-qc-ulang', 'sub-request-qc-ulang-v2'] },
+        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcard: 'sub-request-qc-ulang' },
+        QC_REQUESTULANG_V2:   { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang-v2',subcard: 'sub-request-qc-ulang-v2' },
         QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
         QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
         MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
@@ -4872,13 +4907,13 @@ async function eksekusiAddSkuOutbound() {
         'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
 
         'Staff Inbound':        ['INBOUND_RECEIVING'],
-        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_RECHECK', 'QC_SWAROVSKI'],
+        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
         'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK', 'QC_SWAROVSKI'],
         'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
-        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
         'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
+        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                   'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
       };
 
@@ -10374,18 +10409,130 @@ async function eksekusiCancelOutbound() {
       if (tbody.rows.length > 1) btn.closest('tr').remove();
     }
 
-    async function submitFormRequestQcUlangV2() {
-      const rows = Array.from(document.querySelectorAll('#tbody-rqv2-items tr'));
-      const items = rows.map(row => ({
-        sku: row.querySelector('.rqv2-item-sku').value.trim(),
-        grade: row.querySelector('.rqv2-item-grade').value,
-        qty: Number(row.querySelector('.rqv2-item-qty').value || 0)
-      })).filter(it => it.sku && it.grade && it.qty > 0);
+    // Toggle antara input manual (baris tabel) dan upload massal via Excel
+    function toggleRequestQcV2Method() {
+      const radios = document.getElementsByName('methodRQV2');
+      let method = 'manual';
+      for (let i = 0; i < radios.length; i++) {
+        if (radios[i].checked) { method = radios[i].value; break; }
+      }
 
-      if (items.length === 0) {
-        showAVAlert2('rqv2-alert', 'Isi minimal 1 baris SKU, Grade, dan Qty dengan benar.', 'danger');
+      const secManual = document.getElementById('section-manual-rqv2');
+      const secExcel = document.getElementById('section-excel-rqv2');
+      const fileInput = document.getElementById('rqv2-file-excel');
+
+      if (method === 'manual') {
+        secManual.style.display = 'block';
+        secExcel.style.display = 'none';
+        if (fileInput) fileInput.value = '';
+      } else {
+        secManual.style.display = 'none';
+        secExcel.style.display = 'block';
+      }
+    }
+
+    // Buat & unduh template Excel Import Request QC Ulang V2 langsung dari browser (pakai SheetJS).
+    function downloadTemplateRequestQcUlangV2() {
+      if (typeof XLSX === 'undefined') {
+        showAVAlert2('rqv2-alert', 'Error: Library XLSX belum termuat di sistem. Mohon periksa script import sheetjs.', 'danger');
         return;
       }
+
+      const header = ["Kode SKU", "Grade", "Qty Request"];
+      const contohRows = [
+        ["NPC-HIJAB-01", "Bagus", 100],
+        ["NPC-HIJAB-02", "Minor", 25],
+        ["NPC-HIJAB-03", "Bagus", 50]
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...contohRows]);
+      ws['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 12 }];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template Request QC Ulang");
+      XLSX.writeFile(wb, "Template_Import_Request_QC_Ulang.xlsx");
+    }
+
+    function resetFormRequestQcUlangV2() {
+      document.querySelectorAll('#tbody-rqv2-items tr').forEach((row, idx) => { if (idx > 0) row.remove(); });
+      document.querySelectorAll('#tbody-rqv2-items input').forEach(el => el.value = '');
+      document.querySelector('#tbody-rqv2-items .rqv2-item-grade').value = '';
+      document.getElementById('rqv2-keterangan').value = '';
+      const fileInput = document.getElementById('rqv2-file-excel');
+      if (fileInput) fileInput.value = '';
+    }
+
+    async function submitFormRequestQcUlangV2() {
+      const radios = document.getElementsByName('methodRQV2');
+      let method = 'manual';
+      for (let i = 0; i < radios.length; i++) {
+        if (radios[i].checked) { method = radios[i].value; break; }
+      }
+
+      if (method === 'manual') {
+        const rows = Array.from(document.querySelectorAll('#tbody-rqv2-items tr'));
+        const items = rows.map(row => ({
+          sku: row.querySelector('.rqv2-item-sku').value.trim(),
+          grade: row.querySelector('.rqv2-item-grade').value,
+          qty: Number(row.querySelector('.rqv2-item-qty').value || 0)
+        })).filter(it => it.sku && it.grade && it.qty > 0);
+
+        if (items.length === 0) {
+          showAVAlert2('rqv2-alert', 'Isi minimal 1 baris SKU, Grade, dan Qty dengan benar.', 'danger');
+          return;
+        }
+        kirimPayloadRequestQcUlangV2KeServer(items);
+      } else {
+        const fileInput = document.getElementById('rqv2-file-excel');
+        if (!fileInput || fileInput.files.length === 0) {
+          showAVAlert2('rqv2-alert', 'Silakan pilih file template Excel yang akan diimport!', 'danger');
+          return;
+        }
+
+        if (typeof XLSX === 'undefined') {
+          showAVAlert2('rqv2-alert', 'Error: Library XLSX belum termuat di sistem. Mohon periksa script import sheetjs.', 'danger');
+          return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const rowsJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            const items = [];
+            for (let i = 1; i < rowsJson.length; i++) {
+              const sku = rowsJson[i][0];
+              const grade = rowsJson[i][1];
+              const qty = rowsJson[i][2];
+              if (sku && grade && qty) {
+                items.push({
+                  sku: sku.toString().trim(),
+                  grade: grade.toString().trim(),
+                  qty: parseInt(qty, 10)
+                });
+              }
+            }
+
+            if (items.length === 0) {
+              showAVAlert2('rqv2-alert', 'Gagal: File Excel kosong atau format tidak sesuai kriteria template.', 'danger');
+              return;
+            }
+
+            kirimPayloadRequestQcUlangV2KeServer(items);
+          } catch (err) {
+            showAVAlert2('rqv2-alert', 'Error membaca file Excel: ' + err.message, 'danger');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    async function kirimPayloadRequestQcUlangV2KeServer(items) {
       const keterangan = document.getElementById('rqv2-keterangan').value.trim();
       const tujuan = document.getElementById('rqv2-tujuan').value;
       const userLogin = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
@@ -10396,10 +10543,7 @@ async function eksekusiCancelOutbound() {
             .submitQCUlangRequestMulti({ items, tujuan, keterangan, userLogin });
         });
         showAVAlert2('rqv2-alert', res.message, 'success');
-        document.querySelectorAll('#tbody-rqv2-items tr').forEach((row, idx) => { if (idx > 0) row.remove(); });
-        document.querySelectorAll('#tbody-rqv2-items input').forEach(el => el.value = '');
-        document.querySelector('#tbody-rqv2-items .rqv2-item-grade').value = '';
-        document.getElementById('rqv2-keterangan').value = '';
+        resetFormRequestQcUlangV2();
       } catch (err) {
         showAVAlert2('rqv2-alert', 'Gagal: ' + err.message, 'danger');
       }
