@@ -396,16 +396,44 @@ Object.assign(ENDPOINTS, {
   },
 
   getCheckingPendingRequests: async () => {
-    const { data, error } = await _sb.from('picking').select('no_request');
-    if (error) throw new Error(error.message);
-    return [...new Set((data || []).map(r => r.no_request))];
+    const [pkData, obData] = await Promise.all([
+      _fetchAllRows('picking', 'no_request'),
+      _fetchAllRows('outbound_request', 'no_request, status')
+    ]);
+    const noRequestList = [...new Set((pkData || []).map(r => r.no_request))];
+    // PERBAIKAN BUG: sebelumnya list Checker diambil murni dari tabel `picking`, tanpa
+    // memandang status di `outbound_request`. Akibatnya No Request yang SUDAH di-Cancel
+    // (semua baris SKU-nya berstatus "Cancelled") tetap muncul di dropdown Checker.
+    // Sekarang No Request yang SELURUH baris SKU-nya sudah Cancelled akan disembunyikan
+    // dari daftar Checker. No Request yang cuma SEBAGIAN SKU-nya Cancelled (SKU lain masih
+    // aktif) tetap muncul, supaya SKU yang masih aktif tetap bisa di-checking.
+    const statusMap = {};
+    (obData || []).forEach(r => {
+      if (!r.no_request) return;
+      if (!statusMap[r.no_request]) statusMap[r.no_request] = [];
+      statusMap[r.no_request].push(r.status);
+    });
+    return noRequestList.filter(nr => {
+      const statuses = statusMap[nr];
+      if (!statuses || statuses.length === 0) return true; // tidak ketemu data status, tampilkan saja (fail-safe)
+      return !statuses.every(s => s === 'Cancelled');
+    });
   },
 
   getSkuListForChecking: async (noRequest) => {
     if (!noRequest) return [];
-    const { data, error } = await _sb.from('picking').select('kode_sku').eq('no_request', noRequest);
-    if (error) throw new Error(error.message);
-    return [...new Set((data || []).map(r => r.kode_sku))].map(sku => ({ kodeSku: sku }));
+    const [pkData, obData] = await Promise.all([
+      _sb.from('picking').select('kode_sku').eq('no_request', noRequest),
+      _sb.from('outbound_request').select('kode_sku, status').eq('no_request', noRequest)
+    ]);
+    if (pkData.error) throw new Error(pkData.error.message);
+    if (obData.error) throw new Error(obData.error.message);
+    // PERBAIKAN BUG: SKU yang baris outbound_request-nya berstatus "Cancelled" untuk No
+    // Request ini tidak lagi ditampilkan di checklist Checker (tidak perlu di-checking).
+    const cancelledSkus = new Set((obData.data || []).filter(r => r.status === 'Cancelled').map(r => r.kode_sku));
+    return [...new Set((pkData.data || []).map(r => r.kode_sku))]
+      .filter(sku => !cancelledSkus.has(sku))
+      .map(sku => ({ kodeSku: sku }));
   },
 
   getLiveCheckerMonitor: async (jumlahBaris) => {
@@ -1900,7 +1928,7 @@ window.fetch = function (url, options) {
                   <tr>
                     <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required>
                     </td>
-                    <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required>
+                    <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required>
                     </td>
                     <td class="po-grade-td" style="display:none;"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus">
                     </td>
@@ -4730,7 +4758,7 @@ async function eksekusiAddSkuOutbound() {
         'Staff Inbound':        ['INBOUND_RECEIVING'],
         'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_RECHECK'],
         'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
-        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'CHECKING_PICKING', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
         'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
@@ -5887,7 +5915,7 @@ async function eksekusiAddSkuOutbound() {
       const tampilkanGrade = document.getElementById('po-grade-th').style.display !== 'none';
       tr.innerHTML = `
         <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required></td>
-        <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required></td>
+        <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required></td>
         <td class="po-grade-td" style="display:${tampilkanGrade ? 'table-cell' : 'none'};"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus"></td>
         <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="this.closest('tr').remove()"><i class="fa-solid fa-trash"></i></button></td>
       `;
@@ -5931,7 +5959,7 @@ async function eksekusiAddSkuOutbound() {
         if (skuInput && qtyInput) {
           itemsArray.push({
             sku: skuInput.value.trim(),
-            qty: parseInt(qtyInput.value) || 0,
+            qty: _parseQtyDesimal(qtyInput.value) || 0,
             grade: gradeVal // Kosong untuk Finish Good, akan disimpan "-" oleh server
           });
         }
@@ -5960,7 +5988,7 @@ async function eksekusiAddSkuOutbound() {
           document.getElementById('tbody-po-items').innerHTML = `
             <tr>
               <td><input type="text" class="form-control form-control-sm po-item-sku" placeholder="SKU-01" required></td>
-              <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="1" required></td>
+              <td><input type="number" class="form-control form-control-sm po-item-qty" placeholder="Jumlah" min="0.01" step="any" required></td>
               <td class="po-grade-td" style="display:none;"><input type="text" class="form-control form-control-sm po-item-grade" placeholder="Cth: Bagus"></td>
               <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="if(document.querySelectorAll('#tbody-po-items tr').length > 1) this.closest('tr').remove();"><i class="fa-solid fa-trash"></i></button></td>
             </tr>
