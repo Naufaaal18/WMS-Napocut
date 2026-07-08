@@ -5099,6 +5099,23 @@ async function eksekusiAddSkuOutbound() {
         </div>
       `;
       if(type === "success" || type === "danger") window.scrollTo(0,0);
+
+      // Auto-hide: notifikasi hilang sendiri setelah beberapa detik, tidak perlu di-klik X.
+      // Pesan sukses/info sedikit lebih cepat hilang, pesan error/warning dikasih waktu lebih
+      // lama supaya sempat dibaca.
+      const alertEl = container.querySelector('.alert');
+      if (alertEl) {
+        const autoHideMs = (type === "danger" || type === "warning") ? 6000 : 4000;
+        setTimeout(() => {
+          // Pastikan alert yang ditutup masih yang sama (belum ditimpa notifikasi baru lain)
+          if (!container.contains(alertEl)) return;
+          if (window.bootstrap && bootstrap.Alert) {
+            bootstrap.Alert.getOrCreateInstance(alertEl).close();
+          } else {
+            alertEl.remove();
+          }
+        }, autoHideMs);
+      }
     }
 
 
@@ -8075,6 +8092,19 @@ function showVIAlert(message, type = "success") {
       ${message}
       <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
     </div>`;
+
+  const alertEl = container.querySelector('.alert');
+  if (alertEl) {
+    const autoHideMs = (type === "danger" || type === "warning") ? 6000 : 4000;
+    setTimeout(() => {
+      if (!container.contains(alertEl)) return;
+      if (window.bootstrap && bootstrap.Alert) {
+        bootstrap.Alert.getOrCreateInstance(alertEl).close();
+      } else {
+        alertEl.remove();
+      }
+    }, autoHideMs);
+  }
 }
 
 // Muat SELURUH daftar item inbound yang masih "Pending Validasi" dari server,
