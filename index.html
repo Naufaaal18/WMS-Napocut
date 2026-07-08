@@ -360,10 +360,18 @@ Object.assign(ENDPOINTS, {
     // urutan di sini beda, "lokasi asli" yang disarankan ke picker bisa berbeda dari lokasi
     // yang benar-benar dialokasikan, sehingga saat Override dipakai, koreksi qty_available
     // bisa salah sasaran (lihat riwayat perbaikan 2026-07-08).
+    // FITUR PERBAIKAN: lokasi "Staging QC", "Staging Inbound", dan "Tempa" TIDAK BOLEH
+    // pernah muncul sebagai kandidat lokasi yang bisa di-allocate / dipakai Override,
+    // baik untuk Outbound Picking maupun Picking QC Ulang (lokasi-lokasi ini adalah area
+    // transit/staging internal, bukan lokasi rak simpan asli). Filter case-insensitive
+    // supaya tidak lolos walau variasi penulisan di database berbeda.
+    const LOKASI_TIDAK_BOLEH_ALLOCATE = ['TEMPA', 'STAGING QC', 'STAGING INBOUND'];
     const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_on_hand')
-      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0).neq('kode_lokasi', 'TEMPA');
+      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0);
     if (error) throw new Error(error.message);
-    return (data || []).map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id }))
+    return (data || [])
+      .filter(r => !LOKASI_TIDAK_BOLEH_ALLOCATE.includes((r.kode_lokasi || '').toString().trim().toUpperCase()))
+      .map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id }))
       .sort((a, b) => a.lokasi.localeCompare(b.lokasi) || a.id - b.id);
   },
 
@@ -807,9 +815,19 @@ Object.assign(ENDPOINTS, {
   getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {}),
   cancelQCUlangRequest: (noRequest, userAktif) => _callRpc('cancel_qc_ulang_request', { p_no_request: noRequest, p_user_login: userAktif }),
   getSkuListForQCUlangPicking: (noRequest) => _callRpc('get_sku_list_for_qc_ulang_picking', { p_no_request: noRequest }),
+  // FITUR BARU: Picking QC Ulang sekarang mendukung Short Pick & Override Lokasi,
+  // meniru pola yang sama persis dengan processPickingSKU (Outbound Picking) di atas.
+  // PENTING: fungsi RPC 'process_picking_qc_ulang_sku' di Supabase WAJIB diupdate agar
+  // menerima & menangani p_short_pick, p_qty_ketemu, p_override_lokasi, dan
+  // p_lokasi_asli_allocated dengan logic yang sama seperti 'process_picking_sku'
+  // (potong stok sesuai qty ketemu, sisa selisih dicatat sebagai OOS ke lokasi TEMPA).
   processPickingQCUlangSKU: (payload) => _callRpc('process_picking_qc_ulang_sku', {
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
-    p_qty_pick: Number(payload.qtyPick), p_picker: payload.picker
+    p_qty_pick: payload.qtyPick != null ? Number(payload.qtyPick) : null, p_picker: payload.picker,
+    p_short_pick: !!payload.shortPick,
+    p_qty_ketemu: payload.qtyKetemu != null ? Number(payload.qtyKetemu) : null,
+    p_override_lokasi: !!payload.overrideLokasi,
+    p_lokasi_asli_allocated: payload.lokasiAsliAllocated || null
   }),
 
   // --- FITUR BARU: QC Swarovski ---
@@ -3258,7 +3276,7 @@ async function eksekusiAddSkuOutbound() {
       </div>
       <div id="sub-picking-qc-ulang" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#8E24AA !important;">
         <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Picking QC Ulang</h6>
-        <p class="text-muted small mb-2">Ambil barang dari lokasi rak untuk Request QC Ulang yang sudah dialokasikan sistem. Setelah diproses, barang langsung masuk Staging QC (siap diperiksa ulang di modul QC Produk &gt; Re-Check QC).</p>
+        <p class="text-muted small mb-2">Ambil barang dari lokasi rak untuk Request QC Ulang yang sudah dialokasikan sistem. Setelah diproses, barang langsung masuk Staging QC (siap diperiksa ulang di modul QC Produk &gt; Re-Check QC). Tersedia fitur <strong>Short Pick</strong> (jika stok fisik di lokasi tidak sesuai) dan <strong>Override Lokasi</strong> (jika lokasi allocated sistem ternyata kosong), sama seperti Picking Outbound.</p>
 
         <div class="row g-2">
           <div class="col-12">
@@ -10752,9 +10770,10 @@ async function eksekusiCancelOutbound() {
     }
 
     // ==========================================
-    // FITUR BARU: PICKING QC ULANG
+    // FITUR BARU: PICKING QC ULANG (+ Short Pick & Override Lokasi, meniru Outbound Picking)
     // ==========================================
     let PCQC_CURRENT_REQUEST = null;
+    let PCQC_PICKING_LIST = []; // state per baris: { kodeSku, grade, lokasi, qtyDiLokasi, qtyWajib, sisaKebutuhan, isOverride, lokasiAsli }
 
     function loadPickingQcUlangPendingRequests() {
       const selectReq = document.getElementById('pcqc-req');
@@ -10808,48 +10827,203 @@ async function eksekusiCancelOutbound() {
     }
 
     function renderPickingQcUlangRows(list) {
+      // Simpan ke state PCQC_PICKING_LIST (bukan cuma dirender langsung) supaya status
+      // Override Lokasi per baris bisa dipertahankan selama picker belum submit/refresh.
+      PCQC_PICKING_LIST = (list || []).map(r => ({
+        kodeSku: r.kode_sku, grade: r.grade,
+        lokasi: r.lokasi_saran || '', qtyDiLokasi: Number(r.qty_di_lokasi || 0),
+        qtyWajib: Number(r.qty_wajib || 0), sisaKebutuhan: Number(r.sisa_kebutuhan || 0),
+        isOverride: false, lokasiAsli: null
+      }));
+      renderPickingQcUlangFromState();
+    }
+
+    function renderPickingQcUlangFromState() {
       const container = document.getElementById('pcqc-picking-rows');
-      if (list.length === 0) {
+      if (PCQC_PICKING_LIST.length === 0) {
         container.innerHTML = '<div class="text-center text-muted py-3 small">Tidak ada SKU tersisa untuk di-picking pada Request ini.</div>';
         return;
       }
-      container.innerHTML = list.map((r, idx) => `
-        <div class="border rounded p-2 mb-2">
+      container.innerHTML = PCQC_PICKING_LIST.map((r, idx) => `
+        <div class="border rounded p-2 mb-2" id="pcqc-row-${idx}">
           <div class="d-flex justify-content-between fw-bold small mb-1">
-            <span>${r.kode_sku} <span class="badge bg-secondary">${r.grade}</span></span>
-            <span class="text-muted">Sisa: ${r.sisa_kebutuhan} / ${r.qty_wajib} Pcs</span>
+            <span>${r.kodeSku} <span class="badge bg-secondary">${r.grade}</span></span>
+            <span class="text-muted">Sisa: ${r.sisaKebutuhan} / ${r.qtyWajib} Pcs</span>
           </div>
-          <div class="text-muted small mb-2">Saran lokasi: <strong>${r.lokasi_saran || '-'}</strong> (tersedia ${r.qty_di_lokasi} Pcs)</div>
-          <div class="row g-1">
-            <div class="col-5"><input type="text" class="form-control form-control-sm pcqc-lokasi" placeholder="Lokasi" value="${r.lokasi_saran || ''}"></div>
-            <div class="col-4"><input type="number" class="form-control form-control-sm pcqc-qty" placeholder="Qty" min="1" max="${r.sisa_kebutuhan}"></div>
-            <div class="col-3"><button type="button" class="btn btn-sm w-100 text-white" style="background:#8E24AA;" onclick="prosesPickingQcUlang(this, '${r.kode_sku}')"><i class="fa-solid fa-check"></i></button></div>
+          <div class="text-muted small mb-2">
+            Saran lokasi: <strong>${r.lokasi || '-'}</strong> (tersedia ${r.qtyDiLokasi} Pcs)
+            ${r.isOverride ? `<span class="badge bg-warning text-dark ms-1">Override — Asli: ${r.lokasiAsli}</span>` : ''}
+          </div>
+          <div class="row g-1 mb-1">
+            <div class="col-5"><input type="text" class="form-control form-control-sm pcqc-lokasi" value="${r.lokasi || ''}" placeholder="Lokasi"></div>
+            <div class="col-4"><input type="number" class="form-control form-control-sm pcqc-qty" placeholder="Qty" min="1" max="${r.sisaKebutuhan}"></div>
+            <div class="col-3"><button type="button" class="btn btn-sm w-100 text-white" style="background:#8E24AA;" onclick="prosesPickingQcUlang(${idx})"><i class="fa-solid fa-check"></i></button></div>
+          </div>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-danger btn-sm fw-bold flex-grow-1" style="font-size:10px;" onclick="promptShortPickQcUlang(${idx})">Short Pick</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm fw-bold flex-grow-1" style="font-size:10px;" onclick="toggleOverrideLokasiQcUlang(${idx})">Override Lokasi</button>
+          </div>
+          <div id="pcqc-override-box-${idx}" class="mt-2 p-2 bg-light rounded d-none">
+            <label class="form-label small fw-bold mb-0">Pilih Lokasi Pengganti (stok SKU/Grade sama)</label>
+            <select id="pcqc-override-select-${idx}" class="form-select form-select-sm mb-1"></select>
+            <div id="pcqc-override-info-${idx}" class="small text-muted mb-1"></div>
+            <button type="button" class="btn btn-sm btn-primary w-100" onclick="applyOverrideLokasiQcUlang(${idx})">Gunakan Lokasi Ini</button>
           </div>
         </div>
       `).join('');
     }
 
-    async function prosesPickingQcUlang(btn, kodeSku) {
-      const row = btn.closest('.border');
+    // Proses picking normal (qty lengkap) untuk 1 baris SKU
+    async function prosesPickingQcUlang(idx) {
+      const item = PCQC_PICKING_LIST[idx];
+      const row = document.getElementById('pcqc-row-' + idx);
+      if (!item || !row) return;
+
       const lokasi = row.querySelector('.pcqc-lokasi').value.trim();
       const qtyPick = Number(row.querySelector('.pcqc-qty').value || 0);
       const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
 
       if (!lokasi || qtyPick <= 0) {
-        alert('Lokasi dan Qty Pick wajib diisi (lebih besar dari 0).');
+        showAlert('Lokasi dan Qty Pick wajib diisi (lebih besar dari 0).', 'danger');
         return;
       }
+
+      const infoOverride = item.isOverride ? `\n(Lokasi Override — Lokasi allocated asli: ${item.lokasiAsli})` : '';
+      if (!(await customConfirm(`Proses Picking QC Ulang:\nSKU: ${item.kodeSku}\nLokasi: ${lokasi}${infoOverride}\nQty: ${qtyPick} Pcs`))) return;
+
+      const payload = {
+        noRequest: PCQC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi, qtyPick, picker,
+        overrideLokasi: !!item.isOverride,
+        lokasiAsliAllocated: item.isOverride ? item.lokasiAsli : ''
+      };
 
       try {
         const res = await new Promise((resolve, reject) => {
           google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
-            .processPickingQCUlangSKU({ noRequest: PCQC_CURRENT_REQUEST, kodeSku, lokasi, qtyPick, picker });
+            .processPickingQCUlangSKU(payload);
         });
-        alert(res.message);
+        showAlert(res.message, 'success');
         onPickingQcUlangRequestSelected();
       } catch (err) {
-        alert('Gagal: ' + err.message);
+        showAlert('🚨 Gagal Picking: ' + err.message, 'danger');
       }
+    }
+
+    // Short Pick: dipakai saat qty fisik di lokasi TIDAK SESUAI dengan yang seharusnya.
+    // Selisihnya (OOS) otomatis dicatat sistem ke lokasi TEMPA (lihat process_picking_qc_ulang_sku).
+    async function promptShortPickQcUlang(idx) {
+      const item = PCQC_PICKING_LIST[idx];
+      const row = document.getElementById('pcqc-row-' + idx);
+      if (!item || !row) return;
+
+      const lokasi = row.querySelector('.pcqc-lokasi').value.trim() || item.lokasi;
+      const qtyDiLokasi = item.qtyDiLokasi;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+
+      const inputQty = prompt(`Short Pick SKU '${item.kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
+      if (inputQty === null) return;
+
+      const qtyKetemu = parseInt(inputQty);
+      if (isNaN(qtyKetemu) || qtyKetemu < 0) {
+        showAlert('Qty Ketemu harus berupa angka 0 atau lebih besar.', 'danger');
+        return;
+      }
+      if (qtyKetemu >= qtyDiLokasi) {
+        showAlert(`Qty Ketemu (${qtyKetemu}) harus LEBIH KECIL dari Qty di lokasi ini (${qtyDiLokasi}). Jika qty sudah lengkap, gunakan tombol "Proses".`, 'danger');
+        return;
+      }
+
+      const sisaOos = qtyDiLokasi - qtyKetemu;
+      if (!(await customConfirm(`Short Pick SKU '${item.kodeSku}' dari Lokasi '${lokasi}':\n- Ketemu & akan di-picking: ${qtyKetemu} Pcs\n- Selisih OOS (dicatat ke TEMPA): ${sisaOos} Pcs\n\nLanjutkan?`))) return;
+
+      const payload = {
+        noRequest: PCQC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi, picker,
+        shortPick: true, qtyKetemu,
+        overrideLokasi: !!item.isOverride,
+        lokasiAsliAllocated: item.isOverride ? item.lokasiAsli : ''
+      };
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .processPickingQCUlangSKU(payload);
+        });
+        showAlert(res.message, 'success');
+        onPickingQcUlangRequestSelected();
+      } catch (err) {
+        showAlert('🚨 Gagal Short Pick: ' + err.message, 'danger');
+      }
+    }
+
+    // =========================================================================
+    // FITUR OVERRIDE LOKASI PICKING QC ULANG (sama persis polanya dengan Outbound Picking)
+    // -------------------------------------------------------------------------
+    // Dipakai saat lokasi yang disarankan sistem ternyata TIDAK ADA barangnya secara
+    // fisik. Daftar lokasi pengganti diambil dari getLokasiRakBySkuGrade, yang SUDAH
+    // meng-exclude lokasi "Staging QC", "Staging Inbound", dan "Tempa" -- lokasi-lokasi
+    // ini tidak boleh pernah muncul sebagai kandidat allocation / override.
+    // =========================================================================
+    function toggleOverrideLokasiQcUlang(idx) {
+      const box = document.getElementById('pcqc-override-box-' + idx);
+      if (!box) return;
+
+      const sedangTerbuka = !box.classList.contains('d-none');
+      if (sedangTerbuka) {
+        box.classList.add('d-none');
+        return;
+      }
+      box.classList.add('d-none');
+
+      const item = PCQC_PICKING_LIST[idx];
+      if (!item) return;
+
+      const selectEl = document.getElementById('pcqc-override-select-' + idx);
+      const infoEl = document.getElementById('pcqc-override-info-' + idx);
+      selectEl.innerHTML = '<option value="">-- Memuat lokasi lain... --</option>';
+      infoEl.textContent = '';
+      box.classList.remove('d-none');
+
+      const sisaKebutuhan = item.sisaKebutuhan;
+
+      google.script.run
+        .withSuccessHandler(lokasiList => {
+          const opsiLain = (lokasiList || []).filter(l => l.lokasi && l.lokasi.toUpperCase() !== (item.lokasi || '').toUpperCase());
+          if (opsiLain.length === 0) {
+            selectEl.innerHTML = '<option value="">-- Tidak ada lokasi lain dengan stok SKU/Grade ini --</option>';
+            infoEl.textContent = 'Coba muat ulang daftar, atau gunakan Short Pick jika barang memang tidak ditemukan.';
+            return;
+          }
+          selectEl.innerHTML = '<option value="">-- Pilih Lokasi --</option>' +
+            opsiLain.map(l => `<option value="${l.lokasi}" data-qty="${l.qty}">${l.lokasi} (Stok: ${l.qty} Pcs)</option>`).join('');
+          infoEl.textContent = `Sisa kebutuhan SKU ini: ${sisaKebutuhan} Pcs.`;
+        })
+        .withFailureHandler(err => {
+          selectEl.innerHTML = '<option value="">-- Gagal memuat lokasi --</option>';
+          infoEl.textContent = 'Error: ' + err.message;
+        })
+        .getLokasiRakBySkuGrade(item.kodeSku, item.grade);
+    }
+
+    function applyOverrideLokasiQcUlang(idx) {
+      const item = PCQC_PICKING_LIST[idx];
+      const selectEl = document.getElementById('pcqc-override-select-' + idx);
+      if (!item || !selectEl || !selectEl.value) {
+        showAlert('Pilih dulu lokasi penggantinya.', 'danger');
+        return;
+      }
+
+      const lokasiBaru = selectEl.value;
+      const qtyDiLokasiBaru = Number(selectEl.selectedOptions[0].dataset.qty || 0);
+      const sisaKebutuhan = item.sisaKebutuhan;
+
+      if (!item.isOverride) item.lokasiAsli = item.lokasi;
+
+      item.lokasi = lokasiBaru;
+      item.qtyDiLokasi = Math.min(qtyDiLokasiBaru, sisaKebutuhan);
+      item.isOverride = true;
+
+      renderPickingQcUlangFromState();
+      showAlert(`Lokasi diganti ke '${lokasiBaru}'. Field Lokasi & Qty pada baris ini sudah diperbarui otomatis.`, 'info');
     }
 
     // ==========================================
