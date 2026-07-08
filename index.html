@@ -334,10 +334,15 @@ Object.assign(ENDPOINTS, {
   },
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
-    const { data, error } = await _sb.from('stock_fg').select('kode_lokasi, qty_on_hand')
-      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0);
+    // PENTING: urutan HARUS sama dengan urutan FIFO yang dipakai submit_outbound_request_multi
+    // di database (order by id ASC) saat memotong qty_available. Kalau urutan di sini beda
+    // (misalnya diurutkan dari qty_on_hand terbanyak), "lokasi asli" yang disarankan ke picker
+    // bisa berbeda dari lokasi yang benar-benar dialokasikan, sehingga saat Override dipakai,
+    // koreksi qty_available bisa salah sasaran (lihat riwayat perbaikan 2026-07-08).
+    const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_on_hand')
+      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0).neq('kode_lokasi', 'TEMPA');
     if (error) throw new Error(error.message);
-    return (data || []).map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand })).sort((a, b) => b.qty - a.qty);
+    return (data || []).map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id })).sort((a, b) => a.id - b.id);
   },
 
   getSkuListForPicking: async (noRequest) => {
