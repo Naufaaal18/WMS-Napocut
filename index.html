@@ -246,6 +246,24 @@ async function _getLokasiByKodeStore(kodeStore) {
   return data ? { namaToko: data.toko, alamat: data.alamat } : null;
 }
 
+// Isi <datalist id="dl-master-store"> dengan seluruh Kode Store dari Master Store, supaya
+// muncul rekomendasi (autocomplete bawaan browser) saat user mengetik di field Tujuan/Kode Store
+// pada form Penerbitan Outbound Request. Dipanggil sekali saat halaman dimuat.
+async function muatDaftarMasterStoreUntukAutocomplete() {
+  const dl = document.getElementById('dl-master-store');
+  if (!dl) return;
+  try {
+    const { data, error } = await _sb.from('master_store').select('kode_store, toko').order('kode_store');
+    if (error) throw new Error(error.message);
+    dl.innerHTML = (data || []).map(r =>
+      `<option value="${r.kode_store}">${r.kode_store} — ${r.toko || ''}</option>`
+    ).join('');
+  } catch (err) {
+    console.error('Gagal memuat daftar Master Store untuk autocomplete:', err.message);
+  }
+}
+document.addEventListener('DOMContentLoaded', muatDaftarMasterStoreUntukAutocomplete);
+
 Object.assign(ENDPOINTS, {
 
   getStagingInboundData: async () => {
@@ -2570,7 +2588,8 @@ window.fetch = function (url, options) {
             </div>
             <div class="col-6">
               <label class="form-label small fw-bold mb-0">Tujuan / Kode Store</label>
-              <input type="text" id="ob-kode-store" class="form-control form-control-sm" placeholder="Contoh: S01" required>
+              <input type="text" id="ob-kode-store" class="form-control form-control-sm" placeholder="Ketik untuk cari Kode Store..." list="dl-master-store" autocomplete="off" required>
+              <datalist id="dl-master-store"></datalist>
             </div>
             <div class="col-12">
               <label class="form-label small fw-bold mb-0">Tipe Outbound</label>
