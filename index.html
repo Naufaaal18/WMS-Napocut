@@ -4754,6 +4754,57 @@ async function eksekusiAddSkuOutbound() {
       }
     }
 
+    // =========================================================================
+    // AUTO-DISMISS GLOBAL UNTUK SEMUA NOTIFIKASI (.alert)
+    // Banyak modul di aplikasi ini menampilkan notifikasi lewat innerHTML
+    // langsung (tanpa auto-hide sendiri-sendiri). Daripada mengubah satu-satu
+    // di puluhan tempat, observer ini otomatis mendeteksi SETIAP elemen
+    // ".alert" (Bootstrap) yang muncul di manapun pada halaman, lalu
+    // menutupnya sendiri setelah beberapa detik -- user tidak perlu klik "X".
+    // Pesan sukses/info hilang lebih cepat, pesan gagal/warning dikasih waktu
+    // sedikit lebih lama supaya sempat terbaca.
+    // =========================================================================
+    (function initGlobalAlertAutoDismiss() {
+      const AUTO_HIDE_MS_NORMAL = 4000;
+      const AUTO_HIDE_MS_LAMA = 6000; // untuk alert-danger / alert-warning
+
+      function jadwalkanTutup(alertEl) {
+        if (!alertEl || alertEl.dataset.autohideSet === '1') return;
+        alertEl.dataset.autohideSet = '1';
+
+        const isLama = alertEl.classList.contains('alert-danger') || alertEl.classList.contains('alert-warning');
+        const durasi = isLama ? AUTO_HIDE_MS_LAMA : AUTO_HIDE_MS_NORMAL;
+
+        setTimeout(() => {
+          if (!document.body.contains(alertEl)) return;
+          if (window.bootstrap && bootstrap.Alert && alertEl.classList.contains('alert-dismissible')) {
+            bootstrap.Alert.getOrCreateInstance(alertEl).close();
+          } else {
+            alertEl.remove();
+          }
+        }, durasi);
+      }
+
+      // Tangani seluruh .alert yang sudah ada saat observer ini pertama kali jalan
+      document.querySelectorAll('.alert').forEach(jadwalkanTutup);
+
+      // Pantau terus DOM untuk .alert baru yang muncul kapan saja (hasil innerHTML, dsb.)
+      const observer = new MutationObserver(mutations => {
+        for (const mut of mutations) {
+          mut.addedNodes.forEach(node => {
+            if (node.nodeType !== 1) return; // hanya elemen
+            if (node.classList && node.classList.contains('alert')) {
+              jadwalkanTutup(node);
+            }
+            if (node.querySelectorAll) {
+              node.querySelectorAll('.alert').forEach(jadwalkanTutup);
+            }
+          });
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
+
     let DEKLARASI_USER = { nama: "", role: "" };
 
     // KETIKA HALAMAN DIBUKA: Periksa status Sesi Simpanan
@@ -9281,8 +9332,25 @@ async function eksekusiCancelOutbound() {
     }
 
     function showSJAlert(msg, type) {
-      document.getElementById('sj-alert-container').innerHTML =
-        `<div class="alert alert-${type} small py-2">${msg}</div>`;
+      const container = document.getElementById('sj-alert-container');
+      container.innerHTML =
+        `<div class="alert alert-${type} alert-dismissible fade show small py-2" role="alert">
+          ${msg}
+          <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+        </div>`;
+
+      const alertEl = container.querySelector('.alert');
+      if (alertEl) {
+        const autoHideMs = (type === "danger" || type === "warning") ? 6000 : 4000;
+        setTimeout(() => {
+          if (!container.contains(alertEl)) return;
+          if (window.bootstrap && bootstrap.Alert) {
+            bootstrap.Alert.getOrCreateInstance(alertEl).close();
+          } else {
+            alertEl.remove();
+          }
+        }, autoHideMs);
+      }
     }
 
     // =========================================================
@@ -10294,6 +10362,19 @@ async function eksekusiCancelOutbound() {
           ${message}
           <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
         </div>`;
+
+      const alertEl = container.querySelector('.alert');
+      if (alertEl) {
+        const autoHideMs = (type === "danger" || type === "warning") ? 6000 : 4000;
+        setTimeout(() => {
+          if (!container.contains(alertEl)) return;
+          if (window.bootstrap && bootstrap.Alert) {
+            bootstrap.Alert.getOrCreateInstance(alertEl).close();
+          } else {
+            alertEl.remove();
+          }
+        }, autoHideMs);
+      }
     }
 
     // ----- SUB: VALIDATE INBOUND -----
@@ -10655,6 +10736,19 @@ async function eksekusiCancelOutbound() {
           ${message}
           <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
         </div>`;
+
+      const alertEl = container.querySelector('.alert');
+      if (alertEl) {
+        const autoHideMs = (type === "danger" || type === "warning") ? 6000 : 4000;
+        setTimeout(() => {
+          if (!container.contains(alertEl)) return;
+          if (window.bootstrap && bootstrap.Alert) {
+            bootstrap.Alert.getOrCreateInstance(alertEl).close();
+          } else {
+            alertEl.remove();
+          }
+        }, autoHideMs);
+      }
     }
 
     // ==========================================
