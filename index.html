@@ -352,15 +352,19 @@ Object.assign(ENDPOINTS, {
   },
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
-    // PENTING: urutan HARUS sama dengan urutan FIFO yang dipakai submit_outbound_request_multi
-    // di database (order by id ASC) saat memotong qty_available. Kalau urutan di sini beda
-    // (misalnya diurutkan dari qty_on_hand terbanyak), "lokasi asli" yang disarankan ke picker
-    // bisa berbeda dari lokasi yang benar-benar dialokasikan, sehingga saat Override dipakai,
-    // koreksi qty_available bisa salah sasaran (lihat riwayat perbaikan 2026-07-08).
+    // PENTING: urutan HARUS sama dengan urutan yang dipakai submit_outbound_request_multi /
+    // submit_qc_ulang_request_multi / alokasikan_dari_stock_fg di database (order by
+    // kode_lokasi ASC, lalu id ASC) saat memotong qty_available. Sejak 2026-07-08, allocation
+    // SELALU mengambil dari lokasi dengan KODE LOKASI TERKECIL dulu (misal SKU ada di
+    // F3-A1-01 & F3-A1-02 -> F3-A1-01 duluan), bukan lagi urutan id/FIFO putaway. Kalau
+    // urutan di sini beda, "lokasi asli" yang disarankan ke picker bisa berbeda dari lokasi
+    // yang benar-benar dialokasikan, sehingga saat Override dipakai, koreksi qty_available
+    // bisa salah sasaran (lihat riwayat perbaikan 2026-07-08).
     const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_on_hand')
       .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0).neq('kode_lokasi', 'TEMPA');
     if (error) throw new Error(error.message);
-    return (data || []).map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id })).sort((a, b) => a.id - b.id);
+    return (data || []).map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id }))
+      .sort((a, b) => a.lokasi.localeCompare(b.lokasi) || a.id - b.id);
   },
 
   getSkuListForPicking: async (noRequest) => {
