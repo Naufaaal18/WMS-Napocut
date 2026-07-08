@@ -4506,15 +4506,16 @@ async function eksekusiAddSkuOutbound() {
                 <option value="Admin">Admin (Semua Akses kecuali Kelola User)</option>
                 <option value="Supervisor Gudang">Supervisor Gudang / SPV Gudang (Semua Akses kecuali Kelola User)</option>
                 <option value="Manager Gudang">Manager Gudang (Semua Akses kecuali Kelola User)</option>
-                <option value="Admin QC">Admin QC (Inbound Validasi, Modul QC Produk)</option>
+                <option value="Admin QC">Admin QC (Inbound Validasi, Modul QC Produk, Request QC Ulang Otomatis)</option>
                 <option value="Petugas QC">Petugas QC (QC Finish Good, Re-Check QC)</option>
-                <option value="Petugas Putaway">Petugas Putaway (Inbound Receiving, Putaway, Dashboard Stock FG, Transfer Lokasi)</option>
-                <option value="Picker">Picker (Putaway Return, Request-QC Ulang, Picking, Dashboard Stock FG, Transfer)</option>
+                <option value="Tim Swarovski">Tim Swarovski (QC Swarovski)</option>
+                <option value="Petugas Putaway">Petugas Putaway (Inbound Receiving, Putaway, Picking Outbound, Picking QC Ulang, Dashboard Stock FG, Transfer Lokasi)</option>
+                <option value="Picker">Picker (Putaway Return, Picking Outbound, Picking QC Ulang, Dashboard Stock FG, Transfer)</option>
                 <option value="Checker">Checker (Dashboard &amp; Live Monitor Checker)</option>
                 <option value="Staff Inbound">Staff Inbound (Inbound Receiving)</option>
-                <option value="Inventory Controller">Inventory Controller (Inbound, QC Ulang, Putaway Return, Picking, Inventory, Movement History)</option>
+                <option value="Inventory Controller">Inventory Controller (Inbound, Putaway Return, Picking Outbound, Picking QC Ulang, Inventory, Movement History)</option>
                 <option value="Demand Planner">Demand Planner (Dashboard Stock FG, Export Laporan, Outbound Request)</option>
-                <option value="RnD">RnD (Dashboard Stock FG, Export Laporan, Outbound Request)</option>
+                <option value="RnD">RnD (Dashboard Stock FG, Export Laporan, Outbound Request, Request QC Ulang Otomatis)</option>
               </select>
             </div>
             <div class="col-6">
@@ -4888,7 +4889,6 @@ async function eksekusiAddSkuOutbound() {
         INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
         INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
         QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
-        QC_REQUESTULANG:      { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang',   subcard: 'sub-request-qc-ulang' },
         QC_REQUESTULANG_V2:   { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang-v2',subcard: 'sub-request-qc-ulang-v2' },
         QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
         QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
@@ -4931,13 +4931,14 @@ async function eksekusiAddSkuOutbound() {
         'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
 
         'Staff Inbound':        ['INBOUND_RECEIVING'],
-        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
-        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK', 'QC_SWAROVSKI'],
-        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
-        'Picker':               ['OPS_PUTAWAYRETURN', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
+        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
+        'Tim Swarovski':        ['QC_SWAROVSKI'],
+        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG'],
+        'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-        'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-        'Inventory Controller': ['INBOUND_RECEIVING', 'QC_REQUESTULANG', 'QC_REQUESTULANG_V2', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
+        'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
+        'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                   'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
       };
 
@@ -9793,7 +9794,7 @@ async function eksekusiCancelOutbound() {
     // Daftar role yang valid di sistem, dipakai untuk label badge warna di tabel.
     const KU_ROLE_WARNA = {
       'Administrator': 'dark', 'Admin': 'danger', 'Supervisor Gudang': 'danger', 'Manager Gudang': 'danger',
-      'Admin QC': 'info', 'Petugas QC': 'primary', 'Petugas Putaway': 'primary', 'Picker': 'primary',
+      'Admin QC': 'info', 'Petugas QC': 'primary', 'Tim Swarovski': 'info', 'Petugas Putaway': 'primary', 'Picker': 'primary',
       'Checker': 'primary', 'Staff Inbound': 'primary', 'Inventory Controller': 'secondary',
       'Demand Planner': 'secondary', 'RnD': 'secondary'
     };
