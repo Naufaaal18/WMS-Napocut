@@ -805,6 +805,7 @@ Object.assign(ENDPOINTS, {
     p_items: payload.items, p_tujuan: payload.tujuan || 'RECHECK_QC', p_keterangan: payload.keterangan || null, p_user_login: payload.userLogin
   }),
   getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {}),
+  cancelQCUlangRequest: (noRequest, userAktif) => _callRpc('cancel_qc_ulang_request', { p_no_request: noRequest, p_user_login: userAktif }),
   getSkuListForQCUlangPicking: (noRequest) => _callRpc('get_sku_list_for_qc_ulang_picking', { p_no_request: noRequest }),
   processPickingQCUlangSKU: (payload) => _callRpc('process_picking_qc_ulang_sku', {
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
@@ -2177,6 +2178,19 @@ window.fetch = function (url, options) {
             <i class="fa-solid fa-paper-plane me-1"></i>Kirim Request QC Ulang
           </button>
           <div id="rqv2-alert" class="mt-2"></div>
+
+          <div class="mb-1 mt-3 p-2 border rounded bg-light">
+            <label class="form-label small fw-bold text-dark">Cancel Request QC Ulang</label>
+            <p class="text-muted mb-2" style="font-size: 11px;">Membatalkan seluruh baris SKU pada 1 No. Request QC Ulang (yang
+              belum Cancelled). Qty yang sudah dipicking tapi belum sempat di-Re-Check ikut dikembalikan ke Stock_FG; SKU yang
+              sudah selesai Re-Check penuh tidak ikut dibatalkan.</p>
+            <div class="input-group input-group-sm">
+              <input type="text" id="cancel-qculang-no" class="form-control" placeholder="Masukkan No. Request QC Ulang (Ex: RQC-000001)">
+              <button type="button" class="btn btn-danger fw-bold" onclick="eksekusiCancelQCUlang()">
+                <i class="fa-solid fa-xmark"></i> Cancel Request
+              </button>
+            </div>
+          </div>
         </div>
 
         <div id="sub-recheck-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#EF6C00 !important;">
@@ -2249,20 +2263,21 @@ window.fetch = function (url, options) {
           <div class="mb-3">
             <label class="form-label">No Request QC Ulang</label>
             <div class="input-group">
-              <input type="text" id="swa-noreq" class="form-control" placeholder="Contoh: RQC-000001">
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">SKU Awal (dari Staging QC Swarovski)</label>
-            <div class="input-group">
-              <select id="swa-sku-asal" class="form-select" onchange="onSwarovskiSkuAsalSelected()">
-                <option value="">-- Pilih SKU Awal --</option>
+              <select id="swa-noreq" class="form-select" onchange="onSwarovskiNoReqSelected()">
+                <option value="">-- Pilih No Request QC Ulang --</option>
               </select>
               <button type="button" class="btn btn-outline-secondary" onclick="loadStagingQCSwarovskiDropdown()" title="Muat Ulang Daftar">
                 <i class="fa-solid fa-rotate"></i>
               </button>
             </div>
+            <small class="text-muted">Hanya menampilkan No Request (tipe QC Swarovski) yang sudah selesai di-picking oleh tim Picker (ada di Staging QC Swarovski).</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">SKU Awal</label>
+            <select id="swa-sku-asal" class="form-select" onchange="onSwarovskiSkuAsalSelected()">
+              <option value="">-- Pilih SKU Awal --</option>
+            </select>
             <small id="swa-max-info" class="text-muted"></small>
           </div>
 
@@ -2286,11 +2301,6 @@ window.fetch = function (url, options) {
               <label class="form-label">Qty Hasil QC</label>
               <input type="number" id="swa-qty" class="form-control" placeholder="0" min="1">
             </div>
-          </div>
-
-          <div class="mb-2">
-            <label class="form-label small fw-bold mb-0">Petugas QC</label>
-            <input type="text" id="swa-petugas" class="form-control form-control-sm" placeholder="Nama petugas QC">
           </div>
 
           <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#00838F;" onclick="submitFormQCSwarovski()">
@@ -10608,6 +10618,35 @@ async function eksekusiCancelOutbound() {
       }
     }
 
+    async function eksekusiCancelQCUlang() {
+      const inputEl = document.getElementById('cancel-qculang-no');
+      const noRequest = inputEl.value.trim();
+      if (!noRequest) {
+        showAVAlert2('rqv2-alert', 'Mohon isi Nomor Request QC Ulang yang ingin dicancel!', 'danger');
+        return;
+      }
+
+      if (!(await customConfirm(`Apakah Anda yakin ingin membatalkan Request QC Ulang ${noRequest}? Langkah ini akan mengembalikan Qty Allocated (termasuk yang sudah dipicking tapi belum sempat di-Re-Check) ke Stock_FG.`))) {
+        return;
+      }
+
+      const userLogin = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
+
+      try {
+        const res = await new Promise((resolve, reject) => {
+          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
+            .cancelQCUlangRequest(noRequest, userLogin);
+        });
+        showAVAlert2('rqv2-alert', res.message, res.success ? 'success' : 'danger');
+        if (res.success) {
+          inputEl.value = '';
+          if (typeof loadStagingQCToRecheckDropdown === 'function') loadStagingQCToRecheckDropdown();
+        }
+      } catch (err) {
+        showAVAlert2('rqv2-alert', 'Gagal Memproses Pembatalan Request QC Ulang: ' + err.message, 'danger');
+      }
+    }
+
     function showAVAlert2(containerId, message, type) {
       const container = document.getElementById(containerId);
       if (!container) return;
@@ -10721,69 +10760,127 @@ async function eksekusiCancelOutbound() {
 
     // ==========================================
     // FITUR BARU: QC SWAROVSKI
+    // -------------------------------------------------------------------------
+    // Pola sama seperti Re-Check QC: dropdown No Request QC Ulang (hanya yang
+    // sudah di-picking tim Picker, tersedia di Staging QC Swarovski) dipilih
+    // dulu, baru SKU Awal terkait muncul otomatis. Petugas QC diambil otomatis
+    // dari user yang sedang login (DEKLARASI_USER.nama), tidak diketik manual.
     // ==========================================
-    let SWA_STAGING_DATA = [];
+    let SWA_STAGING_DATA = {}; // { [noRequest]: [ {sku, maxQty}, ... ] }
 
     function loadStagingQCSwarovskiDropdown() {
-      const sel = document.getElementById('swa-sku-asal');
-      if (!sel) return;
-      sel.innerHTML = '<option value="">-- Memuat... --</option>';
+      const noReqSel = document.getElementById('swa-noreq');
+      const skuSel = document.getElementById('swa-sku-asal');
+      if (!noReqSel) return;
+      noReqSel.innerHTML = '<option value="">-- Memuat Data Staging QC Swarovski... --</option>';
+      if (skuSel) skuSel.innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
+      const infoEl = document.getElementById('swa-max-info');
+      if (infoEl) infoEl.textContent = '';
 
       google.script.run
         .withSuccessHandler(rows => {
-          SWA_STAGING_DATA = rows || [];
-          if (SWA_STAGING_DATA.length === 0) {
-            sel.innerHTML = '<option value="">-- Tidak Ada Data di Staging QC Swarovski --</option>';
+          SWA_STAGING_DATA = {};
+          (rows || []).forEach(r => {
+            if (!r.ref) return;
+            if (!SWA_STAGING_DATA[r.ref]) SWA_STAGING_DATA[r.ref] = [];
+            SWA_STAGING_DATA[r.ref].push({ sku: r.kode_sku, maxQty: r.qty_sisa });
+          });
+
+          const listNoReq = Object.keys(SWA_STAGING_DATA);
+          if (listNoReq.length === 0) {
+            noReqSel.innerHTML = '<option value="">-- Tidak Ada Data di Staging QC Swarovski --</option>';
             return;
           }
-          sel.innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
-          SWA_STAGING_DATA.forEach((r, idx) => {
-            let opt = document.createElement('option');
-            opt.value = idx;
-            opt.textContent = `${r.kode_sku}  (Ref: ${r.ref}, Sisa: ${r.qty_sisa} Pcs)`;
-            sel.appendChild(opt);
+          noReqSel.innerHTML = '<option value="">-- Pilih No Request QC Ulang --</option>';
+          listNoReq.forEach(noReq => {
+            const opt = document.createElement('option');
+            opt.value = noReq;
+            opt.textContent = noReq;
+            noReqSel.appendChild(opt);
           });
         })
         .withFailureHandler(err => {
-          sel.innerHTML = '<option value="">-- Gagal Memuat --</option>';
+          noReqSel.innerHTML = '<option value="">-- Gagal Memuat Data --</option>';
+          console.error('Gagal memuat Staging QC Swarovski: ' + err.message);
         })
         .getStagingQCSwarovskiData();
     }
 
+    // Saat No Request dipilih -> isi dropdown SKU Awal yang terikat dengan No Request tersebut
+    function onSwarovskiNoReqSelected() {
+      const noReqSelected = document.getElementById('swa-noreq').value.toString().trim();
+      const skuSel = document.getElementById('swa-sku-asal');
+      const infoEl = document.getElementById('swa-max-info');
+
+      skuSel.innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
+      if (infoEl) infoEl.textContent = '';
+
+      if (!noReqSelected) return;
+
+      const listItems = SWA_STAGING_DATA[noReqSelected];
+      if (listItems && listItems.length > 0) {
+        listItems.forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.sku.toString().trim();
+          opt.textContent = `${item.sku} (Sisa: ${item.maxQty} Pcs)`;
+          skuSel.appendChild(opt);
+        });
+      } else {
+        skuSel.innerHTML = '<option value="">-- SKU Tidak Ditemukan --</option>';
+      }
+    }
+
+    // Saat SKU Awal dipilih -> tampilkan batas maksimal Qty yang boleh diinput
     function onSwarovskiSkuAsalSelected() {
-      const idx = document.getElementById('swa-sku-asal').value;
+      const noReqSelected = document.getElementById('swa-noreq').value.toString().trim();
+      const skuSelected = document.getElementById('swa-sku-asal').value.toString().trim();
       const info = document.getElementById('swa-max-info');
-      const noReqInput = document.getElementById('swa-noreq');
-      if (idx === '') { info.textContent = ''; return; }
-      const r = SWA_STAGING_DATA[idx];
-      info.textContent = `Maksimal Qty yang bisa diinput: ${r.qty_sisa} Pcs`;
-      noReqInput.value = r.ref;
+      const qtyInput = document.getElementById('swa-qty');
+
+      if (!noReqSelected || !skuSelected) { if (info) info.textContent = ''; return; }
+
+      const listItems = SWA_STAGING_DATA[noReqSelected] || [];
+      const match = listItems.find(item => item.sku.toString().trim() === skuSelected);
+      if (match) {
+        if (info) info.textContent = `*Batas sisa stok di Staging QC Swarovski: ${match.maxQty} PCS.`;
+        if (qtyInput) qtyInput.max = match.maxQty;
+      }
     }
 
     async function submitFormQCSwarovski() {
-      const idx = document.getElementById('swa-sku-asal').value;
-      if (idx === '') { showAVAlert2('swa-alert', 'Pilih SKU Awal dari Staging QC Swarovski dulu.', 'danger'); return; }
-      const r = SWA_STAGING_DATA[idx];
-      const noRequest = document.getElementById('swa-noreq').value.trim();
+      const noRequest = document.getElementById('swa-noreq').value.toString().trim();
+      const kodeSkuAsal = document.getElementById('swa-sku-asal').value.toString().trim();
+      if (!noRequest || !kodeSkuAsal) { showAVAlert2('swa-alert', 'Pilih dulu No Request QC Ulang dan SKU Awal.', 'danger'); return; }
+
       const kodeSkuBaru = document.getElementById('swa-sku-baru').value.trim();
       const grade = document.getElementById('swa-grade').value;
       const qty = Number(document.getElementById('swa-qty').value || 0);
-      const petugasQc = document.getElementById('swa-petugas').value.trim();
-      const userLogin = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
+      const petugasQc = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Gudang';
+      const userLogin = petugasQc;
 
       if (!kodeSkuBaru || qty <= 0) {
         showAVAlert2('swa-alert', 'SKU Baru dan Qty (lebih besar dari 0) wajib diisi.', 'danger');
         return;
       }
 
+      const maxQty = Number((SWA_STAGING_DATA[noRequest] || []).find(i => i.sku.toString().trim() === kodeSkuAsal)?.maxQty || 0);
+      if (maxQty > 0 && qty > maxQty) {
+        showAVAlert2('swa-alert', `Qty (${qty} Pcs) melebihi sisa stok di Staging QC Swarovski (${maxQty} Pcs).`, 'danger');
+        return;
+      }
+
       try {
         const res = await new Promise((resolve, reject) => {
           google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
-            .submitQCSwarovski({ noRequest, kodeSkuAsal: r.kode_sku, kodeSkuBaru, grade, qty, petugasQc, userLogin });
+            .submitQCSwarovski({ noRequest, kodeSkuAsal, kodeSkuBaru, grade, qty, petugasQc, userLogin });
         });
         showAVAlert2('swa-alert', res.message, 'success');
         document.getElementById('swa-sku-baru').value = '';
         document.getElementById('swa-qty').value = '';
+        document.getElementById('swa-noreq').value = '';
+        document.getElementById('swa-sku-asal').innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
+        const infoEl = document.getElementById('swa-max-info');
+        if (infoEl) infoEl.textContent = '';
         loadStagingQCSwarovskiDropdown();
       } catch (err) {
         showAVAlert2('swa-alert', 'Gagal: ' + err.message, 'danger');
