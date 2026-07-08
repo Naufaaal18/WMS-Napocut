@@ -425,6 +425,28 @@ Object.assign(ENDPOINTS, {
     return [...new Set((data || []).map(r => r.kode_sku))].map(sku => ({ kodeSku: sku }));
   },
 
+  // FITUR BARU: Dashboard Checker -- daftar SKU yang SUDAH di-check & KLOP (qty checker cocok
+  // dengan qty picker) untuk 1 No Request tertentu. Dipakai supaya tim checker (siapapun yang
+  // login, tidak harus orang yang sama) tahu progress checking yang sudah selesai untuk Request
+  // yang sedang dikerjakan, tanpa membocorkan qty seharusnya untuk SKU yang BELUM di-check
+  // (checklist SKU pending tetap blind seperti sebelumnya).
+  getCheckedSkuListForRequest: async (noRequest) => {
+    if (!noRequest) return [];
+    const { data, error } = await _sb.from('checking')
+      .select('kode_sku, qty_checker, qty_picker, checker, plastik_id, waktu, status')
+      .eq('no_request', noRequest)
+      .order('waktu', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || [])
+      .map(r => ({
+        kodeSku: r.kode_sku, qtyChecker: r.qty_checker, qtyPicker: r.qty_picker,
+        checker: r.checker, plastikId: r.plastik_id,
+        klop: r.status ? (r.status === 'Ready to Ship') : (r.qty_checker === r.qty_picker),
+        timestamp: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : ''
+      }))
+      .filter(r => r.klop);
+  },
+
   getLiveCheckerMonitor: async (jumlahBaris) => {
     const limit = (jumlahBaris && jumlahBaris > 0) ? jumlahBaris : 30;
     const { data, error } = await _sb.from('checking')
@@ -3189,6 +3211,13 @@ async function eksekusiAddSkuOutbound() {
             </label>
             <div id="dc-sku-checklist" class="d-flex flex-wrap gap-1 p-2 border rounded bg-light" style="min-height:42px;"></div>
           </div>
+          <div class="col-12" id="dc-sku-checked-wrap" style="display:none;">
+            <label class="form-label small fw-bold mb-1 text-success">
+              <i class="fa-solid fa-circle-check me-1"></i>SKU Sudah Di-Check &amp; Klop
+              <span class="text-muted fw-normal">(Qty ditampilkan karena sudah tervalidasi)</span>
+            </label>
+            <div id="dc-sku-checked-list" class="d-flex flex-wrap gap-1 p-2 border rounded bg-light" style="min-height:42px;"></div>
+          </div>
           <div class="col-12">
             <label class="form-label small fw-bold mb-0 text-dark"><i class="fa-solid fa-barcode me-1"></i>Kode SKU (Wajib Scan/Ketik - Blind)</label>
             <div class="input-group input-group-sm">
@@ -5840,6 +5869,10 @@ async function eksekusiAddSkuOutbound() {
       // Sembunyikan & kosongkan daftar SKU yang harus di-check (checklist blind-qty)
       document.getElementById('dc-sku-checklist-wrap').style.display = 'none';
       document.getElementById('dc-sku-checklist').innerHTML = '';
+
+      // Sembunyikan & kosongkan daftar SKU yang sudah di-check & klop
+      document.getElementById('dc-sku-checked-wrap').style.display = 'none';
+      document.getElementById('dc-sku-checked-list').innerHTML = '';
     }
 
     // Render daftar Kode SKU yang wajib di-check untuk No Request yang aktif, sebagai badge.
@@ -5864,6 +5897,38 @@ async function eksekusiAddSkuOutbound() {
       wrap.style.display = 'block';
     }
 
+    // Render daftar Kode SKU yang SUDAH selesai di-check & klop untuk No Request yang aktif.
+    // Berbeda dengan checklist di atas: di sini Qty BOLEH ditampilkan, karena SKU-nya sudah
+    // tervalidasi (bukan lagi proses blind-count yang sedang berjalan).
+    function renderDashboardCheckerCheckedList(list) {
+      const wrap = document.getElementById('dc-sku-checked-wrap');
+      const box = document.getElementById('dc-sku-checked-list');
+
+      if (!list || list.length === 0) {
+        wrap.style.display = 'none';
+        box.innerHTML = '';
+        return;
+      }
+
+      box.innerHTML = list.map(item => {
+        const kodeSku = (item.kodeSku || '').toString();
+        const info = `Checker: ${item.checker || '-'}${item.timestamp ? ' • ' + item.timestamp : ''}`;
+        return `<span class="badge rounded-pill text-bg-success" style="font-size:11px; padding:6px 10px;" title="${info}">
+                  <i class="fa-solid fa-check me-1"></i>${kodeSku} — ${item.qtyChecker} Pcs
+                </span>`;
+      }).join('');
+      wrap.style.display = 'block';
+    }
+
+    // Muat ulang daftar SKU yang sudah di-check & klop untuk No Request yang sedang aktif
+    function loadDashboardCheckerCheckedList(noRequest) {
+      if (!noRequest) { renderDashboardCheckerCheckedList([]); return; }
+      google.script.run
+        .withSuccessHandler(list => renderDashboardCheckerCheckedList(list || []))
+        .withFailureHandler(() => renderDashboardCheckerCheckedList([]))
+        .getCheckedSkuListForRequest(noRequest);
+    }
+
     // Dipanggil saat No Request dipilih: ambil daftar SKU yang wajib di-checking (untuk validasi
     // instan saja, TIDAK ditampilkan sebagai pilihan) lalu aktifkan input scan/ketik Kode SKU.
     function onDashboardCheckerRequestSelected() {
@@ -5874,6 +5939,8 @@ async function eksekusiAddSkuOutbound() {
         resetDashboardCheckerSkuInput();
         return;
       }
+
+      loadDashboardCheckerCheckedList(noRequest);
 
       const inputSku = document.getElementById('dc-sku');
       const scanBtn = document.getElementById('dc-sku-scan-btn');
