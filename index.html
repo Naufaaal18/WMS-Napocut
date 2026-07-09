@@ -9798,32 +9798,50 @@ async function eksekusiCancelOutbound() {
 
     // ---- OUTBOUND DASHBOARD ----
     function loadDashboardOutbound() {
-      const bulan = parseInt(document.getElementById('ob-dash-bulan').value);
-      const tahun = parseInt(document.getElementById('ob-dash-tahun').value);
+      const bulanEl = document.getElementById('ob-dash-bulan');
+      const tahunEl = document.getElementById('ob-dash-tahun');
+      const bulan = bulanEl ? parseInt(bulanEl.value) : (new Date().getMonth() + 1);
+      const tahun = tahunEl ? parseInt(tahunEl.value) : new Date().getFullYear();
       const tbody = document.getElementById('ob-dash-tbody');
       if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
-      document.getElementById('ob-sum-request').textContent = '-';
-      document.getElementById('ob-sum-sku').textContent = '-';
-      document.getElementById('ob-sum-qty').textContent = '-';
-      document.getElementById('ob-dash-stockout-box').style.display = 'none';
+      // PERBAIKAN BUG: sebelumnya baris-baris di bawah ini manggil document.getElementById(...)
+      // lalu LANGSUNG akses propertinya (.textContent / .style) tanpa cek null dulu. Kalau salah
+      // satu elemen ini (mis. 'ob-dash-stockout-box') karena suatu sebab belum/tidak ada di DOM
+      // saat fungsi ini jalan, baris itu melempar TypeError ("Cannot read properties of null")
+      // dan MENGHENTIKAN seluruh fungsi SAAT ITU JUGA -- sebelum sempat sampai ke pemanggilan
+      // google.script.run(...).getDashboardOutboundData(...) di bawah. Akibatnya data tidak
+      // pernah benar-benar diminta ke server, dan tabel/tbody yang sudah terlanjur diisi teks
+      // "Memuat data..." di baris atas jadi macet selamanya di situ tanpa pesan error apa pun
+      // yang terlihat oleh user (errornya cuma muncul di Console browser). Sekarang setiap
+      // akses elemen di-guard dengan pengecekan null, supaya kalaupun ada elemen yang hilang,
+      // fungsi ini tidak crash dan proses pengambilan data ke server tetap berjalan.
+      const elReq = document.getElementById('ob-sum-request'); if (elReq) elReq.textContent = '-';
+      const elSku = document.getElementById('ob-sum-sku'); if (elSku) elSku.textContent = '-';
+      const elQty = document.getElementById('ob-sum-qty'); if (elQty) elQty.textContent = '-';
+      const elStockoutBox = document.getElementById('ob-dash-stockout-box'); if (elStockoutBox) elStockoutBox.style.display = 'none';
 
       google.script.run
         .withSuccessHandler(function(res) {
+          const alertEl = document.getElementById('ob-dash-alert');
           if (!res.success) {
-            document.getElementById('ob-dash-alert').innerHTML = `<div class="alert alert-danger small py-2">${res.message}</div>`;
+            if (alertEl) alertEl.innerHTML = `<div class="alert alert-danger small py-2">${res.message}</div>`;
             return;
           }
+          if (alertEl) alertEl.innerHTML = '';
           DASHOB_DATA_OB = res.data || [];
           renderDashboardOutboundTable();
         })
         .withFailureHandler(function(err) {
-          document.getElementById('ob-dash-alert').innerHTML = `<div class="alert alert-danger small py-2">Gagal: ${err.message}</div>`;
+          const alertEl = document.getElementById('ob-dash-alert');
+          if (alertEl) alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal: ${err.message}</div>`;
+          if (tbody) tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">Gagal memuat data: ${err.message}</td></tr>`;
         })
         .getDashboardOutboundData(bulan, tahun);
     }
 
     function renderDashboardOutboundTable() {
-      const filter = (document.getElementById('ob-dash-filter').value || '').trim().toLowerCase();
+      const filterEl = document.getElementById('ob-dash-filter');
+      const filter = (filterEl ? filterEl.value : '' || '').trim().toLowerCase();
       const rows = DASHOB_DATA_OB.filter(r =>
         !filter ||
         r.noRequest.toLowerCase().includes(filter) ||
@@ -9833,6 +9851,7 @@ async function eksekusiCancelOutbound() {
       );
 
       const tbody = document.getElementById('ob-dash-tbody');
+      if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman, tidak perlu crash.
       if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
       } else {
@@ -9872,14 +9891,15 @@ async function eksekusiCancelOutbound() {
       const setRequest = new Set(rows.map(r => r.noRequest));
       const totalQty = rows.reduce((a, r) => a + (r.qtyRequest || 0), 0);
       const totalStockout = rows.reduce((a, r) => a + (r.qtyStockout || 0), 0);
-      document.getElementById('ob-sum-request').textContent = setRequest.size;
-      document.getElementById('ob-sum-sku').textContent = rows.length;
-      document.getElementById('ob-sum-qty').textContent = totalQty.toLocaleString('id-ID');
+      const sumReqEl = document.getElementById('ob-sum-request'); if (sumReqEl) sumReqEl.textContent = setRequest.size;
+      const sumSkuEl = document.getElementById('ob-sum-sku'); if (sumSkuEl) sumSkuEl.textContent = rows.length;
+      const sumQtyEl = document.getElementById('ob-sum-qty'); if (sumQtyEl) sumQtyEl.textContent = totalQty.toLocaleString('id-ID');
 
       if (totalStockout > 0) {
         const boxSo = document.getElementById('ob-dash-stockout-box');
-        document.getElementById('ob-dash-stockout-info').textContent = `Total ${totalStockout} Pcs SKU mengalami Stockout pada periode ini.`;
-        boxSo.style.display = 'block';
+        const infoSo = document.getElementById('ob-dash-stockout-info');
+        if (infoSo) infoSo.textContent = `Total ${totalStockout} Pcs SKU mengalami Stockout pada periode ini.`;
+        if (boxSo) boxSo.style.display = 'block';
       }
 
       // Ringkasan per Store
@@ -9892,6 +9912,7 @@ async function eksekusiCancelOutbound() {
         storeMap[r.kodeStore].stockout += r.qtyStockout || 0;
       });
       const tbodyStore = document.getElementById('ob-dash-store-tbody');
+      if (!tbodyStore) return;
       const storeKeys = Object.keys(storeMap).sort();
       tbodyStore.innerHTML = storeKeys.length === 0
         ? '<tr><td colspan="5" class="text-center text-muted py-2">-</td></tr>'
