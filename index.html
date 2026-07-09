@@ -46,16 +46,24 @@ const ENDPOINTS = {
   checkLogin: (u, p) => _callRpc('check_login', { p_username: u, p_password: p }),
 
   // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
-  getAllUsers: () => _callRpc('get_all_users', {}).then((data) => ({ success: true, data: data || [] })),
+  // PERBAIKAN KEAMANAN: fungsi di database sekarang WAJIB p_actor_username dan akan
+  // menolak (raise exception) kalau actor tsb bukan Administrator aktif. Actor diambil
+  // dari sesi yang sedang login (DEKLARASI_USER), bukan dikirim manual oleh pemanggil.
+  getAllUsers: () => _callRpc('get_all_users', {
+    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || ''
+  }).then((data) => ({ success: true, data: data || [] })),
   createUser: (payload) => _callRpc('create_user', {
+    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
     p_username: payload.username, p_password: payload.password, p_nama: payload.nama,
     p_role: payload.role, p_status: payload.status || 'Active', p_akses: payload.akses || null
   }),
   updateUserProfile: (payload) => _callRpc('update_user_profile', {
+    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
     p_username: payload.username, p_nama: payload.nama, p_role: payload.role,
     p_status: payload.status, p_akses: payload.akses || null
   }),
   updateUserPassword: (username, passwordBaru) => _callRpc('update_user_password', {
+    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
     p_username: username, p_password_baru: passwordBaru
   }),
 
@@ -124,23 +132,16 @@ const ENDPOINTS = {
     p_keterangan: data.keterangan, p_user_login: data.userLogin
   }),
 
-  // Catatan: versi multi-item ini memproses SKU satu-per-satu (bukan 1 transaksi
-  // gabungan seperti dulu) -- kalau salah satu SKU gagal, SKU lain yang sudah
-  // sempat sukses TETAP tersimpan (tidak di-rollback semua). Beri tahu saya kalau
-  // butuh versi "all-or-nothing" seperti kode asli.
-  submitRequestQCUlangMulti: async (payload) => {
-    const hasil = [];
-    for (const it of payload.items) {
-      const r = await _callRpc('submit_request_qc_ulang', {
-        p_kode_sku: it.kodeSku, p_grade_asal: it.gradeAsal, p_lokasi_asal: it.lokasiAsal,
-        p_qty_request: Number(it.qtyRequest), p_keterangan: payload.keterangan, p_user_login: payload.userLogin
-      });
-      hasil.push(r);
-    }
-    const gagal = hasil.filter(h => !h.success);
-    if (gagal.length > 0) throw new Error(gagal.map(g => g.message).join(' | '));
-    return { success: true, message: `Sukses! ${hasil.length} SKU berhasil di-Request QC Ulang.`, detail: hasil };
-  },
+  // PERBAIKAN: sekarang memanggil 1 RPC 'submit_request_qc_ulang_multi' yang memproses
+  // seluruh item dalam SATU transaksi database (all-or-nothing). Kalau salah satu SKU
+  // gagal, semua perubahan pada batch ini otomatis di-rollback -- tidak ada lagi data
+  // yang "nyangkut" separuh jalan seperti versi sebelumnya.
+  submitRequestQCUlangMulti: (payload) => _callRpc('submit_request_qc_ulang_multi', {
+    p_items: payload.items.map(it => ({
+      kodeSku: it.kodeSku, gradeAsal: it.gradeAsal, lokasiAsal: it.lokasiAsal, qtyRequest: Number(it.qtyRequest)
+    })),
+    p_keterangan: payload.keterangan, p_user_login: payload.userLogin
+  }),
 
   submitRecheckQC: (data) => _callRpc('submit_recheck_qc', {
     p_no_request_qc: data.noRequestQC, p_kode_sku: data.kodeSku, p_total_recheck: Number(data.totalRecheck),
@@ -947,9 +948,13 @@ window.fetch = function (url, options) {
   const m = urlStr.match(/[?&]action=([^&]+)/);
   const action = m ? decodeURIComponent(m[1]) : null;
   if (action && ENDPOINTS[action]) {
+    // PERBAIKAN: sebelumnya error selalu dibungkus jadi {ok:true, status:200}, sehingga
+    // kode lama yang mengecek `if (!response.ok)` untuk mendeteksi kegagalan tidak pernah
+    // terpicu (error "hilang" secara diam-diam). Sekarang kegagalan tetap dilaporkan
+    // sebagai response gagal (ok:false, status:500) sesuai perilaku fetch() yang wajar.
     return Promise.resolve(ENDPOINTS[action]())
-      .then((data) => ({ ok: true, status: 200, json: () => Promise.resolve(data) }))
-      .catch((err) => ({ ok: true, status: 200, json: () => Promise.resolve({ error: err.message }) }));
+      .then((data) => ({ ok: true, status: 200, json: () => Promise.resolve(data), text: () => Promise.resolve(JSON.stringify(data)) }))
+      .catch((err) => ({ ok: false, status: 500, json: () => Promise.resolve({ error: err.message }), text: () => Promise.resolve(err.message) }));
   }
   return _originalFetch(url, options);
 };
