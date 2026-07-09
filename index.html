@@ -215,12 +215,17 @@ function _cocokBulanTahun(rawDate, bulan, tahun) {
 // sudah 1153 baris tapi hanya 1000 baris pertama yang kebaca -> beberapa
 // No Request "hilang" dari Dashboard). Fungsi ini melakukan paging otomatis
 // via .range() sampai semua baris di tabel benar-benar terambil.
-async function _fetchAllRows(tableName, selectCols, extra) {
+// Parameter "orderCol" (opsional, default 'id') PENTING: tidak semua tabel punya
+// kolom 'id' -- misalnya master_sku primary key-nya 'kode_sku', bukan 'id'. Kalau
+// dipaksa order by 'id' pada tabel yang tidak punya kolom itu, Supabase langsung
+// balas error 400 "column ... does not exist" dan SELURUH pemanggil fungsi ini
+// ikut gagal total (bukan cuma kurang data seperti bug limit 1000 baris).
+async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
   const PAGE_SIZE = 1000;
   let from = 0;
   let semua = [];
   while (true) {
-    let q = _sb.from(tableName).select(selectCols).order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
+    let q = _sb.from(tableName).select(selectCols).order(orderCol || 'id', { ascending: true }).range(from, from + PAGE_SIZE - 1);
     if (typeof extra === 'function') q = extra(q);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
@@ -239,7 +244,7 @@ async function _getMasterSkuDescMap() {
   // dashboard/export (Inbound, Inventory, Data QC, dll) yang memakai fungsi ini, padahal
   // datanya sebenarnya ada di database. Sekarang pakai _fetchAllRows supaya SEMUA baris
   // master_sku terambil, berapa pun jumlahnya.
-  const data = await _fetchAllRows('master_sku', 'kode_sku, nama_product');
+  const data = await _fetchAllRows('master_sku', 'kode_sku, nama_product', null, 'kode_sku');
   const map = {};
   (data || []).forEach(r => { map[r.kode_sku] = r.nama_product || ''; });
   return map;
