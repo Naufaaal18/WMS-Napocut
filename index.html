@@ -363,6 +363,24 @@ Object.assign(ENDPOINTS, {
     return [...new Set((data || []).map(r => r.no_request))];
   },
 
+  // --- FITUR BARU: Klaim Baris Picking (Picker klaim sendiri per baris SKU+Lokasi) ---
+  // Dipakai bersama oleh Picking Outbound & Picking QC Ulang (tabel picking_claims generik,
+  // di-key oleh no_request + kode_sku + lokasi, tidak terikat ke tabel request tertentu).
+  claimPickingRow: (payload) => _callRpc('claim_picking_row', {
+    p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
+    p_grade: payload.grade || null, p_picker: payload.picker
+  }),
+  releasePickingRow: (payload) => _callRpc('release_picking_row', {
+    p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi, p_picker: payload.picker
+  }),
+  getPickingClaimsForRequest: async (noRequest) => {
+    if (!noRequest) return [];
+    const { data, error } = await _sb.from('picking_claims')
+      .select('kode_sku, lokasi, picker, claimed_at').eq('no_request', noRequest).eq('status', 'Claimed');
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
     // PENTING: urutan HARUS sama dengan urutan yang dipakai submit_outbound_request_multi /
     // submit_qc_ulang_request_multi / alokasikan_dari_stock_fg di database (order by
@@ -5305,6 +5323,33 @@ async function eksekusiAddSkuOutbound() {
     // MODUL PICKING (VALIDASI SKU & LOKASI PER BARIS)
     // =========================================================================
 
+    // Helper: bungkus google.script.run jadi Promise, supaya bisa digabung Promise.all()
+    // dengan panggilan async/await lain (dipakai untuk fitur Klaim Baris Picking).
+    function _gsr(fnName, ...args) {
+      return new Promise((resolve, reject) => {
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[fnName](...args);
+      });
+    }
+
+    // FITUR BARU: Klaim Baris Picking -- terapkan status klaim (dari tabel picking_claims)
+    // ke setiap baris di list picking (Outbound maupun QC Ulang), supaya UI tahu baris mana
+    // yang masih bebas diklaim, mana yang sudah diklaim picker ini sendiri, dan mana yang
+    // sedang dikerjakan picker lain (dan karena itu harus dikunci/disembunyikan kontrolnya).
+    function _terapkanKlaimKeList(list, claims) {
+      const map = {};
+      (claims || []).forEach(c => {
+        map[(c.kode_sku || '').trim().toUpperCase() + '||' + (c.lokasi || '').trim().toUpperCase()] = c.picker;
+      });
+      const namaSaya = ((DEKLARASI_USER && DEKLARASI_USER.nama) || '').trim().toLowerCase();
+      (list || []).forEach(item => {
+        const key = (item.kodeSku || '').trim().toUpperCase() + '||' + (item.lokasi || '').trim().toUpperCase();
+        const pickerKlaim = map[key] || null;
+        item.claimedBy = pickerKlaim;
+        item.claimedByMe = !!(pickerKlaim && pickerKlaim.trim().toLowerCase() === namaSaya);
+      });
+      return list;
+    }
+
     // State picking saat ini
     let PC_CURRENT_REQUEST = "";
     let PC_PICKING_LIST = []; // flat list dari server, per lokasi
@@ -5362,16 +5407,17 @@ async function eksekusiAddSkuOutbound() {
       container.style.display = 'block';
       emptyInfo.style.display = 'none';
 
-      google.script.run
-        .withSuccessHandler(flatList => {
-          PC_PICKING_LIST = flatList || [];
-          renderPickingRows();
-        })
-        .withFailureHandler(err => {
-          document.getElementById('pc-picking-rows').innerHTML = '<div class="text-center text-danger py-3">Gagal memuat data</div>';
-          showAlert("Gagal memuat daftar SKU: " + err.message, "danger");
-        })
-        .getSkuListForPicking(noRequest);
+      Promise.all([
+        _gsr('getSkuListForPicking', noRequest),
+        ENDPOINTS.getPickingClaimsForRequest(noRequest)
+      ]).then(([flatList, claims]) => {
+        PC_PICKING_LIST = flatList || [];
+        _terapkanKlaimKeList(PC_PICKING_LIST, claims);
+        renderPickingRows();
+      }).catch(err => {
+        document.getElementById('pc-picking-rows').innerHTML = '<div class="text-center text-danger py-3">Gagal memuat data</div>';
+        showAlert("Gagal memuat daftar SKU: " + err.message, "danger");
+      });
     }
 
     // Render semua baris picking (flat, per lokasi, sorted by lokasi)
@@ -5432,7 +5478,22 @@ async function eksekusiAddSkuOutbound() {
                 </div>
               </div>
 
-              ${isDone ? '' : `
+              ${isDone ? '' : (!item.claimedBy ? `
+              <!-- FITUR BARU: Klaim Baris Picking -- baris ini belum diklaim siapapun -->
+              <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#F57C00; font-size:12px;" onclick="klaimBarisPickingOutbound(${idx})">
+                <i class="fa-solid fa-hand me-1"></i>Klaim Baris Ini untuk Mulai Picking
+              </button>
+              ` : !item.claimedByMe ? `
+              <!-- Baris ini sedang diklaim/dikerjakan picker lain -- kontrol dikunci -->
+              <div class="alert alert-secondary py-2 px-2 mb-0" style="font-size:11px;">
+                <i class="fa-solid fa-lock me-1"></i>Baris ini sedang dikerjakan oleh <strong>${item.claimedBy}</strong>. Silakan pilih baris lain atau tunggu.
+              </div>
+              ` : `
+              <div class="text-end mb-1">
+                <button type="button" class="btn btn-link btn-sm text-muted p-0" style="font-size:10px;" onclick="lepasKlaimPickingOutbound(${idx})">
+                  <i class="fa-solid fa-rotate-left me-1"></i>Lepas Klaim Baris Ini
+                </button>
+              </div>
               <!-- Fitur OVERRIDE LOKASI: dipakai kalau lokasi allocated di atas TIDAK ADA barangnya
                    secara fisik (rak kosong/beda posisi/dsb), picker bisa pilih lokasi lain yang
                    memang tercatat punya stok SKU+Grade yang sama, tanpa harus Short Pick dulu. -->
@@ -5449,9 +5510,6 @@ async function eksekusiAddSkuOutbound() {
                   </button>
                 </div>
               </div>
-              `}
-
-              ${isDone ? '' : `
               <!-- Input Validasi -->
               <div class="row g-1 mb-2">
                 <div class="col-12">
@@ -5488,7 +5546,7 @@ async function eksekusiAddSkuOutbound() {
                   Short Pick
                 </button>
               </div>
-              `}
+              `)}
             </div>
           </div>`;
       });
@@ -5562,6 +5620,9 @@ async function eksekusiAddSkuOutbound() {
       const lokasiBaru = selectEl.value;
       const qtyDiLokasiBaru = Number(selectEl.selectedOptions[0].dataset.qty || 0);
       const sisaKebutuhan = item.sisaKebutuhan || item.qtyWajib;
+      const lokasiLama = item.lokasi;
+      const sudahKlaimSendiri = item.claimedByMe;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
 
       // Simpan lokasi ASLI (hasil alokasi sistem) hanya sekali, supaya kalau picker override
       // berkali-kali, badge "Asli: ..." tetap menunjuk ke lokasi allocated yang sebenarnya.
@@ -5571,9 +5632,58 @@ async function eksekusiAddSkuOutbound() {
       item.qtyDiLokasi = Math.min(qtyDiLokasiBaru, sisaKebutuhan);
       item.isOverride = true;
 
+      // FITUR BARU: Klaim Baris Picking -- klaim terikat ke pasangan SKU+Lokasi. Karena
+      // lokasi baris ini berubah, klaim lama (jika ada) sudah tidak relevan lagi. Lepas
+      // klaim lama di background (best-effort), lalu wajibkan picker klaim ulang baris
+      // ini di lokasi yang baru sebelum bisa memproses.
+      if (sudahKlaimSendiri) {
+        ENDPOINTS.releasePickingRow({ noRequest: PC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: lokasiLama, picker }).catch(() => {});
+      }
+      item.claimedBy = null;
+      item.claimedByMe = false;
+
       // Reset progress "Done" key lama (kalau ada) karena key dibuat dari kodeSku+lokasi
       renderPickingRows();
-      showAlert(`Lokasi diganti ke '${lokasiBaru}'. Silakan scan ulang SKU & Lokasi baru untuk memvalidasi.`, "info");
+      showAlert(`Lokasi diganti ke '${lokasiBaru}'. Silakan klaim baris ini lagi di lokasi baru, lalu scan ulang SKU & Lokasi untuk memvalidasi.`, "info");
+    }
+
+    // FITUR BARU: Klaim Baris Picking (Picking Outbound) -- picker klaim sendiri 1 baris
+    // SKU+Lokasi supaya picker lain tidak bisa memproses baris yang sama secara bersamaan.
+    async function klaimBarisPickingOutbound(idx) {
+      const item = PC_PICKING_LIST[idx];
+      if (!item || !PC_CURRENT_REQUEST) return;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+      try {
+        const res = await ENDPOINTS.claimPickingRow({
+          noRequest: PC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: item.lokasi, grade: item.grade, picker
+        });
+        showAlert(res.message, 'success');
+        item.claimedBy = picker;
+        item.claimedByMe = true;
+        renderPickingRows();
+      } catch (err) {
+        showAlert('🚨 Gagal klaim: ' + err.message, 'danger');
+        // Kemungkinan baris ini baru saja diklaim picker lain -- muat ulang status terbaru
+        onPickingRequestSelected();
+      }
+    }
+
+    // FITUR BARU: Lepas Klaim (Picking Outbound) -- picker bisa melepas klaim kalau berubah
+    // pikiran / salah pilih baris, supaya baris tersebut bisa diambil picker lain lagi.
+    async function lepasKlaimPickingOutbound(idx) {
+      const item = PC_PICKING_LIST[idx];
+      if (!item || !PC_CURRENT_REQUEST) return;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+      if (!(await customConfirm(`Lepas klaim baris SKU '${item.kodeSku}' di lokasi '${item.lokasi}'? Picker lain akan bisa mengambil baris ini.`))) return;
+      try {
+        const res = await ENDPOINTS.releasePickingRow({ noRequest: PC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: item.lokasi, picker });
+        showAlert(res.message, 'success');
+        item.claimedBy = null;
+        item.claimedByMe = false;
+        renderPickingRows();
+      } catch (err) {
+        showAlert('🚨 Gagal melepas klaim: ' + err.message, 'danger');
+      }
     }
 
     // =========================================================================
@@ -5774,17 +5884,17 @@ async function eksekusiAddSkuOutbound() {
         .withSuccessHandler(res => {
           showAlert(res.message, "success");
           PC_DONE_SET.add(kodeSku + '||' + lokasi);
-          // Reload list dari server untuk update data terkini
-          google.script.run
-            .withSuccessHandler(flatList => {
-              PC_PICKING_LIST = flatList || [];
-              renderPickingRows();
-              // Re-mark done set
-              loadPickingPendingRequests();
-              document.getElementById('pc-req').value = noRequest;
-            })
-            .withFailureHandler(() => renderPickingRows())
-            .getSkuListForPicking(noRequest);
+          // Reload list dari server untuk update data terkini (termasuk status klaim terbaru)
+          Promise.all([
+            _gsr('getSkuListForPicking', noRequest),
+            ENDPOINTS.getPickingClaimsForRequest(noRequest)
+          ]).then(([flatList, claims]) => {
+            PC_PICKING_LIST = flatList || [];
+            _terapkanKlaimKeList(PC_PICKING_LIST, claims);
+            renderPickingRows();
+            loadPickingPendingRequests();
+            document.getElementById('pc-req').value = noRequest;
+          }).catch(() => renderPickingRows());
         })
         .withFailureHandler(err => {
           showAlert("🚨 Gagal Picking: " + err.message, "danger");
@@ -5831,15 +5941,16 @@ async function eksekusiAddSkuOutbound() {
         .withSuccessHandler(res => {
           showAlert(res.message, "success");
           PC_DONE_SET.add(kodeSku + '||' + lokasi);
-          google.script.run
-            .withSuccessHandler(flatList => {
-              PC_PICKING_LIST = flatList || [];
-              renderPickingRows();
-              loadPickingPendingRequests();
-              document.getElementById('pc-req').value = noRequest;
-            })
-            .withFailureHandler(() => renderPickingRows())
-            .getSkuListForPicking(noRequest);
+          Promise.all([
+            _gsr('getSkuListForPicking', noRequest),
+            ENDPOINTS.getPickingClaimsForRequest(noRequest)
+          ]).then(([flatList, claims]) => {
+            PC_PICKING_LIST = flatList || [];
+            _terapkanKlaimKeList(PC_PICKING_LIST, claims);
+            renderPickingRows();
+            loadPickingPendingRequests();
+            document.getElementById('pc-req').value = noRequest;
+          }).catch(() => renderPickingRows());
         })
         .withFailureHandler(err => {
           showAlert("🚨 Gagal Short Pick: " + err.message, "danger");
@@ -10956,15 +11067,16 @@ async function eksekusiCancelOutbound() {
       container.style.display = 'block';
       emptyInfo.style.display = 'none';
 
-      google.script.run
-        .withSuccessHandler(list => renderPickingQcUlangRows(list || []))
-        .withFailureHandler(err => {
+      Promise.all([
+        _gsr('getSkuListForQCUlangPicking', noRequest),
+        ENDPOINTS.getPickingClaimsForRequest(noRequest)
+      ]).then(([list, claims]) => renderPickingQcUlangRows(list || [], claims || []))
+        .catch(err => {
           document.getElementById('pcqc-picking-rows').innerHTML = '<div class="text-center text-danger py-3">Gagal memuat data</div>';
-        })
-        .getSkuListForQCUlangPicking(noRequest);
+        });
     }
 
-    function renderPickingQcUlangRows(list) {
+    function renderPickingQcUlangRows(list, claims) {
       // Simpan ke state PCQC_PICKING_LIST (bukan cuma dirender langsung) supaya status
       // Override Lokasi per baris bisa dipertahankan selama picker belum submit/refresh.
       PCQC_PICKING_LIST = (list || []).map(r => ({
@@ -10973,6 +11085,7 @@ async function eksekusiCancelOutbound() {
         qtyWajib: Number(r.qty_wajib || 0), sisaKebutuhan: Number(r.sisa_kebutuhan || 0),
         isOverride: false, lokasiAsli: null
       }));
+      _terapkanKlaimKeList(PCQC_PICKING_LIST, claims);
       renderPickingQcUlangFromState();
     }
 
@@ -10992,6 +11105,21 @@ async function eksekusiCancelOutbound() {
             Saran lokasi: <strong>${r.lokasi || '-'}</strong> (tersedia ${r.qtyDiLokasi} Pcs)
             ${r.isOverride ? `<span class="badge bg-warning text-dark ms-1">Override — Asli: ${r.lokasiAsli}</span>` : ''}
           </div>
+          ${!r.claimedBy ? `
+          <!-- FITUR BARU: Klaim Baris Picking QC Ulang -- baris ini belum diklaim siapapun -->
+          <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#F57C00;" onclick="klaimBarisPickingQcUlang(${idx})">
+            <i class="fa-solid fa-hand me-1"></i>Klaim Baris Ini untuk Mulai Picking
+          </button>
+          ` : !r.claimedByMe ? `
+          <div class="alert alert-secondary py-2 px-2 mb-0" style="font-size:11px;">
+            <i class="fa-solid fa-lock me-1"></i>Baris ini sedang dikerjakan oleh <strong>${r.claimedBy}</strong>. Silakan pilih baris lain atau tunggu.
+          </div>
+          ` : `
+          <div class="text-end mb-1">
+            <button type="button" class="btn btn-link btn-sm text-muted p-0" style="font-size:10px;" onclick="lepasKlaimPickingQcUlang(${idx})">
+              <i class="fa-solid fa-rotate-left me-1"></i>Lepas Klaim Baris Ini
+            </button>
+          </div>
           <div class="row g-1 mb-1">
             <div class="col-5"><input type="text" class="form-control form-control-sm pcqc-lokasi" value="${r.lokasi || ''}" placeholder="Lokasi"></div>
             <div class="col-4"><input type="number" class="form-control form-control-sm pcqc-qty" placeholder="Qty" min="1" max="${r.sisaKebutuhan}"></div>
@@ -11007,8 +11135,45 @@ async function eksekusiCancelOutbound() {
             <div id="pcqc-override-info-${idx}" class="small text-muted mb-1"></div>
             <button type="button" class="btn btn-sm btn-primary w-100" onclick="applyOverrideLokasiQcUlang(${idx})">Gunakan Lokasi Ini</button>
           </div>
+          `}
         </div>
       `).join('');
+    }
+
+    // FITUR BARU: Klaim Baris Picking (Picking QC Ulang) -- sama persis polanya dengan
+    // Picking Outbound, memakai tabel & fungsi klaim yang sama (picking_claims generik).
+    async function klaimBarisPickingQcUlang(idx) {
+      const item = PCQC_PICKING_LIST[idx];
+      if (!item || !PCQC_CURRENT_REQUEST) return;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+      try {
+        const res = await ENDPOINTS.claimPickingRow({
+          noRequest: PCQC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: item.lokasi, grade: item.grade, picker
+        });
+        showAlert(res.message, 'success');
+        item.claimedBy = picker;
+        item.claimedByMe = true;
+        renderPickingQcUlangFromState();
+      } catch (err) {
+        showAlert('🚨 Gagal klaim: ' + err.message, 'danger');
+        onPickingQcUlangRequestSelected();
+      }
+    }
+
+    async function lepasKlaimPickingQcUlang(idx) {
+      const item = PCQC_PICKING_LIST[idx];
+      if (!item || !PCQC_CURRENT_REQUEST) return;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
+      if (!(await customConfirm(`Lepas klaim baris SKU '${item.kodeSku}' di lokasi '${item.lokasi}'? Picker lain akan bisa mengambil baris ini.`))) return;
+      try {
+        const res = await ENDPOINTS.releasePickingRow({ noRequest: PCQC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: item.lokasi, picker });
+        showAlert(res.message, 'success');
+        item.claimedBy = null;
+        item.claimedByMe = false;
+        renderPickingQcUlangFromState();
+      } catch (err) {
+        showAlert('🚨 Gagal melepas klaim: ' + err.message, 'danger');
+      }
     }
 
     // Proses picking normal (qty lengkap) untuk 1 baris SKU
@@ -11036,10 +11201,7 @@ async function eksekusiCancelOutbound() {
       };
 
       try {
-        const res = await new Promise((resolve, reject) => {
-          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
-            .processPickingQCUlangSKU(payload);
-        });
+        const res = await _gsr('processPickingQCUlangSKU', payload);
         showAlert(res.message, 'success');
         onPickingQcUlangRequestSelected();
       } catch (err) {
@@ -11082,10 +11244,7 @@ async function eksekusiCancelOutbound() {
       };
 
       try {
-        const res = await new Promise((resolve, reject) => {
-          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
-            .processPickingQCUlangSKU(payload);
-        });
+        const res = await _gsr('processPickingQCUlangSKU', payload);
         showAlert(res.message, 'success');
         onPickingQcUlangRequestSelected();
       } catch (err) {
@@ -11153,6 +11312,9 @@ async function eksekusiCancelOutbound() {
       const lokasiBaru = selectEl.value;
       const qtyDiLokasiBaru = Number(selectEl.selectedOptions[0].dataset.qty || 0);
       const sisaKebutuhan = item.sisaKebutuhan;
+      const lokasiLama = item.lokasi;
+      const sudahKlaimSendiri = item.claimedByMe;
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
 
       if (!item.isOverride) item.lokasiAsli = item.lokasi;
 
@@ -11160,8 +11322,17 @@ async function eksekusiCancelOutbound() {
       item.qtyDiLokasi = Math.min(qtyDiLokasiBaru, sisaKebutuhan);
       item.isOverride = true;
 
+      // FITUR BARU: Klaim Baris Picking -- klaim terikat ke pasangan SKU+Lokasi, jadi kalau
+      // lokasi baris ini berubah, klaim lama sudah tidak relevan. Lepas di background lalu
+      // wajibkan klaim ulang di lokasi baru.
+      if (sudahKlaimSendiri) {
+        ENDPOINTS.releasePickingRow({ noRequest: PCQC_CURRENT_REQUEST, kodeSku: item.kodeSku, lokasi: lokasiLama, picker }).catch(() => {});
+      }
+      item.claimedBy = null;
+      item.claimedByMe = false;
+
       renderPickingQcUlangFromState();
-      showAlert(`Lokasi diganti ke '${lokasiBaru}'. Field Lokasi & Qty pada baris ini sudah diperbarui otomatis.`, 'info');
+      showAlert(`Lokasi diganti ke '${lokasiBaru}'. Silakan klaim baris ini lagi di lokasi baru sebelum memproses.`, 'info');
     }
 
     // ==========================================
