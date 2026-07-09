@@ -232,8 +232,14 @@ async function _fetchAllRows(tableName, selectCols, extra) {
 }
 
 async function _getMasterSkuDescMap() {
-  const { data, error } = await _sb.from('master_sku').select('kode_sku, nama_product');
-  if (error) throw new Error(error.message);
+  // PERBAIKAN BUG (PENTING): sebelumnya query ini pakai _sb.from(...).select(...) langsung
+  // tanpa paging. Supabase/PostgREST membatasi maksimal 1000 baris per request secara default.
+  // Tabel master_sku sudah punya 14.000+ baris, jadi SEBAGIAN BESAR (>13.000) SKU diam-diam
+  // TIDAK ikut kebaca -- akibatnya deskripsi produk banyak SKU tampil KOSONG di berbagai
+  // dashboard/export (Inbound, Inventory, Data QC, dll) yang memakai fungsi ini, padahal
+  // datanya sebenarnya ada di database. Sekarang pakai _fetchAllRows supaya SEMUA baris
+  // master_sku terambil, berapa pun jumlahnya.
+  const data = await _fetchAllRows('master_sku', 'kode_sku, nama_product');
   const map = {};
   (data || []).forEach(r => { map[r.kode_sku] = r.nama_product || ''; });
   return map;
@@ -381,16 +387,30 @@ Object.assign(ENDPOINTS, {
       .select('kode_sku, grade, qty_allocated, qty_shortpick')
       .eq('no_request', noRequest).eq('status', 'Picking Pending');
     if (error) throw new Error(error.message);
+
+    // PERBAIKAN PERFORMA: sebelumnya untuk SETIAP baris SKU, 2 request jaringan (qty yang
+    // sudah dipicking + daftar lokasi rak) dipanggil satu per satu secara BERURUTAN (await
+    // di dalam for-loop). Untuk Request dengan banyak SKU ini jadi antrian panjang request
+    // yang saling menunggu, terasa lambat buat picker (mis. 15 SKU x 2 request x ~200ms
+    // bisa >6 detik hanya menunggu jaringan). Sekarang semua request untuk SEMUA baris
+    // dijalankan PARALEL sekaligus lewat Promise.all -- hasil akhirnya identik (urutan
+    // flatList tetap mengikuti urutan baris `data` seperti semula), cuma jauh lebih cepat.
+    const rows = data || [];
+    const detailPerRow = await Promise.all(rows.map(async (row) => {
+      const [qtySudahDipicking, lokasiList] = await Promise.all([
+        _callRpc('get_qty_sudah_dipicking', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
+        ENDPOINTS.getLokasiRakBySkuGrade(row.kode_sku, row.grade)
+      ]);
+      return { row, qtySudahDipicking, lokasiList };
+    }));
+
     const flatList = [];
-    for (const row of (data || [])) {
+    for (const { row, qtySudahDipicking, lokasiList } of detailPerRow) {
       const qtyWajib = Number(row.qty_allocated || 0);
       const qtyOosSoFar = Number(row.qty_shortpick || 0);
-      const qtySudah = await ENDPOINTS.getQtySudahDipicking ? 0 : 0; // placeholder, diganti bawah
-      const qtySudahDipicking = await _callRpc('get_qty_sudah_dipicking', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade });
       const sisaKebutuhan = qtyWajib - Number(qtySudahDipicking || 0) - qtyOosSoFar;
       if (sisaKebutuhan <= 0) continue;
 
-      const lokasiList = await ENDPOINTS.getLokasiRakBySkuGrade(row.kode_sku, row.grade);
       if (lokasiList.length === 0) {
         flatList.push({ kodeSku: row.kode_sku, grade: row.grade, lokasi: '', qtyDiLokasi: 0, qtyWajib, sisaKebutuhan });
         continue;
@@ -508,30 +528,33 @@ Object.assign(ENDPOINTS, {
 
   getDashboardInboundData: async (bulan, tahun) => {
     try {
+      // PERBAIKAN BUG (PENTING): sebelumnya open_po & movement_history diambil langsung tanpa
+      // paging. movement_history sudah 8.000+ baris (jauh di atas limit 1000/request Supabase),
+      // jadi Dashboard Inbound diam-diam hanya menghitung Qty Receive/Qty Putaway dari SEBAGIAN
+      // riwayat saja -- angkanya jadi kurang dari yang sebenarnya. open_po (700+ baris) juga
+      // didekatkan ke limit yang sama, jadi ikut dibuat aman sebelum kejadian. Sekarang pakai
+      // _fetchAllRows supaya semua baris kebaca.
       const [po, mh, dq] = await Promise.all([
-        _sb.from('open_po').select('no_po, supplier, kode_sku, qty_awal, created_date, status_po'),
-        _sb.from('movement_history').select('tipe, ref, kode_sku, qty, waktu'),
-        _sb.from('data_qc').select('kode_sku, ref, total_qc, waktu')
+        _fetchAllRows('open_po', 'no_po, supplier, kode_sku, qty_awal, created_date, status_po'),
+        _fetchAllRows('movement_history', 'tipe, ref, kode_sku, qty, waktu'),
+        _fetchAllRows('data_qc', 'kode_sku, ref, total_qc, waktu')
       ]);
-      if (po.error) throw new Error(po.error.message);
-      if (mh.error) throw new Error(mh.error.message);
-      if (dq.error) throw new Error(dq.error.message);
 
       const poData = {};
-      (po.data || []).forEach(r => {
+      (po || []).forEach(r => {
         if (!r.no_po || !r.kode_sku || !_cocokBulanTahun(r.created_date, bulan, tahun)) return;
         const key = r.no_po + '||' + r.kode_sku;
         if (!poData[key]) poData[key] = { noPo: r.no_po, kodeSku: r.kode_sku, supplier: r.supplier, qtyOpenPO: 0, statusPo: r.status_po, qtyReceive: 0, qtyQC: 0, qtyPutaway: 0 };
         poData[key].qtyOpenPO += Number(r.qty_awal || 0);
       });
-      (mh.data || []).forEach(r => {
+      (mh || []).forEach(r => {
         if (!_cocokBulanTahun(r.waktu, bulan, tahun)) return;
         const key = r.ref + '||' + r.kode_sku;
         if (!poData[key]) return;
         if (r.tipe === 'RECEIVING_INBOUND') poData[key].qtyReceive += Number(r.qty || 0);
         if (r.tipe === 'PUTAWAY_FG' || r.tipe === 'PUTAWAY_RETURN') poData[key].qtyPutaway += Number(r.qty || 0);
       });
-      (dq.data || []).forEach(r => {
+      (dq || []).forEach(r => {
         if (!r.kode_sku || !r.ref || Number(r.total_qc || 0) <= 0 || !_cocokBulanTahun(r.waktu, bulan, tahun)) return;
         const key = r.ref + '||' + r.kode_sku;
         if (poData[key]) poData[key].qtyQC += Number(r.total_qc || 0);
@@ -574,11 +597,14 @@ Object.assign(ENDPOINTS, {
 
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
-    const [fgRows, ib, rt, po, summaryRes] = await Promise.all([
+    // PERBAIKAN BUG (pencegahan): open_po sudah 700+ baris, mendekati limit 1000/request
+    // Supabase -- diganti ke _fetchAllRows sebelum benar-benar kena limit & datanya diam-diam
+    // terpotong (sama seperti kejadian di master_sku/movement_history/stock_fg).
+    const [fgRows, ib, rt, poRows, summaryRes] = await Promise.all([
       _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
       _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
       _sb.from('stock_return').select('kode_sku, qty, lokasi, grade'),
-      _sb.from('open_po').select('no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
+      _fetchAllRows('open_po', 'no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
       _sb.from('dashboard_stock_summary').select('sku_aktif, total_qty_available, total_qty_on_hand').single()
     ]);
     const mapFG = {}; const orderFG = [];
@@ -591,7 +617,7 @@ Object.assign(ENDPOINTS, {
     });
     const stockInbound = (ib.data || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
     const stockReturn = (rt.data || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
-    const stockOpenPO = (po.data || []).filter(r => r.kode_sku && r.qty_order > 0 && (r.status_po || '').toLowerCase() === 'active')
+    const stockOpenPO = (poRows || []).filter(r => r.kode_sku && r.qty_order > 0 && (r.status_po || '').toLowerCase() === 'active')
       .map(r => ({ noPo: r.no_po, supplier: r.supplier, sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', qtyOpenPO: r.qty_order, kategori: r.kategori, tanggal: _tglDMY(r.created_date), status: r.status_po }));
     const stockSummary = summaryRes && summaryRes.data ? {
       skuAktif: Number(summaryRes.data.sku_aktif || 0),
@@ -618,26 +644,29 @@ Object.assign(ENDPOINTS, {
 
   getListNoRequestReadyToShip: async () => {
     try {
-      const [chk, req] = await Promise.all([
-        _sb.from('checking').select('no_request, kode_sku, qty_checker, status, no_so'),
-        _sb.from('outbound_request').select('no_request, tanggal_request, tujuan, kode_sku, status')
+      // PERBAIKAN BUG (PENTING): sebelumnya checking (1.100+ baris) & outbound_request (1.800+
+      // baris) diambil langsung tanpa paging -- keduanya sudah di atas limit 1000/request
+      // Supabase, jadi daftar "No Request Siap Kirim" di modul Export Surat Jalan bisa diam-diam
+      // KEHILANGAN sebagian No Request (terutama yang lebih baru, karena baris yang terpotong
+      // biasanya baris "sisa" di akhir hasil). Sekarang pakai _fetchAllRows.
+      const [chkData, reqData] = await Promise.all([
+        _fetchAllRows('checking', 'no_request, kode_sku, qty_checker, status, no_so'),
+        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tujuan, kode_sku, status')
       ]);
-      if (chk.error) throw new Error(chk.error.message);
-      if (req.error) throw new Error(req.error.message);
 
       // BARU: kumpulkan No Request yang SUDAH divalidasi (sudah ada No SO-nya) -- ini tidak akan ditampilkan lagi.
       const sudahDivalidasiSet = new Set(
-        (chk.data || []).filter(r => (r.no_so || '').trim() !== '').map(r => r.no_request)
+        (chkData || []).filter(r => (r.no_so || '').trim() !== '').map(r => r.no_request)
       );
 
       const statusMap = {};
-      (req.data || []).forEach(r => {
+      (reqData || []).forEach(r => {
         if (!r.no_request) return;
         if (!statusMap[r.no_request]) statusMap[r.no_request] = { skuWajibSet: new Set(), kodeStore: r.tujuan, tglRequest: _tglDMY(r.tanggal_request) };
         if (r.kode_sku && (r.status || '').toLowerCase() !== 'cancelled') statusMap[r.no_request].skuWajibSet.add(r.kode_sku);
       });
       const mapRequest = {};
-      (chk.data || []).forEach(r => {
+      (chkData || []).forEach(r => {
         if (!r.no_request || r.status !== 'Ready to Ship') return;
         if (sudahDivalidasiSet.has(r.no_request)) return;
         if (!mapRequest[r.no_request]) mapRequest[r.no_request] = { skuSet: new Set(), totalQty: 0 };
@@ -737,13 +766,17 @@ Object.assign(ENDPOINTS, {
 
   getInventoryExportData: async () => {
     try {
+      // PERBAIKAN BUG (PENTING): stock_fg sudah 4.900+ baris (jauh di atas limit 1000/request
+      // Supabase). Sebelumnya diambil langsung tanpa paging, jadi hasil "Export Laporan
+      // Inventory" diam-diam hanya berisi ~1000 baris pertama dari Stock_FG -- laporan yang
+      // didownload TIDAK LENGKAP walau terlihat berhasil (tidak ada pesan error).
       const mapDesc = await _getMasterSkuDescMap();
-      const [fg, ib, rt] = await Promise.all([
-        _sb.from('stock_fg').select('kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
+      const [fgData, ib, rt] = await Promise.all([
+        _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
         _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
         _sb.from('stock_return').select('kode_sku, qty, lokasi, grade')
       ]);
-      const stockFG = (fg.data || []).filter(r => r.kode_sku).map(r => ({
+      const stockFG = (fgData || []).filter(r => r.kode_sku).map(r => ({
         sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', grade: r.grade, lokasi: r.kode_lokasi,
         qtyOnHand: r.qty_on_hand, qtyAvailable: r.qty_available, status: r.status,
         lastUpdate: r.last_update ? new Date(r.last_update).toLocaleString('id-ID') : ''
@@ -786,8 +819,13 @@ Object.assign(ENDPOINTS, {
 
   getStockFGForRequestQCUlang: async () => {
     try {
-      const { data, error } = await _sb.from('stock_fg').select('kode_sku, grade, kode_lokasi, status, qty_available').gt('qty_available', 0).ilike('status', 'available');
-      if (error) throw new Error(error.message);
+      // PERBAIKAN BUG (pencegahan): stock_fg total sudah 4.900+ baris. Query ini punya filter
+      // (qty_available>0 & status Available) jadi hasilnya lebih sedikit dari total tabel, tapi
+      // tetap berisiko lewat 1000 baris seiring stok bertambah banyak lokasi/grade. Pakai
+      // _fetchAllRows (dengan filter yang sama lewat parameter "extra") supaya aman dari limit
+      // 1000/request Supabase berapa pun jumlah baris yang cocok filter.
+      const data = await _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, status, qty_available',
+        (q) => q.gt('qty_available', 0).ilike('status', 'available'));
       const skuMap = {};
       (data || []).forEach(r => {
         if (!r.kode_sku) return;
