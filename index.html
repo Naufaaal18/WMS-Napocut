@@ -4577,6 +4577,7 @@ async function eksekusiAddSkuOutbound() {
                 <option value="Inventory Controller">Inventory Controller (Inbound, Putaway Return, Picking Outbound, Picking QC Ulang, Inventory, Movement History)</option>
                 <option value="Demand Planner">Demand Planner (Dashboard Stock FG, Export Laporan, Outbound Request)</option>
                 <option value="RnD">RnD (Dashboard Stock FG, Export Laporan, Outbound Request, Request QC Ulang Otomatis)</option>
+                <option value="Marketing">Marketing (Dashboard Stock FG, Export Laporan)</option>
               </select>
             </div>
             <div class="col-6">
@@ -5050,6 +5051,7 @@ async function eksekusiAddSkuOutbound() {
         'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
         'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
         'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
+        'Marketing':            ['INV_DASHBOARD', 'EXPORT_LAPORAN'],
         'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                   'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
       };
@@ -9963,7 +9965,7 @@ async function eksekusiCancelOutbound() {
       'Administrator': 'dark', 'Admin': 'danger', 'Supervisor Gudang': 'danger', 'Manager Gudang': 'danger',
       'Admin QC': 'info', 'Petugas QC': 'primary', 'Tim Swarovski': 'info', 'Petugas Putaway': 'primary', 'Picker': 'primary',
       'Checker': 'primary', 'Staff Inbound': 'primary', 'Inventory Controller': 'secondary',
-      'Demand Planner': 'secondary', 'RnD': 'secondary'
+      'Demand Planner': 'secondary', 'RnD': 'secondary', 'Marketing': 'warning'
     };
 
     function loadKelolaUserData() {
