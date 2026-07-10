@@ -380,6 +380,34 @@ Object.assign(ENDPOINTS, {
     if (error) throw new Error(error.message);
     return data || [];
   },
+  // FITUR BARU: Batasi 1 klaim aktif per picker -- dipakai untuk menampilkan banner
+  // "Anda masih punya klaim aktif di Request X" di kedua modul Picking.
+  getMyActivePickingClaim: async (picker) => {
+    if (!picker) return null;
+    const { data, error } = await _sb.from('picking_claims')
+      .select('no_request, kode_sku, lokasi, claimed_at').ilike('picker', picker).eq('status', 'Claimed')
+      .order('claimed_at', { ascending: false }).limit(1);
+    if (error) throw new Error(error.message);
+    return (data && data[0]) || null;
+  },
+  // FITUR BARU: Dashboard Monitoring Klaim Picking (khusus SPV/Admin) -- daftar klaim yang
+  // SEDANG aktif (status Claimed) di seluruh gudang, lintas picker & lintas Request.
+  getActivePickingClaimsAll: async () => {
+    const { data, error } = await _sb.from('picking_claims')
+      .select('no_request, tipe_request, kode_sku, grade, lokasi, picker, claimed_at')
+      .eq('status', 'Claimed').order('claimed_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+  // Riwayat klaim yang sudah selesai/dilepas/kedaluwarsa, buat lihat pola & durasi kerja picker.
+  getPickingClaimsHistory: async (limit) => {
+    const { data, error } = await _sb.from('picking_claims')
+      .select('no_request, tipe_request, kode_sku, grade, lokasi, picker, status, claimed_at, released_at')
+      .in('status', ['Completed', 'Released', 'Expired'])
+      .order('released_at', { ascending: false }).limit(limit || 100);
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
     // PENTING: urutan HARUS sama dengan urutan yang dipakai submit_outbound_request_multi /
@@ -1767,6 +1795,11 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-inbound')">
           <span class="sub-dot dot-dashob"></span>
           <span class="sub-module-name">Dashboard Inbound</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-picking-monitor')">
+          <span class="sub-dot dot-dashob"></span>
+          <span class="sub-module-name">Monitoring Klaim Picking</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -3225,6 +3258,7 @@ async function eksekusiAddSkuOutbound() {
       <div id="sub-picking" class="card p-3 mb-3 border-start border-4 border-warning d-none">
         <h6 class="fw-bold text-warning mb-2"><i class="fa-solid fa-boxes-packing me-2"></i>Picking Outbound
           (Validasi SKU &amp; Lokasi)</h6>
+        <div id="pc-klaim-aktif-banner" class="d-none"></div>
         <div class="row g-2">
           <div class="col-12">
             <label class="form-label small fw-bold mb-0">No Request Outbound (Status: Picking Pending)</label>
@@ -3372,6 +3406,7 @@ async function eksekusiAddSkuOutbound() {
       <div id="sub-picking-qc-ulang" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#8E24AA !important;">
         <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Picking QC Ulang</h6>
         <p class="text-muted small mb-2">Ambil barang dari lokasi rak untuk Request QC Ulang yang sudah dialokasikan sistem. Setelah diproses, barang langsung masuk Staging QC (siap diperiksa ulang di modul QC Produk &gt; Re-Check QC). Tersedia fitur <strong>Short Pick</strong> (jika stok fisik di lokasi tidak sesuai) dan <strong>Override Lokasi</strong> (jika lokasi allocated sistem ternyata kosong), sama seperti Picking Outbound.</p>
+        <div id="pcqc-klaim-aktif-banner" class="d-none"></div>
 
         <div class="row g-2">
           <div class="col-12">
@@ -3866,6 +3901,97 @@ async function eksekusiAddSkuOutbound() {
         </div>
 
         <div id="ib-dash-alert" class="mt-2"></div>
+      </div>
+
+      <!-- SUB: MONITORING KLAIM PICKING (khusus SPV/Admin) -->
+      <div id="sub-dashob-picking-monitor" class="card p-3 mb-3 border-start border-4" style="border-color:#F57C00!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#F57C00;"><i class="fa-solid fa-hand me-2"></i>Monitoring Klaim Picking</h6>
+          <div class="d-flex gap-1 align-items-center">
+            <span class="badge bg-success" id="pcm-live-badge" style="font-size:10px;"><i class="fa-solid fa-circle fa-2xs me-1"></i>Live</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadPickingClaimsMonitor()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+        <p class="text-muted small mb-2">Menampilkan baris SKU yang SEDANG diklaim/dikerjakan picker secara real-time (auto-refresh tiap 15 detik), gabungan Picking Outbound &amp; Picking QC Ulang. 1 picker maksimal 1 klaim aktif — kalau ada baris terkunci lama, kemungkinan picker itu sedang kesulitan dan perlu dibantu.</p>
+
+        <!-- Summary Cards -->
+        <div class="row g-2 mb-3 text-center">
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Klaim Aktif</div>
+              <div class="fw-bold fs-5" style="color:#F57C00;" id="pcm-sum-aktif">-</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Picker Bekerja</div>
+              <div class="fw-bold fs-5 text-primary" id="pcm-sum-picker">-</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Lama (&gt;20 mnt)</div>
+              <div class="fw-bold fs-5 text-danger" id="pcm-sum-lama">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabel Klaim Aktif -->
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <small class="fw-bold text-secondary">Sedang Dikerjakan Sekarang</small>
+          <input type="text" id="pcm-filter-picker" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter nama picker" oninput="renderPickingClaimsMonitorActive()">
+        </div>
+        <div class="table-responsive" style="max-height:320px;">
+          <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+            <thead class="table-light" style="position:sticky;top:0;">
+              <tr>
+                <th>Picker</th>
+                <th>No Request</th>
+                <th>Tipe</th>
+                <th>SKU</th>
+                <th>Grade</th>
+                <th>Lokasi</th>
+                <th class="text-center">Sejak</th>
+                <th class="text-center">Durasi</th>
+              </tr>
+            </thead>
+            <tbody id="pcm-tbody-aktif">
+              <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Riwayat Klaim (collapsible) -->
+        <div class="mt-3">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" style="font-size:11px;" data-bs-toggle="collapse" data-bs-target="#pcm-riwayat-box">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i>Lihat Riwayat Klaim Terakhir (Selesai/Dilepas/Kedaluwarsa)
+          </button>
+          <div class="collapse mt-2" id="pcm-riwayat-box">
+            <div class="table-responsive" style="max-height:300px;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                <thead class="table-light" style="position:sticky;top:0;">
+                  <tr>
+                    <th>Waktu Selesai</th>
+                    <th>Picker</th>
+                    <th>No Request</th>
+                    <th>Tipe</th>
+                    <th>SKU</th>
+                    <th>Lokasi</th>
+                    <th>Status</th>
+                    <th class="text-center">Durasi Kerja</th>
+                  </tr>
+                </thead>
+                <tbody id="pcm-tbody-riwayat">
+                  <tr><td colspan="8" class="text-center text-muted py-3">Klik untuk memuat riwayat...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="pcm-alert" class="mt-2"></div>
       </div>
 
     </div>
@@ -5184,7 +5310,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
-          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound']
+          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor']
         };
         const daftarSub = mapSubCards[modulId];
         if (daftarSub) {
@@ -5202,12 +5328,21 @@ async function eksekusiAddSkuOutbound() {
       } else {
         stopLiveCheckerMonitorPolling();
       }
+
+      // FITUR BARU: sama seperti Live Monitor Checker, Dashboard Monitoring Klaim Picking
+      // hanya auto-polling selagi sub-card-nya benar-benar terbuka.
+      if (subCardId === 'sub-dashob-picking-monitor') {
+        startPickingClaimMonitorPolling();
+      } else {
+        stopPickingClaimMonitorPolling();
+      }
     }
 
     // Tombol back ke home dari dalam modul (dipanggil dari header konten-aplikasi)
     function kembaliKeHome() {
       stopLiveCheckerMonitorPolling();
       stopLiveMovementPolling();
+      stopPickingClaimMonitorPolling();
       document.getElementById('konten-aplikasi').style.display = 'none';
       document.querySelector('.nav-bottom').style.display = 'none';
       document.getElementById('halaman-home').style.display = 'block';
@@ -5221,6 +5356,11 @@ async function eksekusiAddSkuOutbound() {
       // oleh bukaModulDariHome()/onclick sub-card jika tujuan memang sub-live-checker-monitor.
       if (modulId !== 'modul-checking') {
         stopLiveCheckerMonitorPolling();
+      }
+      // FITUR BARU: sama seperti Live Monitor Checker, hentikan polling Dashboard Monitoring
+      // Klaim Picking setiap kali pindah tab keluar dari modul-dashob.
+      if (modulId !== 'modul-dashob') {
+        stopPickingClaimMonitorPolling();
       }
       // FITUR BARU: sama seperti Live Monitor Checker, hentikan polling Live Movement
       // History setiap kali pindah tab ke modul lain (supaya tidak terus mengirim
@@ -5348,6 +5488,40 @@ async function eksekusiAddSkuOutbound() {
         item.claimedByMe = !!(pickerKlaim && pickerKlaim.trim().toLowerCase() === namaSaya);
       });
       return list;
+    }
+
+    // FITUR BARU: Batasi 1 klaim aktif per picker -- tampilkan banner peringatan di kedua
+    // modul Picking (Outbound & QC Ulang) kalau picker yang sedang login masih punya 1
+    // klaim yang belum diselesaikan/dilepas, supaya dia langsung tahu harus kemana.
+    async function _perbaruiBannerKlaimAktif() {
+      const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || '';
+      if (!picker) return;
+
+      const bannerOutbound = document.getElementById('pc-klaim-aktif-banner');
+      const bannerQcUlang = document.getElementById('pcqc-klaim-aktif-banner');
+
+      let claim = null;
+      try {
+        claim = await ENDPOINTS.getMyActivePickingClaim(picker);
+      } catch (err) {
+        return; // gagal cek status klaim -- diamkan saja, jangan ganggu UI utama
+      }
+
+      if (!claim) {
+        if (bannerOutbound) { bannerOutbound.className = 'd-none'; bannerOutbound.innerHTML = ''; }
+        if (bannerQcUlang) { bannerQcUlang.className = 'd-none'; bannerQcUlang.innerHTML = ''; }
+        return;
+      }
+
+      const pesan = `
+        <div class="alert alert-warning py-2 px-2 mb-2" style="font-size:12px;">
+          <i class="fa-solid fa-triangle-exclamation me-1"></i>Anda masih punya <strong>1 klaim aktif</strong> yang belum selesai:
+          Request <strong>${claim.no_request}</strong>, SKU <strong>${claim.kode_sku}</strong>, Lokasi <strong>${claim.lokasi}</strong>.
+          Selesaikan (Proses/Short Pick) atau Lepas Klaim baris itu dulu sebelum bisa klaim baris baru.
+        </div>`;
+
+      if (bannerOutbound) { bannerOutbound.className = ''; bannerOutbound.innerHTML = pesan; }
+      if (bannerQcUlang) { bannerQcUlang.className = ''; bannerQcUlang.innerHTML = pesan; }
     }
 
     // State picking saat ini
@@ -5661,10 +5835,13 @@ async function eksekusiAddSkuOutbound() {
         item.claimedBy = picker;
         item.claimedByMe = true;
         renderPickingRows();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal klaim: ' + err.message, 'danger');
-        // Kemungkinan baris ini baru saja diklaim picker lain -- muat ulang status terbaru
+        // Kemungkinan baris ini baru saja diklaim picker lain, atau picker masih punya
+        // klaim aktif lain (batas 1 klaim) -- muat ulang status terbaru & banner.
         onPickingRequestSelected();
+        _perbaruiBannerKlaimAktif();
       }
     }
 
@@ -5681,6 +5858,7 @@ async function eksekusiAddSkuOutbound() {
         item.claimedBy = null;
         item.claimedByMe = false;
         renderPickingRows();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal melepas klaim: ' + err.message, 'danger');
       }
@@ -5894,6 +6072,7 @@ async function eksekusiAddSkuOutbound() {
             renderPickingRows();
             loadPickingPendingRequests();
             document.getElementById('pc-req').value = noRequest;
+            _perbaruiBannerKlaimAktif();
           }).catch(() => renderPickingRows());
         })
         .withFailureHandler(err => {
@@ -5950,6 +6129,7 @@ async function eksekusiAddSkuOutbound() {
             renderPickingRows();
             loadPickingPendingRequests();
             document.getElementById('pc-req').value = noRequest;
+            _perbaruiBannerKlaimAktif();
           }).catch(() => renderPickingRows());
         })
         .withFailureHandler(err => {
@@ -5962,6 +6142,7 @@ async function eksekusiAddSkuOutbound() {
     document.addEventListener("DOMContentLoaded", function() {
       loadPickingPendingRequests();
       loadDashboardCheckerRequests();
+      _perbaruiBannerKlaimAktif();
     });
 
     // ==========================================
@@ -6369,6 +6550,160 @@ async function eksekusiAddSkuOutbound() {
         keluarLiveCheckerFullscreen();
       }
     }
+
+    // =========================================================================
+    // FITUR BARU: DASHBOARD MONITORING KLAIM PICKING (khusus SPV/Admin)
+    // Menampilkan baris SKU yang sedang diklaim/dikerjakan picker secara real-time,
+    // gabungan Picking Outbound & Picking QC Ulang (sama-sama pakai tabel picking_claims).
+    // =========================================================================
+    let pcmIntervalId = null;
+    const PCM_REFRESH_MS = 15000; // auto-refresh tiap 15 detik selama sub-modul ini terbuka
+    const PCM_AMBANG_LAMA_MENIT = 20; // klaim di atas ini dianggap "lama" (klaim expired otomatis di 30 menit)
+    let pcmDataAktifTerakhir = [];
+    let pcmRiwayatSudahDimuat = false;
+
+    function _pcmFormatDurasi(detik) {
+      if (detik < 60) return `${detik} dtk`;
+      const menit = Math.floor(detik / 60);
+      const sisaDetik = detik % 60;
+      if (menit < 60) return `${menit} mnt ${sisaDetik}dtk`;
+      const jam = Math.floor(menit / 60);
+      return `${jam} jam ${menit % 60} mnt`;
+    }
+
+    async function loadPickingClaimsMonitor() {
+      const badge = document.getElementById('pcm-live-badge');
+      const alertBox = document.getElementById('pcm-alert');
+      if (badge) { badge.className = 'badge bg-warning text-dark'; badge.innerHTML = '<i class="fa-solid fa-circle fa-2xs me-1"></i>Memuat...'; }
+
+      try {
+        pcmDataAktifTerakhir = await ENDPOINTS.getActivePickingClaimsAll();
+        if (badge) { badge.className = 'badge bg-success'; badge.innerHTML = '<i class="fa-solid fa-circle fa-2xs me-1"></i>Live'; }
+        if (alertBox) alertBox.innerHTML = '';
+        renderPickingClaimsMonitorActive();
+        // Kalau box riwayat sedang terbuka, ikut refresh juga
+        const riwayatBox = document.getElementById('pcm-riwayat-box');
+        if (riwayatBox && riwayatBox.classList.contains('show')) {
+          loadPickingClaimsMonitorHistory();
+        }
+      } catch (err) {
+        if (badge) { badge.className = 'badge bg-danger'; badge.innerHTML = '<i class="fa-solid fa-circle fa-2xs me-1"></i>Gagal'; }
+        if (alertBox) alertBox.innerHTML = `<div class="alert alert-danger small py-2 mb-0">Gagal memuat data monitoring: ${err.message}</div>`;
+      }
+    }
+
+    function renderPickingClaimsMonitorActive() {
+      const tbody = document.getElementById('pcm-tbody-aktif');
+      const filterPicker = (document.getElementById('pcm-filter-picker').value || '').trim().toLowerCase();
+      const sekarang = Date.now();
+
+      let rows = pcmDataAktifTerakhir;
+      if (filterPicker) {
+        rows = rows.filter(r => (r.picker || '').toLowerCase().includes(filterPicker));
+      }
+
+      // Update summary cards (dihitung dari SELURUH data aktif, tidak terpengaruh filter picker)
+      const totalAktif = pcmDataAktifTerakhir.length;
+      const pickerUnik = new Set(pcmDataAktifTerakhir.map(r => (r.picker || '').trim().toLowerCase())).size;
+      const totalLama = pcmDataAktifTerakhir.filter(r => (sekarang - new Date(r.claimed_at).getTime()) / 60000 > PCM_AMBANG_LAMA_MENIT).length;
+      document.getElementById('pcm-sum-aktif').innerText = totalAktif;
+      document.getElementById('pcm-sum-picker').innerText = pickerUnik;
+      document.getElementById('pcm-sum-lama').innerText = totalLama;
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada klaim aktif saat ini.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => {
+        const claimedAt = new Date(r.claimed_at);
+        const menitBerjalan = (sekarang - claimedAt.getTime()) / 60000;
+        const detikBerjalan = Math.max(0, Math.round((sekarang - claimedAt.getTime()) / 1000));
+        let clsDurasi = 'text-success';
+        if (menitBerjalan > PCM_AMBANG_LAMA_MENIT) clsDurasi = 'text-danger fw-bold';
+        else if (menitBerjalan > 10) clsDurasi = 'text-warning fw-bold';
+
+        const isQcUlang = r.tipe_request === 'QC Ulang';
+        const styleTipe = isQcUlang ? 'background:#8E24AA;font-size:9px;' : 'font-size:9px;';
+        const clsTipe = isQcUlang ? 'badge' : 'badge bg-info';
+
+        return `
+          <tr>
+            <td class="fw-bold">${r.picker || '-'}</td>
+            <td>${r.no_request}</td>
+            <td><span class="${clsTipe}" style="${styleTipe}">${r.tipe_request || '-'}</span></td>
+            <td>${r.kode_sku}</td>
+            <td>${r.grade || '-'}</td>
+            <td>${r.lokasi}</td>
+            <td class="text-center" style="white-space:nowrap;">${claimedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</td>
+            <td class="text-center ${clsDurasi}" style="white-space:nowrap;">${_pcmFormatDurasi(detikBerjalan)}</td>
+          </tr>`;
+      }).join('');
+    }
+
+    async function loadPickingClaimsMonitorHistory() {
+      const tbody = document.getElementById('pcm-tbody-riwayat');
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Memuat riwayat...</td></tr>';
+      try {
+        const list = await ENDPOINTS.getPickingClaimsHistory(100);
+        pcmRiwayatSudahDimuat = true;
+        if (!list || list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Belum ada riwayat.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map(r => {
+          const claimedAt = new Date(r.claimed_at);
+          const releasedAt = r.released_at ? new Date(r.released_at) : null;
+          const durasi = releasedAt ? _pcmFormatDurasi(Math.max(0, Math.round((releasedAt.getTime() - claimedAt.getTime()) / 1000))) : '-';
+          let clsStatus = 'bg-secondary';
+          if (r.status === 'Completed') clsStatus = 'bg-success';
+          else if (r.status === 'Released') clsStatus = 'bg-secondary';
+          else if (r.status === 'Expired') clsStatus = 'bg-danger';
+          const isQcUlang = r.tipe_request === 'QC Ulang';
+          const badgeTipeHtml = isQcUlang
+            ? `<span class="badge" style="background:#8E24AA;">${r.tipe_request}</span>`
+            : `<span class="badge bg-info">${r.tipe_request || '-'}</span>`;
+          return `
+            <tr>
+              <td style="white-space:nowrap;">${releasedAt ? releasedAt.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
+              <td class="fw-bold">${r.picker || '-'}</td>
+              <td>${r.no_request}</td>
+              <td>${badgeTipeHtml}</td>
+              <td>${r.kode_sku}</td>
+              <td>${r.lokasi}</td>
+              <td><span class="badge ${clsStatus}">${r.status}</span></td>
+              <td class="text-center">${durasi}</td>
+            </tr>`;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">Gagal memuat riwayat: ${err.message}</td></tr>`;
+      }
+    }
+
+    // Mulai auto-refresh berkala (dipanggil saat sub-modul ini ditampilkan)
+    function startPickingClaimMonitorPolling() {
+      stopPickingClaimMonitorPolling(); // pastikan tidak dobel interval
+      loadPickingClaimsMonitor();
+      pcmIntervalId = setInterval(loadPickingClaimsMonitor, PCM_REFRESH_MS);
+    }
+
+    // Hentikan auto-refresh (dipanggil saat pindah ke sub-modul/tab lain agar tidak boros request)
+    function stopPickingClaimMonitorPolling() {
+      if (pcmIntervalId) {
+        clearInterval(pcmIntervalId);
+        pcmIntervalId = null;
+      }
+    }
+
+    // Muat riwayat otomatis begitu box collapse-nya pertama kali dibuka oleh SPV/Admin
+    document.addEventListener('DOMContentLoaded', function() {
+      const riwayatBox = document.getElementById('pcm-riwayat-box');
+      if (riwayatBox) {
+        riwayatBox.addEventListener('show.bs.collapse', function() {
+          loadPickingClaimsMonitorHistory();
+        });
+      }
+    });
 
     // Aktif/nonaktifkan mode Full Screen untuk Live Monitor Checker.
     // Memakai Fullscreen API browser (kalau didukung) DAN class CSS sebagai fallback,
@@ -11154,9 +11489,11 @@ async function eksekusiCancelOutbound() {
         item.claimedBy = picker;
         item.claimedByMe = true;
         renderPickingQcUlangFromState();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal klaim: ' + err.message, 'danger');
         onPickingQcUlangRequestSelected();
+        _perbaruiBannerKlaimAktif();
       }
     }
 
@@ -11171,6 +11508,7 @@ async function eksekusiCancelOutbound() {
         item.claimedBy = null;
         item.claimedByMe = false;
         renderPickingQcUlangFromState();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal melepas klaim: ' + err.message, 'danger');
       }
@@ -11204,6 +11542,7 @@ async function eksekusiCancelOutbound() {
         const res = await _gsr('processPickingQCUlangSKU', payload);
         showAlert(res.message, 'success');
         onPickingQcUlangRequestSelected();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal Picking: ' + err.message, 'danger');
       }
@@ -11247,6 +11586,7 @@ async function eksekusiCancelOutbound() {
         const res = await _gsr('processPickingQCUlangSKU', payload);
         showAlert(res.message, 'success');
         onPickingQcUlangRequestSelected();
+        _perbaruiBannerKlaimAktif();
       } catch (err) {
         showAlert('🚨 Gagal Short Pick: ' + err.message, 'danger');
       }
