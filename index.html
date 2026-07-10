@@ -408,6 +408,10 @@ Object.assign(ENDPOINTS, {
     if (error) throw new Error(error.message);
     return data || [];
   },
+  // Laporan Produktivitas Picker -- agregasi jumlah baris & durasi kerja per picker, per rentang tanggal.
+  getPickingProductivityReport: (tglMulai, tglSelesai) => _callRpc('get_picking_productivity_report', {
+    p_tanggal_mulai: tglMulai, p_tanggal_selesai: tglSelesai
+  }),
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
     // PENTING: urutan HARUS sama dengan urutan yang dipakai submit_outbound_request_multi /
@@ -3932,7 +3936,7 @@ async function eksekusiAddSkuOutbound() {
           </div>
           <div class="col-4">
             <div class="border rounded p-2">
-              <div class="small text-muted">Lama (&gt;20 mnt)</div>
+              <div class="small text-muted">Lama (&gt;10 mnt)</div>
               <div class="fw-bold fs-5 text-danger" id="pcm-sum-lama">-</div>
             </div>
           </div>
@@ -3989,6 +3993,45 @@ async function eksekusiAddSkuOutbound() {
               </table>
             </div>
           </div>
+        </div>
+
+        <!-- Laporan Produktivitas Picker -->
+        <div class="mt-3">
+          <h6 class="fw-bold small text-secondary mb-2"><i class="fa-solid fa-ranking-star me-1"></i>Laporan Produktivitas Picker</h6>
+          <div class="row g-2 mb-2 align-items-end">
+            <div class="col-5">
+              <label class="form-label small fw-bold mb-0">Dari Tanggal</label>
+              <input type="date" id="pcm-prod-tgl-mulai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
+            </div>
+            <div class="col-5">
+              <label class="form-label small fw-bold mb-0">Sampai Tanggal</label>
+              <input type="date" id="pcm-prod-tgl-selesai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
+            </div>
+            <div class="col-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="loadPickingProductivityReport()" title="Muat Ulang">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height:320px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+              <thead class="table-light" style="position:sticky;top:0;">
+                <tr>
+                  <th>#</th>
+                  <th>Picker</th>
+                  <th class="text-center">Total Selesai</th>
+                  <th class="text-center">Outbound</th>
+                  <th class="text-center">QC Ulang</th>
+                  <th class="text-center">Rata-rata / Baris</th>
+                  <th class="text-center">Total Waktu Kerja</th>
+                </tr>
+              </thead>
+              <tbody id="pcm-prod-tbody">
+                <tr><td colspan="7" class="text-center text-muted py-3">Pilih rentang tanggal untuk melihat laporan.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="pcm-prod-alert" class="mt-2"></div>
         </div>
 
         <div id="pcm-alert" class="mt-2"></div>
@@ -6558,7 +6601,7 @@ async function eksekusiAddSkuOutbound() {
     // =========================================================================
     let pcmIntervalId = null;
     const PCM_REFRESH_MS = 15000; // auto-refresh tiap 15 detik selama sub-modul ini terbuka
-    const PCM_AMBANG_LAMA_MENIT = 20; // klaim di atas ini dianggap "lama" (klaim expired otomatis di 30 menit)
+    const PCM_AMBANG_LAMA_MENIT = 10; // klaim di atas ini dianggap "lama" (klaim expired otomatis di 30 menit)
     let pcmDataAktifTerakhir = [];
     let pcmRiwayatSudahDimuat = false;
 
@@ -6621,7 +6664,7 @@ async function eksekusiAddSkuOutbound() {
         const detikBerjalan = Math.max(0, Math.round((sekarang - claimedAt.getTime()) / 1000));
         let clsDurasi = 'text-success';
         if (menitBerjalan > PCM_AMBANG_LAMA_MENIT) clsDurasi = 'text-danger fw-bold';
-        else if (menitBerjalan > 10) clsDurasi = 'text-warning fw-bold';
+        else if (menitBerjalan > PCM_AMBANG_LAMA_MENIT / 2) clsDurasi = 'text-warning fw-bold';
 
         const isQcUlang = r.tipe_request === 'QC Ulang';
         const styleTipe = isQcUlang ? 'background:#8E24AA;font-size:9px;' : 'font-size:9px;';
@@ -6685,6 +6728,52 @@ async function eksekusiAddSkuOutbound() {
       stopPickingClaimMonitorPolling(); // pastikan tidak dobel interval
       loadPickingClaimsMonitor();
       pcmIntervalId = setInterval(loadPickingClaimsMonitor, PCM_REFRESH_MS);
+
+      // Set default rentang tanggal Laporan Produktivitas ke "hari ini" kalau belum diisi,
+      // lalu muat laporannya sekali setiap sub-modul ini dibuka.
+      const elMulai = document.getElementById('pcm-prod-tgl-mulai');
+      const elSelesai = document.getElementById('pcm-prod-tgl-selesai');
+      if (elMulai && !elMulai.value) {
+        const hariIni = new Date().toISOString().slice(0, 10);
+        elMulai.value = hariIni;
+        elSelesai.value = hariIni;
+      }
+      loadPickingProductivityReport();
+    }
+
+    // Laporan Produktivitas Picker: agregasi jumlah baris SKU yang berhasil diselesaikan
+    // (status Completed) per picker, dalam rentang tanggal yang dipilih SPV/Admin.
+    async function loadPickingProductivityReport() {
+      const tbody = document.getElementById('pcm-prod-tbody');
+      const alertBox = document.getElementById('pcm-prod-alert');
+      const tglMulai = document.getElementById('pcm-prod-tgl-mulai').value;
+      const tglSelesai = document.getElementById('pcm-prod-tgl-selesai').value;
+
+      if (!tglMulai || !tglSelesai) return;
+
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Memuat laporan...</td></tr>';
+      if (alertBox) alertBox.innerHTML = '';
+
+      try {
+        const list = await ENDPOINTS.getPickingProductivityReport(tglMulai, tglSelesai);
+        if (!list || list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada baris yang selesai diproses pada rentang tanggal ini.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = list.map((r, i) => `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td class="fw-bold">${r.picker || '-'}</td>
+            <td class="text-center fw-bold">${r.total_selesai}</td>
+            <td class="text-center">${r.total_outbound}</td>
+            <td class="text-center">${r.total_qc_ulang}</td>
+            <td class="text-center">${_pcmFormatDurasi(Math.round(Number(r.rata_rata_durasi_detik || 0)))}</td>
+            <td class="text-center">${_pcmFormatDurasi(Math.round(Number(r.total_durasi_detik || 0)))}</td>
+          </tr>`).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat laporan.</td></tr>';
+        if (alertBox) alertBox.innerHTML = `<div class="alert alert-danger small py-2 mb-0">Gagal memuat laporan produktivitas: ${err.message}</div>`;
+      }
     }
 
     // Hentikan auto-refresh (dipanggil saat pindah ke sub-modul/tab lain agar tidak boros request)
