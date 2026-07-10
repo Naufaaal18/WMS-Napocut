@@ -380,6 +380,20 @@ Object.assign(ENDPOINTS, {
     if (error) throw new Error(error.message);
     return data || [];
   },
+  // FITUR BARU: Cek pemakaian Plastik ID di Dashboard Checker -- 1 Plastik ID hanya
+  // boleh dipakai untuk 1 No Request. Dipakai untuk validasi real-time di depan (saat
+  // Plastik ID diketik/di-scan), SEBELUM submit. Validasi final/aman tetap ada di
+  // fungsi verify_checking_by_sku (backend), jadi ini murni untuk UX cepat.
+  checkPlastikIdTerpakai: async (plastikId, noRequestSaatIni) => {
+    const pid = (plastikId || '').trim();
+    if (!pid) return { terpakai: false };
+    const { data, error } = await _sb.from('checking')
+      .select('no_request').ilike('plastik_id', pid).limit(20);
+    if (error) throw new Error(error.message);
+    const bedaRequest = (data || []).find(r => (r.no_request || '').trim().toUpperCase() !== (noRequestSaatIni || '').trim().toUpperCase());
+    if (bedaRequest) return { terpakai: true, noRequestLain: bedaRequest.no_request };
+    return { terpakai: false };
+  },
   // FITUR BARU: Batasi 1 klaim aktif per picker -- dipakai untuk menampilkan banner
   // "Anda masih punya klaim aktif di Request X" di kedua modul Picking.
   getMyActivePickingClaim: async (picker) => {
@@ -3338,7 +3352,8 @@ async function eksekusiAddSkuOutbound() {
           </div>
           <div class="col-6">
             <label class="form-label small fw-bold mb-0">Plastik ID</label>
-            <input type="text" id="dc-plastik" class="form-control form-control-sm fw-bold" placeholder="Plastik ID" disabled>
+            <input type="text" id="dc-plastik" class="form-control form-control-sm fw-bold" placeholder="Plastik ID" oninput="onDashboardCheckerPlastikInput()" disabled>
+            <div id="dc-plastik-msg" class="small fw-bold mt-1" style="display:none;"></div>
           </div>
         </div>
 
@@ -6221,6 +6236,9 @@ async function eksekusiAddSkuOutbound() {
     // TIDAK ditampilkan ke checker (supaya tetap blind) — hanya dipakai untuk validasi
     // instan setelah checker scan/ketik, sehingga typo bisa langsung diberi tahu.
     let DASHCHECK_VALID_SKUS = [];
+    // FITUR BARU: Validasi real-time Plastik ID (1 Plastik ID hanya boleh dipakai untuk 1 No Request)
+    let DC_PLASTIK_KONFLIK = false;
+    let DC_PLASTIK_DEBOUNCE = null;
 
     // Muat daftar No Request Outbound (sumber: sheet Picking)
     function loadDashboardCheckerRequests() {
@@ -6275,6 +6293,10 @@ async function eksekusiAddSkuOutbound() {
       qtyInput.disabled = true;
       plastikInput.value = '';
       plastikInput.disabled = true;
+      plastikInput.classList.remove('border-danger');
+      DC_PLASTIK_KONFLIK = false;
+      const plastikMsgEl = document.getElementById('dc-plastik-msg');
+      if (plastikMsgEl) { plastikMsgEl.style.display = 'none'; plastikMsgEl.textContent = ''; }
 
       // Sembunyikan & kosongkan daftar SKU yang harus di-check (checklist blind-qty)
       document.getElementById('dc-sku-checklist-wrap').style.display = 'none';
@@ -6425,6 +6447,43 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('dc-label-placeholder').classList.remove('d-none');
     }
 
+    // FITUR BARU: Cek real-time saat Plastik ID diketik/di-scan -- kalau Plastik ID ini
+    // sudah pernah dipakai untuk No Request LAIN, langsung tampilkan peringatan merah &
+    // kunci tombol submit, SEBELUM picker sempat klik "Validasi Sekarang". Di-debounce
+    // supaya tidak nembak query ke server di setiap ketikan huruf.
+    function onDashboardCheckerPlastikInput() {
+      const plastikInput = document.getElementById('dc-plastik');
+      const msgEl = document.getElementById('dc-plastik-msg');
+      const noRequest = document.getElementById('dc-req').value;
+      const pid = plastikInput.value.trim();
+
+      DC_PLASTIK_KONFLIK = false;
+      plastikInput.classList.remove('border-danger');
+      msgEl.style.display = 'none';
+      msgEl.textContent = '';
+
+      if (DC_PLASTIK_DEBOUNCE) clearTimeout(DC_PLASTIK_DEBOUNCE);
+      if (!pid) return;
+
+      DC_PLASTIK_DEBOUNCE = setTimeout(async () => {
+        try {
+          const res = await ENDPOINTS.checkPlastikIdTerpakai(pid, noRequest);
+          // Kondisi mungkin berubah (input dikosongkan/diganti) selama menunggu response
+          if (plastikInput.value.trim() !== pid) return;
+          if (res.terpakai) {
+            DC_PLASTIK_KONFLIK = true;
+            plastikInput.classList.add('border-danger');
+            msgEl.className = 'small fw-bold mt-1 text-danger';
+            msgEl.textContent = `🚨 Plastik ID ini sudah dipakai pada No Request ${res.noRequestLain}. Tidak bisa dipakai untuk Request berbeda -- gunakan Plastik ID lain.`;
+            msgEl.style.display = 'block';
+          }
+        } catch (err) {
+          // Diamkan saja kalau gagal cek (mis. koneksi lambat) -- validasi final tetap
+          // dijaga oleh backend saat submit.
+        }
+      }, 400);
+    }
+
     // Validasi blind count untuk Dashboard Checker: submit qty + plastik ID, lalu tampilkan label besar
     function submitDashboardChecker() {
       const noRequest = document.getElementById('dc-req').value;
@@ -6456,6 +6515,11 @@ async function eksekusiAddSkuOutbound() {
       }
       if (plastikId === "") {
         showAlert("Mohon masukkan Plastik ID.", "danger");
+        plastikInput.classList.add('border-danger');
+        return;
+      }
+      if (DC_PLASTIK_KONFLIK) {
+        showAlert("Plastik ID ini sudah dipakai pada No Request lain. Ganti dengan Plastik ID lain sebelum submit.", "danger");
         plastikInput.classList.add('border-danger');
         return;
       }
