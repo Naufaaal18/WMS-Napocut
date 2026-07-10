@@ -1528,20 +1528,30 @@ window.fetch = function (url, options) {
 
     <div class="home-section-label">Menu Utama</div>
 
-    <!-- MODUL: KELOLA USER (BARU, khusus role Administrator) -->
-    <div class="module-list-group" id="home-group-kelolauser" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-kelolauser', this)">
-        <div class="module-icon-wrap icon-kelolauser"><i class="fa-solid fa-users-gear"></i></div>
+    <!-- MODUL: MASTER PO -->
+    <div class="module-list-group" id="home-group-openpo" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-openpo', this)">
+        <div class="module-icon-wrap icon-po"><i class="fa-solid fa-file-invoice"></i></div>
         <div class="module-row-text">
-          <div class="module-row-name">Kelola User</div>
-          <div class="module-row-desc">Tambah, ubah role &amp; reset password user</div>
+          <div class="module-row-name">Master PO</div>
+          <div class="module-row-desc">Pengelolaan Purchase Order</div>
         </div>
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
-      <div class="sub-module-list" id="home-sub-kelolauser">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-kelolauser', 'modul-kelolauser')">
-          <span class="sub-dot dot-kelolauser"></span>
-          <span class="sub-module-name">Daftar &amp; Kelola User</span>
+      <div class="sub-module-list" id="home-sub-openpo">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">Buat PO / Faktur Baru</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">Upload Massal via Excel</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">Cancel Purchase Order</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -1610,30 +1620,59 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <!-- MODUL: MASTER PO -->
-    <div class="module-list-group" id="home-group-openpo" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-openpo', this)">
-        <div class="module-icon-wrap icon-po"><i class="fa-solid fa-file-invoice"></i></div>
+    <!-- MODUL: PUTAWAY -->
+    <div class="module-list-group" id="home-group-ops" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-ops', this)">
+        <div class="module-icon-wrap icon-putaway"><i class="fa-solid fa-truck-ramp-box"></i></div>
         <div class="module-row-text">
-          <div class="module-row-name">Master PO</div>
-          <div class="module-row-desc">Pengelolaan Purchase Order</div>
+          <div class="module-row-name">Putaway</div>
+          <div class="module-row-desc">Penempatan barang ke rak</div>
         </div>
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
-      <div class="sub-module-list" id="home-sub-openpo">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
-          <span class="sub-dot dot-po"></span>
-          <span class="sub-module-name">Buat PO / Faktur Baru</span>
+      <div class="sub-module-list" id="home-sub-ops">
+        <div class="sub-module-row" id="home-subrow-ops-validate" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-validate-qc')">
+          <span class="sub-dot dot-putaway"></span>
+          <span class="sub-module-name">Validate QC (Sebelum Putaway)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
-          <span class="sub-dot dot-po"></span>
-          <span class="sub-module-name">Upload Massal via Excel</span>
+        <div class="sub-module-row" id="home-subrow-ops-putaway" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-putaway')">
+          <span class="sub-dot dot-putaway"></span>
+          <span class="sub-module-name">Putaway Hasil QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
-          <span class="sub-dot dot-po"></span>
-          <span class="sub-module-name">Cancel Purchase Order</span>
+        <div class="sub-module-row" id="home-subrow-ops-putawayreturn" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-putaway-return')">
+          <span class="sub-dot dot-putaway"></span>
+          <span class="sub-module-name">Putaway Barang Return</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODUL: INVENTORY -->
+    <div class="module-list-group" id="home-group-inventory" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-inventory', this)">
+        <div class="module-icon-wrap icon-inventory"><i class="fa-solid fa-warehouse"></i></div>
+        <div class="module-row-text">
+          <div class="module-row-name">Inventory</div>
+          <div class="module-row-desc">Dashboard &amp; manajemen stok</div>
+        </div>
+        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
+      </div>
+      <div class="sub-module-list" id="home-sub-inventory">
+        <div class="sub-module-row" id="home-subrow-inv-dashboard" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+          <span class="sub-dot dot-inventory"></span>
+          <span class="sub-module-name">Dashboard Stock FG</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" id="home-subrow-inv-adjustment" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+          <span class="sub-dot dot-inventory"></span>
+          <span class="sub-module-name">Adjustment Stock</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" id="home-subrow-inv-transfer" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+          <span class="sub-dot dot-inventory"></span>
+          <span class="sub-module-name">Transfer Lokasi / Grade</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -1663,35 +1702,6 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" onclick="bukaModulDariHome('tab-outbound', 'modul-outbound')">
           <span class="sub-dot dot-outbound"></span>
           <span class="sub-module-name">Cancel Request Outbound</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODUL: PUTAWAY -->
-    <div class="module-list-group" id="home-group-ops" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-ops', this)">
-        <div class="module-icon-wrap icon-putaway"><i class="fa-solid fa-truck-ramp-box"></i></div>
-        <div class="module-row-text">
-          <div class="module-row-name">Putaway</div>
-          <div class="module-row-desc">Penempatan barang ke rak</div>
-        </div>
-        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
-      </div>
-      <div class="sub-module-list" id="home-sub-ops">
-        <div class="sub-module-row" id="home-subrow-ops-validate" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-validate-qc')">
-          <span class="sub-dot dot-putaway"></span>
-          <span class="sub-module-name">Validate QC (Sebelum Putaway)</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-subrow-ops-putaway" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-putaway')">
-          <span class="sub-dot dot-putaway"></span>
-          <span class="sub-module-name">Putaway Hasil QC</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-subrow-ops-putawayreturn" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-putaway-return')">
-          <span class="sub-dot dot-putaway"></span>
-          <span class="sub-module-name">Putaway Barang Return</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -1731,30 +1741,25 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <!-- MODUL: INVENTORY -->
-    <div class="module-list-group" id="home-group-inventory" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-inventory', this)">
-        <div class="module-icon-wrap icon-inventory"><i class="fa-solid fa-warehouse"></i></div>
+    <!-- MODUL: ADMIN VALIDATE -->
+    <div class="module-list-group" id="home-group-adminvalidate" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-adminvalidate', this)">
+        <div class="module-icon-wrap icon-adminvalidate"><i class="fa-solid fa-user-shield"></i></div>
         <div class="module-row-text">
-          <div class="module-row-name">Inventory</div>
-          <div class="module-row-desc">Dashboard &amp; manajemen stok</div>
+          <div class="module-row-name">Admin Validate</div>
+          <div class="module-row-desc">Assign No SO untuk Inbound & QC</div>
         </div>
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
-      <div class="sub-module-list" id="home-sub-inventory">
-        <div class="sub-module-row" id="home-subrow-inv-dashboard" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
-          <span class="sub-dot dot-inventory"></span>
-          <span class="sub-module-name">Dashboard Stock FG</span>
+      <div class="sub-module-list" id="home-sub-adminvalidate">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('inbound'),300)">
+          <span class="sub-dot dot-adminvalidate"></span>
+          <span class="sub-module-name">Validate Inbound</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-inv-adjustment" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
-          <span class="sub-dot dot-inventory"></span>
-          <span class="sub-module-name">Adjustment Stock</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-subrow-inv-transfer" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
-          <span class="sub-dot dot-inventory"></span>
-          <span class="sub-module-name">Transfer Lokasi / Grade</span>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('qc'),300)">
+          <span class="sub-dot dot-adminvalidate"></span>
+          <span class="sub-module-name">Validate QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -1843,25 +1848,20 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <!-- MODUL: ADMIN VALIDATE -->
-    <div class="module-list-group" id="home-group-adminvalidate" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-adminvalidate', this)">
-        <div class="module-icon-wrap icon-adminvalidate"><i class="fa-solid fa-user-shield"></i></div>
+    <!-- MODUL: KELOLA USER (BARU, khusus role Administrator) -->
+    <div class="module-list-group" id="home-group-kelolauser" style="display:none;">
+      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-kelolauser', this)">
+        <div class="module-icon-wrap icon-kelolauser"><i class="fa-solid fa-users-gear"></i></div>
         <div class="module-row-text">
-          <div class="module-row-name">Admin Validate</div>
-          <div class="module-row-desc">Assign No SO untuk Inbound & QC</div>
+          <div class="module-row-name">Kelola User</div>
+          <div class="module-row-desc">Tambah, ubah role &amp; reset password user</div>
         </div>
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
-      <div class="sub-module-list" id="home-sub-adminvalidate">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('inbound'),300)">
-          <span class="sub-dot dot-adminvalidate"></span>
-          <span class="sub-module-name">Validate Inbound</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('qc'),300)">
-          <span class="sub-dot dot-adminvalidate"></span>
-          <span class="sub-module-name">Validate QC</span>
+      <div class="sub-module-list" id="home-sub-kelolauser">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-kelolauser', 'modul-kelolauser')">
+          <span class="sub-dot dot-kelolauser"></span>
+          <span class="sub-module-name">Daftar &amp; Kelola User</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -5637,7 +5637,27 @@ async function eksekusiAddSkuOutbound() {
       });
     }
 
-    // Render semua baris picking (flat, per lokasi, sorted by lokasi)
+    // =========================================================================
+    // FITUR BARU: FOKUS KLAIM PICKING -- kalau picker sudah klaim 1 baris, baris
+    // tersebut HARUS selalu tampil PALING ATAS setiap kali list dirender ulang
+    // (polling, refresh, dsb), walaupun urutan aslinya ada di bawah. Ini mencegah
+    // tampilan "naik-turun"/lompat-lompat yang membingungkan picker saat sedang
+    // fokus mengerjakan 1 baris. Baris lain tetap mempertahankan urutan aslinya.
+    // Dipakai bersama oleh Picking Outbound & Picking QC Ulang.
+    // =========================================================================
+    function _urutkanFokusKlaim(list) {
+      const idxAsli = list.map((_, i) => i);
+      idxAsli.sort((a, b) => {
+        const fokusA = list[a].claimedByMe ? 1 : 0;
+        const fokusB = list[b].claimedByMe ? 1 : 0;
+        if (fokusA !== fokusB) return fokusB - fokusA; // yang claimedByMe naik ke atas
+        return a - b; // sisanya tetap urutan asli (stabil)
+      });
+      return idxAsli;
+    }
+
+    // Render semua baris picking (flat, per lokasi, sorted by lokasi -- baris yang
+    // sudah diklaim picker sendiri selalu dipin ke paling atas, lihat _urutkanFokusKlaim)
     function renderPickingRows() {
       const container = document.getElementById('pc-picking-rows');
       const list = PC_PICKING_LIST;
@@ -5652,16 +5672,21 @@ async function eksekusiAddSkuOutbound() {
       const total = list.length;
       document.getElementById('pc-progress-badge').textContent = done + ' / ' + total + ' selesai';
 
+      const urutanTampil = _urutkanFokusKlaim(list);
+
       let html = '';
-      list.forEach((item, idx) => {
+      urutanTampil.forEach((idx) => {
+        const item = list[idx];
         const key = item.kodeSku + '||' + item.lokasi;
         const isDone = PC_DONE_SET.has(key);
-        const cardClass = isDone ? 'border-success bg-light opacity-75' : 'border-warning';
+        const isFokus = !isDone && !!item.claimedByMe;
+        const cardClass = isDone ? 'border-success bg-light opacity-75' : (isFokus ? 'border-primary shadow-sm' : 'border-warning');
         const rowNum = idx + 1;
 
         html += `
           <div class="card mb-2 border ${cardClass}" id="pc-card-${idx}" style="font-size:12px;">
             <div class="card-body p-2">
+              ${isFokus ? '<div class="badge bg-primary mb-2"><i class="fa-solid fa-crosshairs me-1"></i>Fokus - Sedang Anda Kerjakan</div>' : ''}
               <!-- Header baris -->
               <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
@@ -11519,8 +11544,16 @@ async function eksekusiCancelOutbound() {
         container.innerHTML = '<div class="text-center text-muted py-3 small">Tidak ada SKU tersisa untuk di-picking pada Request ini.</div>';
         return;
       }
-      container.innerHTML = PCQC_PICKING_LIST.map((r, idx) => `
-        <div class="border rounded p-2 mb-2" id="pcqc-row-${idx}">
+      // FITUR BARU: Fokus Klaim -- baris yang sudah diklaim picker sendiri dipin ke
+      // paling atas (lihat _urutkanFokusKlaim), supaya tidak "naik-turun" saat state
+      // dirender ulang walaupun urutan aslinya ada di bawah.
+      const urutanTampil = _urutkanFokusKlaim(PCQC_PICKING_LIST);
+      container.innerHTML = urutanTampil.map((idx) => {
+        const r = PCQC_PICKING_LIST[idx];
+        const isFokus = !!r.claimedByMe;
+        return `
+        <div class="border rounded p-2 mb-2 ${isFokus ? 'border-primary shadow-sm' : ''}" id="pcqc-row-${idx}">
+          ${isFokus ? '<div class="badge bg-primary mb-1"><i class="fa-solid fa-crosshairs me-1"></i>Fokus - Sedang Anda Kerjakan</div>' : ''}
           <div class="d-flex justify-content-between fw-bold small mb-1">
             <span>${r.kodeSku} <span class="badge bg-secondary">${r.grade}</span></span>
             <span class="text-muted">Sisa: ${r.sisaKebutuhan} / ${r.qtyWajib} Pcs</span>
@@ -11561,7 +11594,8 @@ async function eksekusiCancelOutbound() {
           </div>
           `}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     // FITUR BARU: Klaim Baris Picking (Picking QC Ulang) -- sama persis polanya dengan
