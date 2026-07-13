@@ -85,10 +85,16 @@ const ENDPOINTS = {
     p_petugas_validasi: data.petugasValidasi || null, p_keterangan: data.keterangan || null
   }),
 
+  // FITUR BARU: Koreksi Grade saat Putaway. p_grade tetap dipakai untuk menentukan
+  // qty diambil dari akumulasi Grade ASAL (hasil QC) yang mana, sedangkan p_grade_final
+  // (opsional, default null -> RPC otomatis pakai p_grade) adalah grade yang benar-benar
+  // dicatat/masuk ke Stock_FG. Kalau keduanya beda, artinya operator sedang mengoreksi
+  // grade yang salah dipilih saat QC.
   processPutawaySKU: (data) => _callRpc('process_putaway_sku', {
     p_kode_sku: data.kodeSku, p_no_po: data.noPo, p_tanggal_qc: data.tanggalQc,
     p_lokasi_baru: data.lokasiBaru, p_grade: data.grade, p_qty: Number(data.qty),
-    p_sku_scanned: data.skuScanned, p_user_login: data.userLogin
+    p_sku_scanned: data.skuScanned, p_user_login: data.userLogin,
+    p_grade_final: data.gradeFinal || data.grade
   }),
 
   processPickingSKU: (data) => _callRpc('process_picking_sku', {
@@ -2589,7 +2595,7 @@ window.fetch = function (url, options) {
               </div>
 
               <div class="col-6">
-                <label class="form-label small fw-bold mb-0">Grade Final</label>
+                <label class="form-label small fw-bold mb-0">Grade Asal (Hasil QC)</label>
                 <select id="pw-grade" class="form-select form-select-sm" onchange="onPutawaySkuOrDateChanged()" required disabled>
           <option value="Bagus">Bagus</option>
           <option value="Minor">Minor</option>
@@ -2597,9 +2603,25 @@ window.fetch = function (url, options) {
           <option value="Perbaikan">Perbaikan</option>
           <option value="Reject">Reject</option>
         </select>
+                <div class="text-muted" style="font-size: 10px;">Grade ini menentukan qty diambil dari akumulasi QC mana.</div>
               </div>
 
+              <!-- FITUR BARU: Koreksi Grade -- Grade Final boleh berbeda dari Grade Asal, untuk
+                   memperbaiki kasus salah pilih grade saat QC. Qty tetap dipotong dari akumulasi
+                   Grade Asal, tapi barang masuk Stock_FG memakai Grade Final ini. -->
               <div class="col-6">
+                <label class="form-label small fw-bold mb-0">Grade Final <i class="fa-solid fa-circle-info text-info" title="Ubah kolom ini kalau hasil QC salah pilih grade. Qty tetap dipotong dari akumulasi Grade Asal, tapi barang masuk Stock_FG sesuai Grade Final."></i></label>
+                <select id="pw-grade-final" class="form-select form-select-sm" onchange="onPutawayGradeFinalChanged()" required disabled>
+          <option value="Bagus">Bagus</option>
+          <option value="Minor">Minor</option>
+          <option value="Kotor">Kotor</option>
+          <option value="Perbaikan">Perbaikan</option>
+          <option value="Reject">Reject</option>
+        </select>
+                <div id="pw-koreksi-grade-msg" class="small fw-bold mt-1" style="display:none;"></div>
+              </div>
+
+              <div class="col-12">
                 <label class="form-label small fw-bold mb-0">Qty Putaway</label>
                 <input type="number" id="pw-qty" class="form-control form-control-sm" placeholder="Jumlah" required min="1" disabled>
                 <div id="pw-max-info" class="text-danger small fw-bold mt-1" style="font-size: 10px; display: none;">
@@ -8336,8 +8358,11 @@ function onPutawayPoSelected() {
   
   skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
   document.getElementById("pw-grade").disabled = true;
+  document.getElementById("pw-grade-final").disabled = true;
   document.getElementById("pw-qty").disabled = true;
   document.getElementById("pw-max-info").style.display = "none";
+  const koreksiMsgEl = document.getElementById("pw-koreksi-grade-msg");
+  if (koreksiMsgEl) koreksiMsgEl.style.display = "none";
   resetPutawayConfirmSku();
 
   const filterInputEl = document.getElementById("pw-filter-input");
@@ -8472,6 +8497,7 @@ function onPutawaySkuOrDateChanged() {
 
   if (!poSelected || !skuSelected) {
     document.getElementById("pw-grade").disabled = true;
+    document.getElementById("pw-grade-final").disabled = true;
     document.getElementById("pw-qty").disabled = true;
     resetPutawayConfirmSku();
     return;
@@ -8479,7 +8505,15 @@ function onPutawaySkuOrDateChanged() {
 
   // Aktifkan input grade dan kuantitas jika SKU sudah terisi
   document.getElementById("pw-grade").disabled = false;
+  document.getElementById("pw-grade-final").disabled = false;
   document.getElementById("pw-qty").disabled = false;
+
+  // FITUR BARU: Koreksi Grade -- setiap kali SKU/Tanggal/Grade Asal berubah, samakan
+  // dulu Grade Final dengan Grade Asal (kondisi default: tidak ada koreksi). Kalau
+  // memang ada salah pilih grade saat QC, operator tinggal ubah manual dropdown
+  // "Grade Final" di bawahnya sebelum submit.
+  document.getElementById("pw-grade-final").value = gradeSelected;
+  updateKoreksiGradeIndicator();
 
   // FITUR BARU (poin 3): perbarui highlight baris terpilih pada tabel daftar SKU Putaway
   // setiap kali SKU berubah (baik lewat klik tabel maupun dropdown langsung).
@@ -8537,7 +8571,10 @@ function resetPutawayConfirmSku() {
 // =========================================================================
 function loadPutawaySuggestion() {
   const skuTarget = (document.getElementById("pw-sku").value || "").trim();
-  const gradeTarget = (document.getElementById("pw-grade").value || "").trim();
+  // FITUR BARU: pakai Grade FINAL (bukan Grade Asal) untuk saran lokasi, karena Grade
+  // Final itulah yang benar-benar akan tersimpan di Stock_FG (bisa berbeda dari Grade
+  // Asal kalau ada koreksi grade).
+  const gradeTarget = (document.getElementById("pw-grade-final").value || "").trim();
   const box = document.getElementById("pw-lokasi-suggestion");
   if (!box) return;
 
@@ -8571,6 +8608,31 @@ function pilihLokasiSuggestionPutaway(lokasi) {
   if (!lokasiInput || lokasiInput.disabled) return;
   lokasiInput.value = lokasi;
   lokasiInput.focus();
+}
+
+// FITUR BARU: Koreksi Grade -- dipanggil saat operator mengubah dropdown "Grade Final"
+// secara manual (mis. hasil QC salah pilih grade). Tidak mempengaruhi batas maksimal Qty
+// (tetap dihitung dari akumulasi Grade Asal), hanya memperbarui saran lokasi & indikator.
+function onPutawayGradeFinalChanged() {
+  updateKoreksiGradeIndicator();
+  loadPutawaySuggestion();
+}
+
+// FITUR BARU: Koreksi Grade -- tampilkan peringatan kalau Grade Final berbeda dari Grade
+// Asal, supaya operator sadar bahwa ini akan tercatat sebagai koreksi grade.
+function updateKoreksiGradeIndicator() {
+  const msgEl = document.getElementById("pw-koreksi-grade-msg");
+  if (!msgEl) return;
+  const gradeAsal = (document.getElementById("pw-grade").value || "").trim();
+  const gradeFinal = (document.getElementById("pw-grade-final").value || "").trim();
+
+  if (gradeAsal && gradeFinal && gradeAsal.toLowerCase() !== gradeFinal.toLowerCase()) {
+    msgEl.innerHTML = `<span class="text-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i>Koreksi Grade: Qty tetap dipotong dari akumulasi QC "${gradeAsal}", tapi barang akan masuk Stock_FG sebagai Grade "${gradeFinal}".</span>`;
+    msgEl.style.display = "block";
+  } else {
+    msgEl.style.display = "none";
+    msgEl.innerHTML = "";
+  }
 }
 
 // Validasi real-time: SKU hasil scan/ketik ulang harus sama dengan SKU yang dipilih di dropdown.
@@ -8621,11 +8683,15 @@ function submitPutawayFG(event) {
   let skuScannedVal = document.getElementById("pw-confirm-sku").value;
   let tglQcVal = document.getElementById("pw-tanggal-qc").value; // Format: YYYY-MM-DD
   let gradeVal = document.getElementById("pw-grade").value;
+  // FITUR BARU: Grade Final -- boleh berbeda dari Grade Asal (pw-grade) kalau ada koreksi
+  // grade hasil QC yang salah pilih. Kalau field ini belum sempat disentuh JS (kosong),
+  // fallback ke Grade Asal supaya perilaku lama tetap jalan.
+  let gradeFinalVal = document.getElementById("pw-grade-final").value || gradeVal;
   let qtyInput = document.getElementById("pw-qty");
   let qtyVal = parseInt(qtyInput.value) || 0;
   let locVal = document.getElementById("pw-lokasi").value;
 
-  if(!poSelected || !skuSelected || !tglQcVal || qtyVal <= 0 || !locVal) {
+  if(!poSelected || !skuSelected || !tglQcVal || !gradeFinalVal || qtyVal <= 0 || !locVal) {
     customAlert("Mohon lengkapi seluruh field formulir Putaway, termasuk memilih Tanggal QC!");
     return;
   }
@@ -8641,6 +8707,7 @@ function submitPutawayFG(event) {
     skuScanned: skuScannedVal,
     tanggalQc: tglQcVal, 
     grade: gradeVal,
+    gradeFinal: gradeFinalVal,
     qty: qtyVal,
     lokasiBaru: locVal,
     userLogin: DEKLARASI_USER.nama || "Operator"
@@ -8651,6 +8718,8 @@ function submitPutawayFG(event) {
       customAlert(response.message);
       document.getElementById("form-putaway").reset();
       resetPutawayConfirmSku();
+      const koreksiMsgEl = document.getElementById("pw-koreksi-grade-msg");
+      if (koreksiMsgEl) koreksiMsgEl.style.display = "none";
       loadQCFGToPutawayDropdown(); // Ambil ulang data ter-update untuk menjamin keamanan multi-user
     })
     .withFailureHandler(function(error) {
