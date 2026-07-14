@@ -3551,6 +3551,7 @@ async function eksekusiAddSkuOutbound() {
                 <th class="text-center">Grade</th>
                 <th class="text-center">Qty Available</th>
                 <th class="text-center">Qty On Hand</th>
+                <th class="text-center" id="inv-th-aksi" style="display:none;">Aksi</th>
               </tr>
             </thead>
             <tbody id="inv-tbody-dashboard">
@@ -5126,6 +5127,10 @@ async function eksekusiAddSkuOutbound() {
     })();
 
     let DEKLARASI_USER = { nama: "", role: "" };
+    // FITUR BARU: Klik-Baris-untuk-Transfer di Dashboard Inventory -- flag ini diisi di
+    // inisialisasiAplikasi() sesuai RBAC_PER_ROLE user yang login, dipakai renderInventoryTable()
+    // untuk menentukan apakah baris tabel boleh diklik untuk membuka form Transfer Lokasi/Grade.
+    let USER_PUNYA_AKSES_TRANSFER = false;
 
     // KETIKA HALAMAN DIBUKA: Periksa status Sesi Simpanan
     document.addEventListener("DOMContentLoaded", function() {
@@ -5339,6 +5344,11 @@ async function eksekusiAddSkuOutbound() {
       }
 
       const r = user.role;
+
+      // FITUR BARU: Klik-Baris-untuk-Transfer -- tentukan apakah role user ini punya akses
+      // INV_TRANSFER (dipakai renderInventoryTable() untuk baris tabel yang bisa diklik).
+      // "Checker" sengaja tidak pernah punya akses ini (tidak dimigrasi ke RBAC_PER_ROLE).
+      USER_PUNYA_AKSES_TRANSFER = (r !== "Checker") && !!(RBAC_PER_ROLE[r] && RBAC_PER_ROLE[r].includes('INV_TRANSFER'));
 
       if (r === "Checker") {
         // Dashboard Checker & Live Monitor Checker — logika role ini dipertahankan
@@ -9353,6 +9363,11 @@ async function eksekusiCancelOutbound() {
     let INV_DATA_OPENPO = [];
     let INV_SUMMARY = null; // FITUR PERBAIKAN: total resmi (SKU Aktif/Qty Available/Qty On Hand) dari view dashboard_stock_summary, dihitung Postgres atas SELURUH tabel stock_fg (tidak terpengaruh limit baris API)
 
+    // FITUR BARU: Klik-Baris-untuk-Transfer -- baris tabel Dashboard Inventory yang sedang
+    // ditampilkan (hasil filter aktif), disimpan di sini supaya handler klik baris tinggal
+    // ambil berdasarkan index (aman dari masalah escaping tanda kutip di kode_sku/lokasi).
+    let INV_TABLE_FILTERED_ROWS = [];
+
     // Ambil seluruh data dashboard dari server (Stock_FG, Stock_Inbound, Stock_Return, Open_PO Active) sekaligus
     // FITUR PERBAIKAN (poin 1 - Dashboard Inventory tidak terbuka / macet "Memuat data..."):
     // 1) withFailureHandler sekarang mereset SEMUA 4 tabel (dulu cuma tabel utama yang direset,
@@ -9461,17 +9476,26 @@ async function eksekusiCancelOutbound() {
       );
 
       const tbody = document.getElementById('inv-tbody-dashboard');
+      const thAksi = document.getElementById('inv-th-aksi');
+      if (thAksi) thAksi.style.display = USER_PUNYA_AKSES_TRANSFER ? '' : 'none';
+      const kolomTabel = USER_PUNYA_AKSES_TRANSFER ? 7 : 6;
+
+      // FITUR BARU: Klik-Baris-untuk-Transfer -- simpan baris yang sedang ditampilkan
+      // (hasil filter aktif) supaya handler klik baris bisa ambil datanya lewat index.
+      INV_TABLE_FILTERED_ROWS = filtered;
+
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Tidak ada data yang cocok dengan filter.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${kolomTabel}" class="text-center text-muted py-3">Tidak ada data yang cocok dengan filter.</td></tr>`;
       } else {
-        tbody.innerHTML = filtered.map(r => `
-          <tr>
+        tbody.innerHTML = filtered.map((r, idx) => `
+          <tr${USER_PUNYA_AKSES_TRANSFER ? ` class="inv-row-clickable" style="cursor:pointer;" onclick="bukaTransferDariDashboard(${idx})" title="Klik untuk isi form Transfer Lokasi/Grade dengan baris ini"` : ''}>
             <td class="fw-bold">${r.sku}</td>
             <td>${r.deskripsi || '-'}</td>
             <td>${r.lokasi}</td>
             <td class="text-center">${r.grade}</td>
             <td class="text-center fw-bold text-success">${Number(r.qtyAvailable || 0).toLocaleString('id-ID')}</td>
             <td class="text-center">${Number(r.qtyOnHand || 0).toLocaleString('id-ID')}</td>
+            ${USER_PUNYA_AKSES_TRANSFER ? `<td class="text-center text-primary"><i class="fa-solid fa-arrows-left-right"></i></td>` : ''}
           </tr>
         `).join('');
       }
@@ -9851,6 +9875,42 @@ async function eksekusiCancelOutbound() {
 
       // WAJIB readAsArrayBuffer agar SheetJS bisa membaca file .xlsx / .xls
       reader.readAsArrayBuffer(file);
+    }
+
+    // FITUR BARU: Klik-Baris-untuk-Transfer -- dipanggil saat operator (yang punya akses
+    // INV_TRANSFER) klik salah satu baris di tabel Dashboard Inventory. Otomatis mengisi
+    // form "Transfer Lokasi / Downgrade Grade" di bawahnya dengan SKU, Grade & Lokasi Asal
+    // dari baris tsb, lalu scroll & fokus ke Qty supaya operator tinggal isi tujuan + qty.
+    function bukaTransferDariDashboard(idx) {
+      // Jaga-jaga (defense in depth): renderInventoryTable() memang hanya membuat baris
+      // bisa diklik kalau USER_PUNYA_AKSES_TRANSFER true, tapi tetap divalidasi ulang di sini.
+      if (!USER_PUNYA_AKSES_TRANSFER) return;
+      const r = INV_TABLE_FILTERED_ROWS[idx];
+      if (!r) return;
+
+      document.getElementById('trf-sku').value = r.sku;
+      document.getElementById('trf-grade-asal').value = r.grade;
+      document.getElementById('trf-lokasi-asal').value = r.lokasi;
+      // Grade Tujuan default disamakan dulu dengan Grade Asal (berarti belum ada downgrade);
+      // operator tinggal ubah kalau memang mau downgrade grade. Lokasi Tujuan sengaja
+      // dikosongkan karena WAJIB diisi lokasi baru yang berbeda untuk transfer lokasi.
+      document.getElementById('trf-grade-tujuan').value = r.grade;
+      document.getElementById('trf-lokasi-tujuan').value = '';
+      document.getElementById('trf-keterangan').value = '';
+      const qtyInput = document.getElementById('trf-qty');
+      qtyInput.value = '';
+      qtyInput.max = Number(r.qtyOnHand || 0);
+      qtyInput.placeholder = `Qty (tersedia ${Number(r.qtyOnHand || 0).toLocaleString('id-ID')})`;
+
+      // Scroll ke card Transfer & beri highlight sebentar supaya operator sadar form-nya
+      // baru saja terisi otomatis dari baris yang diklik.
+      const cardTransfer = document.getElementById('sub-inventory-transfer');
+      if (cardTransfer) {
+        cardTransfer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        cardTransfer.classList.add('border-warning');
+        setTimeout(() => cardTransfer.classList.remove('border-warning'), 1500);
+      }
+      qtyInput.focus();
     }
 
     // Submit Transfer Lokasi / Downgrade Grade Stock_FG
