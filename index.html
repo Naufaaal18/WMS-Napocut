@@ -526,6 +526,13 @@ Object.assign(ENDPOINTS, {
   // login, tidak harus orang yang sama) tahu progress checking yang sudah selesai untuk Request
   // yang sedang dikerjakan, tanpa membocorkan qty seharusnya untuk SKU yang BELUM di-check
   // (checklist SKU pending tetap blind seperti sebelumnya).
+  //
+  // FITUR PERBAIKAN: 1 SKU pada 1 No Request bisa punya LEBIH DARI 1 baris checking klop kalau
+  // ada tambahan qty ke Request yang sama (lihat addSkuToExistingOutboundRequest) yang dipicking
+  // & di-checking terpisah (mis. batch pertama 2 Pcs, batch tambahan 10 Pcs). Sebelumnya tiap
+  // baris ditampilkan sebagai badge terpisah ("SKU — 2 Pcs" dan "SKU — 10 Pcs"), sekarang
+  // digabung per kode_sku jadi 1 badge dengan total terakumulasi ("SKU — 12 Pcs"), memakai
+  // waktu & checker dari batch PALING BARU untuk info tambahannya.
   getCheckedSkuListForRequest: async (noRequest) => {
     if (!noRequest) return [];
     const { data, error } = await _sb.from('checking')
@@ -533,14 +540,29 @@ Object.assign(ENDPOINTS, {
       .eq('no_request', noRequest)
       .order('waktu', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data || [])
-      .map(r => ({
-        kodeSku: r.kode_sku, qtyChecker: r.qty_checker, qtyPicker: r.qty_picker,
-        checker: r.checker, plastikId: r.plastik_id,
-        klop: r.status ? (r.status === 'Ready to Ship') : (r.qty_checker === r.qty_picker),
-        timestamp: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : ''
-      }))
-      .filter(r => r.klop);
+    const klopRows = (data || []).filter(r => r.status ? (r.status === 'Ready to Ship') : (r.qty_checker === r.qty_picker));
+
+    const agregatMap = {}; // kode_sku -> { kodeSku, qtyChecker, qtyPicker, checker, plastikId, timestamp, jumlahBatch }
+    const urutanSku = [];
+    klopRows.forEach(r => {
+      const sku = r.kode_sku;
+      if (!agregatMap[sku]) {
+        agregatMap[sku] = {
+          kodeSku: sku, qtyChecker: 0, qtyPicker: 0,
+          checker: r.checker, plastikId: r.plastik_id,
+          timestamp: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '',
+          klop: true, jumlahBatch: 0
+        };
+        urutanSku.push(sku);
+      }
+      // Data sudah diurutkan waktu DESC, jadi baris PERTAMA yang ditemui per SKU otomatis
+      // yang paling baru -- checker/plastikId/timestamp di atas tidak perlu diubah lagi.
+      agregatMap[sku].qtyChecker += Number(r.qty_checker || 0);
+      agregatMap[sku].qtyPicker += Number(r.qty_picker || 0);
+      agregatMap[sku].jumlahBatch += 1;
+    });
+
+    return urutanSku.map(sku => agregatMap[sku]);
   },
 
   getLiveCheckerMonitor: async (jumlahBaris) => {
@@ -574,12 +596,24 @@ Object.assign(ENDPOINTS, {
       // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
       // tidak ada selisih). Dikelompokkan per No Request + SKU supaya bisa ditotal ulang
       // sesuai filter yang aktif di tabel Dashboard Outbound.
+      //
+      // FITUR BARU: Qty Picker -- sama seperti Qty Checker (Klop) di atas, tapi menjumlahkan
+      // kolom qty_picker (bukan qty_checker) dari tabel `checking`. Sengaja HANYA dari baris
+      // yang sudah Klop (bukan status Selisih), karena 1 baris Picking yang belum klop bisa
+      // menghasilkan beberapa percobaan checking dgn qty_picker yang SAMA (dicoba ulang sampai
+      // qty_checker-nya cocok) -- kalau ikut dijumlah, angkanya akan double count. Karena
+      // no_request+kode_sku yang sama tetap dipakai ulang saat ada Outbound Request tambahan
+      // (lihat addSkuToExistingOutboundRequest), qty_picker & qty_checker di sini otomatis
+      // TERAKUMULASI merangkum semua batch checking (mis. 2 Pcs batch pertama + 10 Pcs batch
+      // tambahan = 12 Pcs), tidak perlu logic tambahan apapun.
       const klopMap = {};
+      const pickerMap = {};
       (ckData || []).forEach(r => {
         if (!r.no_request || !r.kode_sku) return;
         if (Number(r.qty_checker) !== Number(r.qty_picker)) return; // bukan klop, dilewati
         const key = r.no_request + '||' + r.kode_sku;
         klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
+        pickerMap[key] = (pickerMap[key] || 0) + Number(r.qty_picker || 0);
       });
 
       // FITUR BARU: sort hasil akhir berdasarkan No Request (naik, natural/numeric-aware
@@ -589,7 +623,9 @@ Object.assign(ENDPOINTS, {
         .map(r => ({
           noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-          qtyStockout: r.qty_oos, status: r.status, qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
+          qtyStockout: r.qty_oos, status: r.status,
+          qtyPicker: pickerMap[r.no_request + '||' + r.kode_sku] || 0,
+          qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
         }))
         .sort((a, b) => {
           const c = String(a.noRequest).localeCompare(String(b.noRequest), 'id', { numeric: true, sensitivity: 'base' });
@@ -3826,6 +3862,7 @@ async function eksekusiAddSkuOutbound() {
                 <th>Grade</th>
                 <th class="text-center">Qty Req</th>
                 <th class="text-center">Qty Alloc</th>
+                <th class="text-center" title="Total qty yang tercatat sebagai hasil pengambilan Picker (qty_picker) pada checking yang sudah Klop -- diakumulasikan otomatis kalau ada tambahan Outbound Request untuk SKU yang sama">Qty Picker</th>
                 <th class="text-center" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">Qty Checker (Klop)</th>
                 <th class="text-center">Stockout</th>
                 <th>Status</th>
@@ -3833,7 +3870,7 @@ async function eksekusiAddSkuOutbound() {
               </tr>
             </thead>
             <tbody id="ob-dash-tbody">
-              <tr><td colspan="11" class="text-center text-muted py-3">Memuat data...</td></tr>
+              <tr><td colspan="12" class="text-center text-muted py-3">Memuat data...</td></tr>
             </tbody>
           </table>
         </div>
@@ -6376,7 +6413,8 @@ async function eksekusiAddSkuOutbound() {
 
       box.innerHTML = list.map(item => {
         const kodeSku = (item.kodeSku || '').toString();
-        const info = `Checker: ${item.checker || '-'}${item.timestamp ? ' • ' + item.timestamp : ''}`;
+        const infoBatch = (item.jumlahBatch && item.jumlahBatch > 1) ? ` • Digabung dari ${item.jumlahBatch} batch checking (ada tambahan qty di Request ini)` : '';
+        const info = `Checker: ${item.checker || '-'}${item.timestamp ? ' • ' + item.timestamp : ''}${infoBatch}`;
         return `<span class="badge rounded-pill text-bg-success" style="font-size:11px; padding:6px 10px;" title="${info}">
                   <i class="fa-solid fa-check me-1"></i>${kodeSku} — ${item.qtyChecker} Pcs
                 </span>`;
@@ -10654,7 +10692,7 @@ async function eksekusiCancelOutbound() {
       const tbody = document.getElementById('ob-dash-tbody');
       if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman, tidak perlu crash.
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
       } else {
         tbody.innerHTML = rows.map(r => {
           const statusColor = r.status === 'Stockout' ? 'text-danger fw-bold' : r.status === 'Picking Pending' ? 'text-warning' : r.status === 'In Packing' ? 'text-info' : r.status === 'Closed' ? 'text-success' : '';
@@ -10671,6 +10709,7 @@ async function eksekusiCancelOutbound() {
                  </button>
                </td>`
             : '<td class="text-center text-muted">-</td>';
+          const pickerTd = r.qtyPicker > 0 ? `<td class="text-center text-primary fw-bold">${r.qtyPicker.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           const checkerKlopTd = r.qtyCheckerKlop > 0 ? `<td class="text-center text-success fw-bold">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           return `<tr>
             <td class="fw-bold">${r.noRequest}</td>
@@ -10680,6 +10719,7 @@ async function eksekusiCancelOutbound() {
             <td>${r.grade || '-'}</td>
             <td class="text-center">${r.qtyRequest}</td>
             <td class="text-center">${r.qtyAllocated}</td>
+            ${pickerTd}
             ${checkerKlopTd}
             ${stockoutTd}
             <td class="${statusColor}" style="font-size:10px;">${r.status}</td>
@@ -10760,13 +10800,14 @@ async function eksekusiCancelOutbound() {
         'Grade': r.grade || '-',
         'Qty Request': r.qtyRequest,
         'Qty Allocated': r.qtyAllocated,
-        'Qty Stockout': r.qtyStockout || 0,
+        'Qty Picker': r.qtyPicker || 0,
         'Qty Checker (Klop)': r.qtyCheckerKlop || 0,
+        'Qty Stockout': r.qtyStockout || 0,
         'Status': r.status
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 13 }, { wch: 16 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
 
