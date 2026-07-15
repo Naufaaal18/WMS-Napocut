@@ -4878,6 +4878,7 @@ async function eksekusiAddSkuOutbound() {
                 <option value="Admin">Admin (Semua Akses kecuali Kelola User)</option>
                 <option value="Supervisor Gudang">Supervisor Gudang / SPV Gudang (Semua Akses kecuali Kelola User)</option>
                 <option value="Manager Gudang">Manager Gudang (Semua Akses kecuali Kelola User)</option>
+                <option value="COO">COO (Semua Akses kecuali Kelola User)</option>
                 <option value="Admin QC">Admin QC (Inbound Validasi, Modul QC Produk, Request QC Ulang Otomatis)</option>
                 <option value="Petugas QC">Petugas QC (QC Finish Good, Re-Check QC)</option>
                 <option value="Tim Swarovski">Tim Swarovski (QC Swarovski)</option>
@@ -5357,6 +5358,7 @@ async function eksekusiAddSkuOutbound() {
         'Manager Gudang':       RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
         'Admin Gudang':         RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
         'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+        'COO':                  RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
 
         'Staff Inbound':        ['INBOUND_RECEIVING'],
         'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
