@@ -588,7 +588,7 @@ Object.assign(ENDPOINTS, {
       // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
       // berapa pun jumlahnya.
       const [obData, ckData] = await Promise.all([
-        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, status'),
+        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status'),
         _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker')
       ]);
 
@@ -623,7 +623,7 @@ Object.assign(ENDPOINTS, {
         .map(r => ({
           noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-          qtyStockout: r.qty_oos, status: r.status,
+          qtyStockout: r.qty_oos, qtyShortpick: r.qty_shortpick || 0, status: r.status,
           qtyPicker: pickerMap[r.no_request + '||' + r.kode_sku] || 0,
           qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
         }))
@@ -3864,13 +3864,14 @@ async function eksekusiAddSkuOutbound() {
                 <th class="text-center">Qty Alloc</th>
                 <th class="text-center" title="Total qty yang tercatat sebagai hasil pengambilan Picker (qty_picker) pada checking yang sudah Klop -- diakumulasikan otomatis kalau ada tambahan Outbound Request untuk SKU yang sama">Qty Picker</th>
                 <th class="text-center" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">Qty Checker (Klop)</th>
+                <th class="text-center" title="Qty yang gagal dipicking penuh (short pick) untuk No Request + SKU ini, diambil dari kolom qty_shortpick di Outbound Request">Qty Shortpick</th>
                 <th class="text-center">Stockout</th>
                 <th>Status</th>
                 <th class="text-center">Aksi</th>
               </tr>
             </thead>
             <tbody id="ob-dash-tbody">
-              <tr><td colspan="12" class="text-center text-muted py-3">Memuat data...</td></tr>
+              <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
             </tbody>
           </table>
         </div>
@@ -10692,7 +10693,7 @@ async function eksekusiCancelOutbound() {
       const tbody = document.getElementById('ob-dash-tbody');
       if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman, tidak perlu crash.
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
       } else {
         tbody.innerHTML = rows.map(r => {
           const statusColor = r.status === 'Stockout' ? 'text-danger fw-bold' : r.status === 'Picking Pending' ? 'text-warning' : r.status === 'In Packing' ? 'text-info' : r.status === 'Closed' ? 'text-success' : '';
@@ -10711,6 +10712,7 @@ async function eksekusiCancelOutbound() {
             : '<td class="text-center text-muted">-</td>';
           const pickerTd = r.qtyPicker > 0 ? `<td class="text-center text-primary fw-bold">${r.qtyPicker.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           const checkerKlopTd = r.qtyCheckerKlop > 0 ? `<td class="text-center text-success fw-bold">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+          const shortpickTd = r.qtyShortpick > 0 ? `<td class="text-center text-warning fw-bold">${r.qtyShortpick.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           return `<tr>
             <td class="fw-bold">${r.noRequest}</td>
             <td style="white-space:nowrap;">${r.tglRequest}</td>
@@ -10721,6 +10723,7 @@ async function eksekusiCancelOutbound() {
             <td class="text-center">${r.qtyAllocated}</td>
             ${pickerTd}
             ${checkerKlopTd}
+            ${shortpickTd}
             ${stockoutTd}
             <td class="${statusColor}" style="font-size:10px;">${r.status}</td>
             ${aksiTd}
@@ -10802,12 +10805,13 @@ async function eksekusiCancelOutbound() {
         'Qty Allocated': r.qtyAllocated,
         'Qty Picker': r.qtyPicker || 0,
         'Qty Checker (Klop)': r.qtyCheckerKlop || 0,
+        'Qty Shortpick': r.qtyShortpick || 0,
         'Qty Stockout': r.qtyStockout || 0,
         'Status': r.status
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 13 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
 
