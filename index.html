@@ -747,11 +747,71 @@ Object.assign(ENDPOINTS, {
     // Sekarang pakai _fetchAllRows supaya SEMUA baris di movement_history terambil,
     // berapa pun jumlahnya, lalu diurutkan ascending (lama -> baru) seperti semula.
     const data = await _fetchAllRows('movement_history', 'tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan');
-    return (data || []).map(r => ({
-      type: r.tipe, ref: r.ref, sku: r.kode_sku, qty: r.qty, lokasi: r.lokasi, user: r.user_login,
-      timestamp: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '',
-      timestampRaw: r.waktu ? new Date(r.waktu).toISOString() : '', catatan: r.catatan
-    }));
+
+    // FITUR BARU: kolom Grade + Tipe Riwayat (From/To) untuk Export Movement History.
+    // Tabel movement_history TIDAK punya kolom grade atau lokasi_asal/lokasi_tujuan
+    // terpisah -- jadi diambil dengan mem-parsing teks `catatan` yang memang sudah
+    // mengandung info ini untuk sebagian besar tipe transaksi.
+    //
+    // Grade: dicari pola "Grade <nilai>" / "Grade: <nilai>" di catatan (ambil yg pertama).
+    const extractGrade = (catatan) => {
+      if (!catatan) return '';
+      const m = catatan.match(/Grade\s*:?\s*([A-Za-z]+)/i);
+      return m ? m[1] : '';
+    };
+
+    // From/To: untuk tipe transaksi yang benar-benar memindahkan barang antar 2 lokasi
+    // (Transfer Lokasi, Downgrade Grade, Picking QC Ulang, dll), catatan-nya punya pola
+    // "dari Grade G1/LokasiA ke Grade G2/LokasiB" atau "dari lokasi X, masuk ke Y" --
+    // ini dipecah jadi 2 baris riwayat terpisah (From = lokasi asal, To = lokasi tujuan).
+    // Untuk tipe transaksi satu sisi (misal Adjustment Tambah/Kurang, Picking Out yang
+    // cuma me-reserve dari 1 lokasi), tetap 1 baris & tipe From/To ditentukan dari tanda
+    // qty (qty negatif = From/keluar dari lokasi itu, qty positif = To/masuk ke lokasi itu).
+    const parseFromTo = (catatan) => {
+      if (!catatan) return null;
+      let m = catatan.match(/dari Grade\s+([^\/]+)\/(.+?)\s+ke Grade\s+([^\/]+)\/([^.]+)/i);
+      if (m) {
+        return [
+          { tipeRiwayat: 'From', lokasi: m[2].trim(), grade: m[1].trim() },
+          { tipeRiwayat: 'To',   lokasi: m[4].trim().replace(/\.$/, ''), grade: m[3].trim() }
+        ];
+      }
+      m = catatan.match(/dari lokasi\s+([^,]+),\s*masuk ke\s+([^.]+)/i);
+      if (m) {
+        return [
+          { tipeRiwayat: 'From', lokasi: m[1].trim(), grade: '' },
+          { tipeRiwayat: 'To',   lokasi: m[2].trim().replace(/\.$/, ''), grade: '' }
+        ];
+      }
+      return null;
+    };
+
+    const hasil = [];
+    (data || []).forEach(r => {
+      const grade = extractGrade(r.catatan);
+      const pasangan = parseFromTo(r.catatan);
+      const timestamp = r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '';
+      const timestampRaw = r.waktu ? new Date(r.waktu).toISOString() : '';
+      if (pasangan) {
+        const qtyAbs = Math.abs(Number(r.qty) || 0);
+        pasangan.forEach(p => {
+          hasil.push({
+            type: r.tipe, ref: r.ref, sku: r.kode_sku,
+            qty: p.tipeRiwayat === 'From' ? -qtyAbs : qtyAbs,
+            lokasi: p.lokasi, grade: p.grade || grade, tipeRiwayat: p.tipeRiwayat,
+            user: r.user_login, timestamp, timestampRaw, catatan: r.catatan
+          });
+        });
+      } else {
+        const qtyNum = Number(r.qty) || 0;
+        hasil.push({
+          type: r.tipe, ref: r.ref, sku: r.kode_sku, qty: r.qty,
+          lokasi: r.lokasi, grade, tipeRiwayat: qtyNum < 0 ? 'From' : 'To',
+          user: r.user_login, timestamp, timestampRaw, catatan: r.catatan
+        });
+      }
+    });
+    return hasil;
   },
 
   getListNoRequestReadyToShip: async () => {
@@ -4673,8 +4733,10 @@ async function eksekusiAddSkuOutbound() {
                     <th>No</th>
                     <th>Waktu</th>
                     <th>Tipe Transaksi</th>
+                    <th>Tipe Riwayat</th>
                     <th>No. Referensi</th>
                     <th>SKU</th>
+                    <th>Grade</th>
                     <th style="text-align:right;">Qty</th>
                     <th>Lokasi</th>
                     <th>User</th>
@@ -9174,7 +9236,32 @@ function getCheckedValidasiItems() {
     if (isNaN(idx) || !VI_DATA_CURRENT_PO[idx]) return;
     const item = VI_DATA_CURRENT_PO[idx];
     const qtyInput = document.querySelector(`.vi-item-qty[data-idx="${idx}"]`);
-    let qtyValidasi = qtyInput ? Number(qtyInput.value) : Number(item.qtyBelumQC || 0);
+    let qtyValidasi = qtyInput ? Number(qtyInput.value) : 0;
+    const qtyMax = Number(item.qtyBelumQC || 0);
+    // FIX BUG: SKU yang dicentang tapi qty divalidasi = 0 (atau kosong) artinya BELUM mau
+    // divalidasi sekarang -- harus DI-SKIP dari daftar terpilih supaya tetap berada di
+    // daftar pending validasi, PERSIS seperti kalau tidak dicentang. Sebelumnya kode ini
+    // malah otomatis mengganti qty 0 jadi qtyMax (qty penuh) dan ikut divalidasi, sehingga
+    // SKU yang qty-nya sengaja di-0-kan malah hilang dari pending (kebalikan dari yang benar).
+    if (!qtyValidasi || qtyValidasi <= 0) return;
+    if (qtyValidasi > qtyMax) qtyValidasi = qtyMax;
+    terpilih.push(Object.assign({}, item, { qtyValidasi: qtyValidasi }));
+  });
+  return terpilih;
+}
+
+// Khusus untuk CETAK Bukti Terima -- sengaja TIDAK skip qty 0 (beda dengan
+// getCheckedValidasiItems yang dipakai untuk submit Validasi). Bukti Terima adalah bukti
+// fisik barang diterima dari driver, independen dari proses validasi per-SKU; item yang
+// dicentang tapi qty divalidasi belum diisi/0 tetap dicetak dengan qty penuh (qtyBelumQC).
+function getCheckedItemsForCetak() {
+  const terpilih = [];
+  document.querySelectorAll('.vi-item-check:checked').forEach(cb => {
+    const idx = parseInt(cb.getAttribute('data-idx'));
+    if (isNaN(idx) || !VI_DATA_CURRENT_PO[idx]) return;
+    const item = VI_DATA_CURRENT_PO[idx];
+    const qtyInput = document.querySelector(`.vi-item-qty[data-idx="${idx}"]`);
+    let qtyValidasi = qtyInput ? Number(qtyInput.value) : 0;
     const qtyMax = Number(item.qtyBelumQC || 0);
     if (!qtyValidasi || qtyValidasi <= 0) qtyValidasi = qtyMax;
     if (qtyValidasi > qtyMax) qtyValidasi = qtyMax;
@@ -9229,7 +9316,7 @@ async function submitValidasiInboundTerpilih() {
 // CETAK BUKTI TERIMA BARANG (TTD DRIVER / ADMIN / SPV)
 // ==========================================
 function cetakBuktiTerimaInbound() {
-  const terpilih = getCheckedValidasiItems();
+  const terpilih = getCheckedItemsForCetak();
   if (terpilih.length === 0) {
     showVIAlert('Mohon centang minimal 1 item yang akan dicetak pada Bukti Terima.', 'warning');
     return;
@@ -9716,21 +9803,26 @@ async function eksekusiCancelOutbound() {
       rows.forEach((r, i) => {
         const qty = Number(r.qty) || 0;
         if (qty >= 0) totalQtyMasuk += qty; else totalQtyKeluar += Math.abs(qty);
+        const tipeRiwayatBadge = r.tipeRiwayat === 'From'
+          ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">From</span>'
+          : (r.tipeRiwayat === 'To' ? '<span class="badge bg-success-subtle text-success border border-success-subtle">To</span>' : '-');
         html += `<tr>
           <td style="text-align:center;">${i + 1}</td>
           <td class="text-nowrap">${r.timestamp}</td>
           <td>${r.type || '-'}</td>
+          <td style="text-align:center;">${tipeRiwayatBadge}</td>
           <td>${r.ref || '-'}</td>
           <td style="font-weight:700;">${r.sku || '-'}</td>
+          <td>${r.grade || '-'}</td>
           <td style="text-align:right;font-weight:700;">${qty.toLocaleString('id-ID')}</td>
           <td>${r.lokasi || '-'}</td>
           <td>${r.user || '-'}</td>
           <td>${r.catatan || '-'}</td>
         </tr>`;
       });
-      document.getElementById('mhexp-tbody').innerHTML = html || '<tr><td colspan="9" class="text-center text-muted">Tidak ada data yang cocok dengan filter.</td></tr>';
+      document.getElementById('mhexp-tbody').innerHTML = html || '<tr><td colspan="11" class="text-center text-muted">Tidak ada data yang cocok dengan filter.</td></tr>';
       document.getElementById('mhexp-tfoot').innerHTML = `<tr>
-        <td colspan="5" style="text-align:right;">TOTAL (${rows.length} baris)</td>
+        <td colspan="7" style="text-align:right;">TOTAL (${rows.length} baris)</td>
         <td style="text-align:right;">${(totalQtyMasuk - totalQtyKeluar).toLocaleString('id-ID')}</td>
         <td colspan="3"></td>
       </tr>`;
@@ -12064,7 +12156,7 @@ async function eksekusiCancelOutbound() {
           (rows || []).forEach(r => {
             if (!r.ref) return;
             if (!SWA_STAGING_DATA[r.ref]) SWA_STAGING_DATA[r.ref] = [];
-            SWA_STAGING_DATA[r.ref].push({ sku: r.kode_sku, maxQty: r.qty_sisa });
+            SWA_STAGING_DATA[r.ref].push({ sku: r.kode_sku, maxQty: r.qty_sisa, gradeAsal: r.grade_asal || '-' });
           });
 
           const listNoReq = Object.keys(SWA_STAGING_DATA);
@@ -12103,7 +12195,10 @@ async function eksekusiCancelOutbound() {
         listItems.forEach(item => {
           const opt = document.createElement('option');
           opt.value = item.sku.toString().trim();
-          opt.textContent = `${item.sku} (Sisa: ${item.maxQty} Pcs)`;
+          // FITUR BARU: tampilkan Grade Asal barang di teks dropdown, supaya tim QC
+          // Swarovski langsung tahu dari grade apa barang ini di-request tanpa perlu
+          // buka layar/modul lain.
+          opt.textContent = `${item.sku} (Grade Asal: ${item.gradeAsal}, Sisa: ${item.maxQty} Pcs)`;
           skuSel.appendChild(opt);
         });
       } else {
@@ -12123,7 +12218,7 @@ async function eksekusiCancelOutbound() {
       const listItems = SWA_STAGING_DATA[noReqSelected] || [];
       const match = listItems.find(item => item.sku.toString().trim() === skuSelected);
       if (match) {
-        if (info) info.textContent = `*Batas sisa stok di Staging QC Swarovski: ${match.maxQty} PCS.`;
+        if (info) info.textContent = `*Grade Asal barang ini: ${match.gradeAsal}. Batas sisa stok di Staging QC Swarovski: ${match.maxQty} PCS.`;
         if (qtyInput) qtyInput.max = match.maxQty;
       }
     }
