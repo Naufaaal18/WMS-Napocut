@@ -5803,8 +5803,8 @@ async function eksekusiAddSkuOutbound() {
               </div>
               <div class="mb-2">
                 <div class="border rounded p-1 text-center bg-white">
-                  <div class="text-muted" style="font-size:10px;">Total Qty Wajib Diambil (semua lokasi)</div>
-                  <div class="fw-bold text-dark" style="font-size:12px;">${item.qtyWajib} Pcs</div>
+                  <div class="text-muted" style="font-size:10px;">Sisa yang Wajib Diambil (semua lokasi)</div>
+                  <div class="fw-bold text-dark" style="font-size:12px;">${item.sisaKebutuhan} / ${item.qtyWajib} Pcs${item.qtyWajib !== item.sisaKebutuhan ? ' <span class="text-muted" style="font-size:10px;">(sebagian sudah dipicking sebelumnya)</span>' : ''}</div>
                 </div>
               </div>
 
