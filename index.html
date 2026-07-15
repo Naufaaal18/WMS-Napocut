@@ -1881,22 +1881,22 @@ window.fetch = function (url, options) {
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
       <div class="sub-module-list" id="home-sub-export">
-        <div class="sub-module-row" id="home-subrow-export-suratjalan" onclick="bukaModulDariHome('tab-export', 'modul-export')">
+        <div class="sub-module-row" id="home-subrow-export-suratjalan" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-suratjalan')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Surat Jalan (dari Checking)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-export-laporan" onclick="bukaModulDariHome('tab-export', 'modul-export'); setTimeout(()=>bukaSubExport('sub-export-inventory'),300)">
+        <div class="sub-module-row" id="home-subrow-export-laporan" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-inventory')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Laporan Inventory (Stock FG / Inbound / Return)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-export-dataqc" onclick="bukaModulDariHome('tab-export', 'modul-export'); setTimeout(()=>bukaSubExport('sub-export-dataqc'),300)">
+        <div class="sub-module-row" id="home-subrow-export-dataqc" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-dataqc')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Data QC (Hasil Quality Control)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-export', 'modul-export'); setTimeout(()=>bukaSubExport('sub-export-movhistory'),300)">
+        <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-movhistory')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Movement History (Audit Trail)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
@@ -5438,7 +5438,8 @@ async function eksekusiAddSkuOutbound() {
           'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
-          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor']
+          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
+          'modul-export': ['sub-export-suratjalan', 'sub-export-inventory', 'sub-export-dataqc', 'sub-export-movhistory']
         };
         const daftarSub = mapSubCards[modulId];
         if (daftarSub) {
