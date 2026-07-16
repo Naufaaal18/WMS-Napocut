@@ -5,6 +5,7 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <!DOCTYPE html>
 <html lang="id">
 
@@ -44,6 +45,10 @@ async function _callRpc(rpcName, params) {
 const ENDPOINTS = {
 
   checkLogin: (u, p) => _callRpc('check_login', { p_username: u, p_password: p }),
+
+  // FITUR BARU: DASHBOARD HOME - satu RPC agregat mengembalikan semua angka
+  // KPI/Inbound/Outbound/Work/Employees yang dipakai widget dashboard di Home.
+  getDashboardHomeData: () => _callRpc('get_dashboard_home_data', {}),
 
   // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
   // PERBAIKAN KEAMANAN: fungsi di database sekarang WAJIB p_actor_username dan akan
@@ -1636,6 +1641,136 @@ window.fetch = function (url, options) {
     .ob-mcard-grid .lbl { color: #6c757d; display: block; font-size: 10px; }
     .ob-mcard-grid .val { font-weight: 700; }
     .ob-mcard-status-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #dee2e6; font-size: 11px; }
+
+    /* =========================================================================
+       FITUR BARU: WAREHOUSE DASHBOARD (widget di halaman Home, di atas Menu Utama)
+       Tema gelap terpisah dari sisa halaman Home yang terang, dibungkus dalam
+       #whdash-root supaya style-nya tidak bocor ke elemen lain.
+       ========================================================================= */
+    #whdash-root {
+      background: #12182b;
+      color: #e7ebf5;
+      padding: 10px 12px 4px;
+    }
+    .whdash-toggle-row {
+      display: flex;
+      justify-content: center;
+      padding: 2px 0 6px;
+      cursor: pointer;
+      color: #9aa6c7;
+    }
+    .whdash-toggle-row i { transition: transform .2s ease; }
+    #whdash-root.whdash-collapsed .whdash-body { display: none; }
+    #whdash-root.whdash-collapsed .whdash-toggle-row i { transform: rotate(180deg); }
+
+    .whdash-kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .whdash-kpi-tile {
+      background: #2f6fb0;
+      border-radius: 6px;
+      padding: 8px 6px;
+      text-align: center;
+    }
+    .whdash-kpi-tile .whdash-kpi-label {
+      font-size: 9.5px;
+      opacity: 0.9;
+      line-height: 1.2;
+      min-height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .whdash-kpi-tile .whdash-kpi-value {
+      font-size: 20px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+
+    .whdash-section {
+      background: #1c2440;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .whdash-section-title {
+      background: #262f52;
+      padding: 7px 12px;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .whdash-section-body { padding: 10px 12px 14px; }
+    .whdash-subtitle {
+      font-size: 11px;
+      color: #9aa6c7;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .whdash-donut-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .whdash-donut-box { text-align: center; }
+    .whdash-donut-box canvas { max-width: 100%; }
+    .whdash-donut-wrap { position: relative; width: 90px; height: 90px; margin: 0 auto; }
+    .whdash-donut-center {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 700;
+    }
+    .whdash-donut-title { font-size: 10.5px; color: #9aa6c7; margin-bottom: 2px; }
+    .whdash-donut-legend { margin-top: 4px; font-size: 8.5px; text-align: left; }
+    .whdash-donut-legend div { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .whdash-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+
+    .whdash-mid-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 640px) {
+      .whdash-mid-row { grid-template-columns: 1.3fr 1fr; }
+    }
+    .whdash-linechart-box { height: 150px; position: relative; }
+    .whdash-gauge-box { text-align: center; }
+    .whdash-gauge-box canvas { max-height: 110px; }
+    .whdash-gauge-value { font-size: 20px; font-weight: 700; margin-top: -34px; }
+    .whdash-gauge-caption { font-size: 10.5px; color: #9aa6c7; margin-top: 6px; }
+
+    .whdash-status-legend { font-size: 10.5px; }
+    .whdash-status-legend .whdash-status-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+    }
+    .whdash-status-bar { flex: 1; height: 7px; border-radius: 4px; background: #333e63; overflow: hidden; }
+    .whdash-status-bar-fill { height: 100%; border-radius: 4px; }
+    .whdash-status-count { min-width: 42px; text-align: right; font-weight: 700; }
+    .whdash-status-throughput { text-align: center; margin-top: 8px; font-size: 11px; color: #9aa6c7; }
+    .whdash-status-throughput b { color: #e7ebf5; font-size: 15px; }
+
+    .whdash-work-row { margin-bottom: 10px; }
+    .whdash-work-label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .whdash-work-bar { height: 8px; border-radius: 4px; background: #333e63; overflow: hidden; }
+    .whdash-work-bar-fill { height: 100%; border-radius: 4px; background: #4c8dff; }
+    .whdash-work-sub { font-size: 10.5px; color: #9aa6c7; margin-top: 2px; }
+
+    .whdash-emp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 12px; }
+    .whdash-emp-role { width: 84px; flex: 0 0 auto; color: #cfd6ec; }
+    .whdash-emp-bar-wrap { flex: 1; }
+    .whdash-emp-bar { height: 14px; border-radius: 3px; background: #8b6fd6; }
+    .whdash-emp-count { width: 24px; text-align: right; font-weight: 700; flex: 0 0 auto; }
+
+    .whdash-loading, .whdash-error { text-align: center; padding: 20px 8px; font-size: 12px; color: #9aa6c7; }
+    .whdash-error { color: #ff9d9d; }
+
+    @media (min-width: 640px) {
+      .whdash-kpi-strip { grid-template-columns: repeat(7, 1fr); }
+    }
   </style>
 </head>
 
@@ -1704,6 +1839,82 @@ window.fetch = function (url, options) {
       <button class="home-logout-btn" onclick="eksekusiLogout()" title="Keluar">
         <i class="fa-solid fa-power-off"></i>
       </button>
+    </div>
+
+    <!-- ===== FITUR BARU: WAREHOUSE DASHBOARD (KPI/Inbound/Outbound/Work/Employees) ===== -->
+    <div id="whdash-root">
+      <div class="whdash-kpi-strip" id="whdash-kpi-strip">
+        <div class="whdash-loading">Memuat KPI...</div>
+      </div>
+
+      <div class="whdash-toggle-row" onclick="toggleWhDashboard()" title="Perluas/Ciutkan Dashboard">
+        <i class="fa-solid fa-chevron-down"></i>
+      </div>
+
+      <div class="whdash-body" id="whdash-body">
+
+        <div class="whdash-section">
+          <div class="whdash-section-title">Inbound</div>
+          <div class="whdash-section-body">
+            <div class="whdash-subtitle">Total Penerimaan Barang</div>
+            <div class="whdash-donut-row" id="whdash-ib-donuts">
+              <div class="whdash-loading">Memuat...</div>
+            </div>
+            <div class="whdash-mid-row">
+              <div>
+                <div class="whdash-subtitle">Penerimaan per Jam Hari Ini</div>
+                <div class="whdash-linechart-box"><canvas id="whdash-ib-linechart"></canvas></div>
+              </div>
+              <div class="whdash-gauge-box">
+                <div class="whdash-subtitle">Rata-rata Validasi (jam)</div>
+                <canvas id="whdash-ib-gauge"></canvas>
+                <div class="whdash-gauge-caption" id="whdash-ib-throughput">Throughput: -</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="whdash-section">
+          <div class="whdash-section-title">Outbound</div>
+          <div class="whdash-section-body">
+            <div class="whdash-subtitle">Total Pengiriman Barang</div>
+            <div class="whdash-donut-row" id="whdash-ob-donuts">
+              <div class="whdash-loading">Memuat...</div>
+            </div>
+            <div class="whdash-mid-row">
+              <div>
+                <div class="whdash-subtitle">Pengiriman per Jam Hari Ini</div>
+                <div class="whdash-linechart-box"><canvas id="whdash-ob-linechart"></canvas></div>
+              </div>
+              <div>
+                <div class="whdash-subtitle">Status Order</div>
+                <div class="whdash-status-legend" id="whdash-ob-status"></div>
+                <div class="whdash-status-throughput" id="whdash-ob-throughput"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-2">
+          <div class="col-12 col-sm-6">
+            <div class="whdash-section h-100">
+              <div class="whdash-section-title">Work</div>
+              <div class="whdash-section-body" id="whdash-work-body">
+                <div class="whdash-loading">Memuat...</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6">
+            <div class="whdash-section h-100">
+              <div class="whdash-section-title" id="whdash-emp-title">Employees</div>
+              <div class="whdash-section-body" id="whdash-emp-body">
+                <div class="whdash-loading">Memuat...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
 
     <div class="home-section-label">Menu Utama</div>
@@ -5618,6 +5829,243 @@ async function eksekusiAddSkuOutbound() {
 
       // Juga simpan user-display untuk konten-aplikasi (dipakai saat masuk modul)
       document.getElementById('user-display').innerText = `${user.nama} (${user.role})`;
+
+      // FITUR BARU: muat Warehouse Dashboard (KPI/Inbound/Outbound/Work/Employees)
+      loadHomeDashboard();
+    }
+
+    // =========================================================================
+    // FITUR BARU: WAREHOUSE DASHBOARD - widget KPI di halaman Home.
+    // Satu RPC agregat (get_dashboard_home_data) dipanggil sekali, hasilnya
+    // dipakai untuk render KPI strip, donut chart, line chart, gauge, progress
+    // bar, dan bar chart karyawan sekaligus (Chart.js).
+    // =========================================================================
+    let WHDASH_CHARTS = {}; // simpan instance Chart.js supaya bisa di-destroy sebelum render ulang
+
+    function toggleWhDashboard() {
+      document.getElementById('whdash-root').classList.toggle('whdash-collapsed');
+    }
+
+    function whdashDestroyChart(key) {
+      if (WHDASH_CHARTS[key]) { WHDASH_CHARTS[key].destroy(); delete WHDASH_CHARTS[key]; }
+    }
+
+    // Warna konsisten dipakai di semua donut/legend
+    const WHDASH_COLORS = {
+      biru: '#4c8dff', hijau: '#2ecc8f', abu: '#4b5578', merah: '#ff5d5d',
+      kuning: '#ffcc4d', ungu: '#8b6fd6', oranye: '#ff9f43'
+    };
+
+    function whdashFormatNum(n) {
+      if (n === null || n === undefined) return '-';
+      n = Number(n);
+      if (n >= 1000) return (n / 1000).toFixed(n % 1000 === 0 ? 0 : 1) + 'k';
+      return String(n);
+    }
+
+    function whdashRenderDonut(canvasId, labelBesar, dataArr, colorArr) {
+      whdashDestroyChart(canvasId);
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      WHDASH_CHARTS[canvasId] = new Chart(ctx, {
+        type: 'doughnut',
+        data: { datasets: [{ data: dataArr, backgroundColor: colorArr, borderWidth: 0 }] },
+        options: {
+          cutout: '72%',
+          plugins: { legend: { display: false }, tooltip: { enabled: true } },
+          animation: false,
+          responsive: true,
+          maintainAspectRatio: true
+        }
+      });
+    }
+
+    function whdashDonutBox(idPrefix, judul, totalLabel, totalValue, items) {
+      // items: [{label, value, color}]
+      const total = items.reduce((a, b) => a + (b.value || 0), 0) || 1;
+      const legendHtml = items.map(it =>
+        `<div><span class="whdash-legend-dot" style="background:${it.color}"></span>${it.label}: ${whdashFormatNum(it.value)}</div>`
+      ).join('');
+      return `
+        <div class="whdash-donut-box">
+          <div class="whdash-donut-title">${judul}</div>
+          <div class="whdash-donut-wrap">
+            <canvas id="${idPrefix}"></canvas>
+            <div class="whdash-donut-center">${whdashFormatNum(totalValue)}</div>
+          </div>
+          <div class="whdash-donut-legend">${legendHtml}</div>
+        </div>`;
+    }
+
+    function whdashRenderLineChart(canvasId, hourlyArr) {
+      whdashDestroyChart(canvasId);
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      const map = {};
+      (hourlyArr || []).forEach(h => { map[h.hour] = h.count; });
+      const labels = []; const data = [];
+      for (let h = 0; h <= 23; h++) { labels.push(h + ':00'); data.push(map[h] || 0); }
+      WHDASH_CHARTS[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{
+          data, borderColor: WHDASH_COLORS.ungu, backgroundColor: 'transparent',
+          borderWidth: 2, pointRadius: 0, tension: 0.35
+        }] },
+        options: {
+          animation: false, responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#9aa6c7', maxTicksLimit: 6, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { ticks: { color: '#9aa6c7', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      });
+    }
+
+    function whdashRenderGauge(canvasId, value, maxValue) {
+      whdashDestroyChart(canvasId);
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return;
+      const v = Math.max(0, Math.min(value || 0, maxValue));
+      WHDASH_CHARTS[canvasId] = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [maxValue * 0.4, maxValue * 0.35, maxValue * 0.25],
+            backgroundColor: [WHDASH_COLORS.hijau, WHDASH_COLORS.kuning, WHDASH_COLORS.merah],
+            borderWidth: 0, circumference: 180, rotation: 270
+          }, {
+            // needle marker: baris tipis di posisi value
+            data: [v, 0.001, maxValue - v],
+            backgroundColor: ['transparent', '#fff', 'transparent'],
+            borderWidth: 0, circumference: 180, rotation: 270, weight: 0.15
+          }]
+        },
+        options: {
+          cutout: '68%', animation: false, responsive: true, maintainAspectRatio: true,
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+      const capEl = document.getElementById(canvasId).closest('.whdash-gauge-box');
+      if (capEl) {
+        let valEl = capEl.querySelector('.whdash-gauge-value');
+        if (!valEl) {
+          valEl = document.createElement('div');
+          valEl.className = 'whdash-gauge-value';
+          capEl.querySelector('canvas').insertAdjacentElement('afterend', valEl);
+        }
+        valEl.textContent = (value === null || value === undefined) ? '-' : value;
+      }
+    }
+
+    async function loadHomeDashboard() {
+      const kpiEl = document.getElementById('whdash-kpi-strip');
+      try {
+        const d = await ENDPOINTS.getDashboardHomeData();
+
+        // ---- KPI STRIP ----
+        kpiEl.innerHTML = (d.kpi || []).map(k => `
+          <div class="whdash-kpi-tile">
+            <div class="whdash-kpi-label">${k.label}</div>
+            <div class="whdash-kpi-value">${whdashFormatNum(k.value)}</div>
+          </div>`).join('');
+
+        // ---- INBOUND ----
+        const ib = d.inbound || {};
+        const ibDonutsEl = document.getElementById('whdash-ib-donuts');
+        const ibPeriods = [
+          { key: 'today', label: 'Hari Ini' },
+          { key: 'yesterday', label: 'Kemarin' },
+          { key: 'week', label: 'Minggu Ini' }
+        ];
+        ibDonutsEl.innerHTML = ibPeriods.map(p => {
+          const stat = ib[p.key] || { total: 0, validated: 0, pending: 0 };
+          return whdashDonutBox('whdash-ib-donut-' + p.key, p.label, null, stat.total, [
+            { label: 'Tervalidasi', value: stat.validated, color: WHDASH_COLORS.hijau },
+            { label: 'Pending', value: stat.pending, color: WHDASH_COLORS.merah }
+          ]);
+        }).join('');
+        ibPeriods.forEach(p => {
+          const stat = ib[p.key] || { validated: 0, pending: 0 };
+          whdashRenderDonut('whdash-ib-donut-' + p.key, null,
+            [stat.validated || 0, stat.pending || 0], [WHDASH_COLORS.hijau, WHDASH_COLORS.merah]);
+        });
+        whdashRenderLineChart('whdash-ib-linechart', ib.hourly);
+        whdashRenderGauge('whdash-ib-gauge', ib.avg_validation_hours, 6);
+        document.getElementById('whdash-ib-throughput').textContent =
+          `Throughput: ${ib.throughput_per_hr != null ? ib.throughput_per_hr : '-'} /jam`;
+
+        // ---- OUTBOUND ----
+        const ob = d.outbound || {};
+        const obDonutsEl = document.getElementById('whdash-ob-donuts');
+        const obPeriods = [
+          { key: 'today', label: 'Hari Ini' },
+          { key: 'tomorrow', label: 'Besok' },
+          { key: 'week', label: 'Minggu Ini' }
+        ];
+        obDonutsEl.innerHTML = obPeriods.map(p => {
+          const stat = ob[p.key] || { total: 0 };
+          return whdashDonutBox('whdash-ob-donut-' + p.key, p.label, null, stat.total, [
+            { label: 'Total', value: stat.total, color: WHDASH_COLORS.biru }
+          ]);
+        }).join('');
+        obPeriods.forEach(p => {
+          const stat = ob[p.key] || { total: 0 };
+          whdashRenderDonut('whdash-ob-donut-' + p.key, null, [stat.total || 0], [WHDASH_COLORS.biru]);
+        });
+        whdashRenderLineChart('whdash-ob-linechart', ob.hourly);
+
+        const statusColorMap = {
+          'Stockout': WHDASH_COLORS.merah, 'Closed': WHDASH_COLORS.hijau,
+          'In Packing': WHDASH_COLORS.oranye, 'Ready to Ship': WHDASH_COLORS.biru,
+          'Picking Pending': WHDASH_COLORS.ungu
+        };
+        const statusList = ob.status_breakdown || [];
+        const statusMax = Math.max(1, ...statusList.map(s => s.count || 0));
+        document.getElementById('whdash-ob-status').innerHTML = statusList.map(s => `
+          <div class="whdash-status-row">
+            <span class="whdash-legend-dot" style="background:${statusColorMap[s.status] || WHDASH_COLORS.abu}"></span>
+            <span style="width:82px;">${s.status}</span>
+            <div class="whdash-status-bar"><div class="whdash-status-bar-fill" style="width:${(s.count / statusMax * 100).toFixed(0)}%;background:${statusColorMap[s.status] || WHDASH_COLORS.abu}"></div></div>
+            <span class="whdash-status-count">${whdashFormatNum(s.count)}</span>
+          </div>`).join('');
+        document.getElementById('whdash-ob-throughput').innerHTML =
+          `Throughput <b>${ob.throughput_per_hr != null ? ob.throughput_per_hr : '-'}</b> shipment/jam`;
+
+        // ---- WORK ----
+        const w = d.work || {};
+        const workItems = [
+          { label: 'Validasi Inbound', key: 'inbound_validation' },
+          { label: 'Checking Klop', key: 'checking_klop' },
+          { label: 'Pemenuhan Outbound', key: 'outbound_fulfillment' },
+          { label: 'Penyelesaian Picking', key: 'picking_completion' }
+        ];
+        document.getElementById('whdash-work-body').innerHTML = workItems.map(it => {
+          const s = w[it.key] || { done: 0, total: 0 };
+          const pct = s.total > 0 ? Math.min(100, Math.round(s.done / s.total * 100)) : 0;
+          return `
+            <div class="whdash-work-row">
+              <div class="whdash-work-label">${it.label}</div>
+              <div class="whdash-work-bar"><div class="whdash-work-bar-fill" style="width:${pct}%"></div></div>
+              <div class="whdash-work-sub">${whdashFormatNum(s.done)}/${whdashFormatNum(s.total)} selesai (${pct}%)</div>
+            </div>`;
+        }).join('');
+
+        // ---- EMPLOYEES ----
+        const emp = d.employees || {};
+        document.getElementById('whdash-emp-title').textContent = `Employees (${emp.total_active != null ? emp.total_active : '-'})`;
+        const roles = emp.by_role || [];
+        const roleMax = Math.max(1, ...roles.map(r => r.count || 0));
+        document.getElementById('whdash-emp-body').innerHTML = roles.map(r => `
+          <div class="whdash-emp-row">
+            <div class="whdash-emp-role">${r.role}</div>
+            <div class="whdash-emp-bar-wrap"><div class="whdash-emp-bar" style="width:${(r.count / roleMax * 100).toFixed(0)}%"></div></div>
+            <div class="whdash-emp-count">${r.count}</div>
+          </div>`).join('') || '<div class="whdash-loading">Belum ada data</div>';
+
+      } catch (err) {
+        kpiEl.innerHTML = `<div class="whdash-error">Gagal memuat dashboard: ${err.message}</div>`;
+      }
     }
 
     // Buka/tutup sub-modul di halaman home
@@ -5691,6 +6139,9 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('halaman-home').style.display = 'block';
       document.querySelectorAll('.sub-module-list.open').forEach(el => el.classList.remove('open'));
       document.querySelectorAll('.module-row.open').forEach(el => el.classList.remove('open'));
+
+      // FITUR BARU: refresh angka Warehouse Dashboard tiap kali kembali ke Home
+      loadHomeDashboard();
     }
 
     // Navigasi Antar Halaman Tab
