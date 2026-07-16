@@ -3935,34 +3935,73 @@ async function eksekusiAddSkuOutbound() {
           </button>
         </div>
 
-        <!-- Tabel Detail Outbound per Request -->
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <small class="fw-bold text-secondary">Detail per No Request</small>
-          <input type="text" id="ob-dash-filter" class="form-control form-control-sm" style="max-width:140px;" placeholder="Filter No/Store/SKU/Grade" oninput="renderDashboardOutboundTable()">
+        <!-- ===== VIEW 1 (DEFAULT): FORM REQUEST -- 1 baris per No Request ===== -->
+        <div id="ob-dash-view-summary">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <small class="fw-bold text-secondary">Form Request <span class="text-muted fw-normal">(klik salah satu baris untuk lihat detail per SKU)</span></small>
+            <input type="text" id="ob-dash-filter-summary" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter No Request/Store" oninput="renderDashboardOutboundSummaryTable()">
+          </div>
+          <div class="table-responsive" style="max-height:420px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+              <thead class="table-light" style="position:sticky;top:0;">
+                <tr>
+                  <th>No Request</th>
+                  <th>Tgl</th>
+                  <th>Store</th>
+                  <th class="text-center" title="Jumlah SKU berbeda dalam 1 No Request">SKU</th>
+                  <th>Grade</th>
+                  <th class="text-center">Qty Req</th>
+                  <th class="text-center">Qty Alloc</th>
+                  <th class="text-center">Qty Picker</th>
+                  <th class="text-center">Qty Checker</th>
+                  <th class="text-center">Qty Shortpick</th>
+                  <th class="text-center">Stockout</th>
+                  <th title="Berubah begitu SALAH SATU SKU dalam Request ini sudah diproses (In Packing saat mulai ada yang dipicking, Ready to Ship saat mulai ada yang di-check)">Leading Status</th>
+                  <th title="Berubah setelah SEMUA SKU dalam Request ini selesai diproses (In Packing setelah semua dipicking, Ready to Ship setelah semua di-check)">Trailing Status</th>
+                </tr>
+              </thead>
+              <tbody id="ob-dash-summary-tbody">
+                <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-responsive" style="max-height:360px;">
-          <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
-            <thead class="table-light" style="position:sticky;top:0;">
-              <tr>
-                <th>No Request</th>
-                <th>Tgl</th>
-                <th>Store</th>
-                <th>SKU</th>
-                <th>Grade</th>
-                <th class="text-center">Qty Req</th>
-                <th class="text-center">Qty Alloc</th>
-                <th class="text-center" title="Total qty yang tercatat sebagai hasil pengambilan Picker (qty_picker) pada checking yang sudah Klop -- diakumulasikan otomatis kalau ada tambahan Outbound Request untuk SKU yang sama">Qty Picker</th>
-                <th class="text-center" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">Qty Checker (Klop)</th>
-                <th class="text-center" title="Qty yang gagal dipicking penuh (short pick) untuk No Request + SKU ini, diambil dari kolom qty_shortpick di Outbound Request">Qty Shortpick</th>
-                <th class="text-center">Stockout</th>
-                <th>Status</th>
-                <th class="text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="ob-dash-tbody">
-              <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
-            </tbody>
-          </table>
+
+        <!-- ===== VIEW 2: DETAIL PER NO REQUEST (muncul setelah klik baris di Form Request) ===== -->
+        <div id="ob-dash-view-detail" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+            <div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="kembaliKeSummaryDashOB()" title="Kembali ke Form Request">
+                <i class="fa-solid fa-arrow-left"></i> Kembali
+              </button>
+              <small class="fw-bold text-secondary ms-2">Detail per No Request: <span id="ob-dash-detail-title" class="text-danger"></span></small>
+            </div>
+            <input type="text" id="ob-dash-filter" class="form-control form-control-sm" style="max-width:140px;" placeholder="Filter No/Store/SKU/Grade" oninput="renderDashboardOutboundTable()">
+          </div>
+          <div class="table-responsive" style="max-height:360px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+              <thead class="table-light" style="position:sticky;top:0;">
+                <tr>
+                  <th>No Request</th>
+                  <th>Tgl</th>
+                  <th>Store</th>
+                  <th>SKU</th>
+                  <th>Grade</th>
+                  <th class="text-center">Qty Req</th>
+                  <th class="text-center">Qty Alloc</th>
+                  <th class="text-center" title="Total qty yang tercatat sebagai hasil pengambilan Picker (qty_picker) pada checking yang sudah Klop -- diakumulasikan otomatis kalau ada tambahan Outbound Request untuk SKU yang sama">Qty Picker</th>
+                  <th class="text-center" title="Total qty yang sudah dicek Checker & hasilnya cocok/klop dengan qty Picker (tidak termasuk yang Selisih)">Qty Checker (Klop)</th>
+                  <th class="text-center" title="Qty yang gagal dipicking penuh (short pick) untuk No Request + SKU ini, diambil dari kolom qty_shortpick di Outbound Request">Qty Shortpick</th>
+                  <th class="text-center">Stockout</th>
+                  <th>Status</th>
+                  <th class="text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="ob-dash-tbody">
+                <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Ringkasan per Store -->
@@ -10838,7 +10877,9 @@ async function eksekusiCancelOutbound() {
           }
           if (alertEl) alertEl.innerHTML = '';
           DASHOB_DATA_OB = res.data || [];
+          kembaliKeSummaryDashOB(); // reload/ganti bulan-tahun selalu kembali ke tampilan Form Request dulu
           renderDashboardOutboundTable();
+          renderDashboardOutboundSummaryTable();
         })
         .withFailureHandler(function(err) {
           const alertEl = document.getElementById('ob-dash-alert');
@@ -10936,6 +10977,169 @@ async function eksekusiCancelOutbound() {
             <td class="text-center">${storeMap[s].qty.toLocaleString('id-ID')}</td>
             <td class="text-center ${storeMap[s].stockout > 0 ? 'text-danger fw-bold' : 'text-muted'}">${storeMap[s].stockout > 0 ? storeMap[s].stockout.toLocaleString('id-ID') : '-'}</td>
           </tr>`).join('');
+    }
+
+    // =========================================================================
+    // FITUR BARU: FORM REQUEST -- ringkasan 1 baris per No Request (tampilan
+    // default Dashboard Outbound). DASHOB_DATA_OB berisi 1 baris per SKU per
+    // No Request (hasil getDashboardOutboundData); di sini SEMUA baris dengan
+    // no_request yang sama digabung/dijumlah jadi 1 baris ringkasan.
+    //
+    // Definisi Leading Status vs Trailing Status (sesuai permintaan):
+    //  - Leading Status  = berubah begitu SALAH SATU SKU dalam 1 No Request
+    //                      sudah mulai diproses (baru mulai ada yang dipicking
+    //                      -> "In Packing"; baru mulai ada yang di-check klop
+    //                      -> "Ready to Ship").
+    //  - Trailing Status = berubah setelah SEMUA SKU dalam 1 No Request selesai
+    //                      diproses (semua baris SKU sudah terpicking penuh
+    //                      -> "In Packing"; semua baris SKU sudah ter-check
+    //                      klop penuh -> "Ready to Ship").
+    // "Terpicking/tercheck penuh" dihitung terhadap Qty Alloc (bukan Qty Req),
+    // karena qty yang bisa benar-benar dipicking/dicek maksimal sebesar qty
+    // yang berhasil dialokasikan. Baris SKU yang Qty Alloc-nya 0 (habis/stockout
+    // total) dikecualikan dari perhitungan "semua sudah..." supaya 1 SKU yang
+    // stockout total tidak membuat status Trailing selamanya tertahan.
+    // Kalau SEMUA baris SKU dalam Request sudah berstatus dasar "Closed" atau
+    // "Cancelled" di database, status itu tetap dipakai apa adanya (final/tidak
+    // bisa "mundur" ke In Packing/Ready to Ship lagi).
+    // =========================================================================
+    function computeDashboardOutboundSummary(rows) {
+      const map = {};
+      const urutan = [];
+      (rows || []).forEach(r => {
+        if (!r.noRequest) return;
+        if (!map[r.noRequest]) {
+          map[r.noRequest] = {
+            noRequest: r.noRequest, tglRequest: r.tglRequest, kodeStore: r.kodeStore,
+            skuSet: new Set(), gradeSet: new Set(),
+            qtyRequest: 0, qtyAllocated: 0, qtyPicker: 0, qtyCheckerKlop: 0, qtyShortpick: 0, qtyStockout: 0,
+            _rows: []
+          };
+          urutan.push(r.noRequest);
+        }
+        const g = map[r.noRequest];
+        g.skuSet.add(r.kodeSku);
+        if (r.grade) g.gradeSet.add(r.grade);
+        g.qtyRequest += Number(r.qtyRequest || 0);
+        g.qtyAllocated += Number(r.qtyAllocated || 0);
+        g.qtyPicker += Number(r.qtyPicker || 0);
+        g.qtyCheckerKlop += Number(r.qtyCheckerKlop || 0);
+        g.qtyShortpick += Number(r.qtyShortpick || 0);
+        g.qtyStockout += Number(r.qtyStockout || 0);
+        g._rows.push(r);
+      });
+
+      return urutan.map(noReq => {
+        const g = map[noReq];
+        const rowsSku = g._rows;
+        const semuaClosed = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Closed');
+        const semuaCancelled = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Cancelled');
+
+        const anyPicked = rowsSku.some(r => Number(r.qtyPicker || 0) > 0);
+        const anyChecked = rowsSku.some(r => Number(r.qtyCheckerKlop || 0) > 0);
+        const elegibleAlloc = rowsSku.filter(r => Number(r.qtyAllocated || 0) > 0);
+        const allPicked = elegibleAlloc.length > 0 && elegibleAlloc.every(r => Number(r.qtyPicker || 0) >= Number(r.qtyAllocated || 0));
+        const allChecked = elegibleAlloc.length > 0 && elegibleAlloc.every(r => Number(r.qtyCheckerKlop || 0) >= Number(r.qtyAllocated || 0));
+
+        const baseStatus = (rowsSku[0] && rowsSku[0].status) || 'Open';
+
+        let leadingStatus = baseStatus;
+        if (anyPicked) leadingStatus = 'In Packing';
+        if (anyChecked) leadingStatus = 'Ready to Ship';
+
+        let trailingStatus = baseStatus;
+        if (allPicked) trailingStatus = 'In Packing';
+        if (allChecked) trailingStatus = 'Ready to Ship';
+
+        if (semuaClosed) { leadingStatus = 'Closed'; trailingStatus = 'Closed'; }
+        else if (semuaCancelled) { leadingStatus = 'Cancelled'; trailingStatus = 'Cancelled'; }
+
+        return {
+          noRequest: g.noRequest, tglRequest: g.tglRequest, kodeStore: g.kodeStore,
+          skuCount: g.skuSet.size, grade: Array.from(g.gradeSet).sort().join(', ') || '-',
+          qtyRequest: g.qtyRequest, qtyAllocated: g.qtyAllocated, qtyPicker: g.qtyPicker,
+          qtyCheckerKlop: g.qtyCheckerKlop, qtyShortpick: g.qtyShortpick, qtyStockout: g.qtyStockout,
+          leadingStatus, trailingStatus
+        };
+      });
+    }
+
+    function _dashObStatusClass(status) {
+      return status === 'Stockout' ? 'text-danger fw-bold'
+        : status === 'Picking Pending' ? 'text-warning'
+        : status === 'In Packing' ? 'text-info'
+        : status === 'Ready to Ship' ? 'text-primary fw-bold'
+        : status === 'Closed' ? 'text-success'
+        : status === 'Cancelled' ? 'text-muted'
+        : '';
+    }
+
+    function renderDashboardOutboundSummaryTable() {
+      const tbody = document.getElementById('ob-dash-summary-tbody');
+      if (!tbody) return; // Modul sedang tidak aktif di DOM -- aman, tidak perlu render.
+      const filterEl = document.getElementById('ob-dash-filter-summary');
+      const filter = ((filterEl ? filterEl.value : '') || '').trim().toLowerCase();
+
+      const summaryRows = computeDashboardOutboundSummary(DASHOB_DATA_OB).filter(r =>
+        !filter ||
+        r.noRequest.toLowerCase().includes(filter) ||
+        (r.kodeStore || '').toLowerCase().includes(filter)
+      );
+
+      if (!summaryRows.length) {
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = summaryRows.map(r => {
+        const stockoutTd = r.qtyStockout > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyStockout.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        const shortpickTd = r.qtyShortpick > 0 ? `<td class="text-center text-warning fw-bold">${r.qtyShortpick.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        return `<tr class="ob-form-request-row" style="cursor:pointer;" data-noreq="${escapeHtmlAttr(r.noRequest)}" title="Klik untuk lihat detail per SKU">
+          <td class="fw-bold">${r.noRequest}</td>
+          <td style="white-space:nowrap;">${r.tglRequest}</td>
+          <td>${r.kodeStore}</td>
+          <td class="text-center">${r.skuCount}</td>
+          <td>${r.grade}</td>
+          <td class="text-center">${r.qtyRequest.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyAllocated.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyPicker.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>
+          ${shortpickTd}
+          ${stockoutTd}
+          <td class="${_dashObStatusClass(r.leadingStatus)}" style="font-size:10px;">${r.leadingStatus}</td>
+          <td class="${_dashObStatusClass(r.trailingStatus)}" style="font-size:10px;">${r.trailingStatus}</td>
+        </tr>`;
+      }).join('');
+
+      // Delegasi klik baris -> buka Detail per No Request (dipasang ulang tiap render
+      // supaya baris hasil re-render tetap bisa diklik).
+      tbody.querySelectorAll('.ob-form-request-row').forEach(tr => {
+        tr.onclick = () => bukaDetailNoRequest(tr.getAttribute('data-noreq'));
+      });
+    }
+
+    // Buka halaman "Detail per No Request" (tabel lama, per SKU) untuk 1 No Request
+    // yang diklik dari Form Request.
+    function bukaDetailNoRequest(noRequest) {
+      const viewSummary = document.getElementById('ob-dash-view-summary');
+      const viewDetail = document.getElementById('ob-dash-view-detail');
+      const filterDetail = document.getElementById('ob-dash-filter');
+      const titleEl = document.getElementById('ob-dash-detail-title');
+      if (filterDetail) filterDetail.value = noRequest;
+      if (titleEl) titleEl.textContent = noRequest;
+      if (viewSummary) viewSummary.style.display = 'none';
+      if (viewDetail) viewDetail.style.display = 'block';
+      renderDashboardOutboundTable();
+    }
+
+    // Kembali dari Detail per No Request ke Form Request (ringkasan).
+    function kembaliKeSummaryDashOB() {
+      const viewSummary = document.getElementById('ob-dash-view-summary');
+      const viewDetail = document.getElementById('ob-dash-view-detail');
+      const filterDetail = document.getElementById('ob-dash-filter');
+      if (filterDetail) filterDetail.value = '';
+      if (viewDetail) viewDetail.style.display = 'none';
+      if (viewSummary) viewSummary.style.display = 'block';
     }
 
     // =========================================================================
