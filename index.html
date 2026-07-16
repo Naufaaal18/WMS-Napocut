@@ -109,7 +109,8 @@ const ENDPOINTS = {
     p_tanggal_request: payload.tanggalRequest, p_tipe_outbound: payload.tipeOutbound,
     p_kode_store: payload.kodeStore,
     p_items: payload.items.map(it => ({ sku: it.sku || it.kodeSku, grade: it.grade, qty: Number(it.qty || it.qtyRequest) })),
-    p_user_login: payload.userLogin
+    p_user_login: payload.userLogin,
+    p_catatan: payload.catatan || null
   }),
 
   addSkuToExistingOutboundRequest: (payload) => _callRpc('add_sku_to_existing_outbound_request', {
@@ -588,7 +589,7 @@ Object.assign(ENDPOINTS, {
       // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
       // berapa pun jumlahnya.
       const [obData, ckData, pkData] = await Promise.all([
-        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status'),
+        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status, catatan'),
         _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker'),
         _fetchAllRows('picking', 'no_request, kode_sku, qty_diambil')
       ]);
@@ -634,7 +635,7 @@ Object.assign(ENDPOINTS, {
         .map(r => ({
           noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
-          qtyStockout: r.qty_oos, qtyShortpick: r.qty_shortpick || 0, status: r.status,
+          qtyStockout: r.qty_oos, qtyShortpick: r.qty_shortpick || 0, status: r.status, catatan: r.catatan || '',
           qtyPicker: pickerMap[r.no_request + '||' + r.kode_sku] || 0,
           qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
         }))
@@ -2900,6 +2901,10 @@ window.fetch = function (url, options) {
           <option value="Urgent Putaway">Urgent Putaway</option>
         </select>
             </div>
+            <div class="col-12">
+              <label class="form-label small fw-bold mb-0">Catatan (Opsional)</label>
+              <input type="text" id="ob-catatan" class="form-control form-control-sm" placeholder="Cth: ARIA -- hanya tampil di Dashboard Outbound, tidak mempengaruhi Picking/Checking" maxlength="50">
+            </div>
           </div>
 
           <div id="section-manual-outbound">
@@ -3153,6 +3158,10 @@ function submitOutboundRequestAplikasi() {
     kodeStore: kodeStore,
     tipeOutbound: tipeOutbound,
     userLogin: user,
+    // FITUR BARU: Catatan Opsional -- hanya untuk tampilan di Dashboard Outbound
+    // (mis. "000018-EVENT BSI (ARIA)"), sama sekali tidak mempengaruhi No Request asli
+    // yang dipakai untuk Picking/Checking/alokasi.
+    catatan: (document.getElementById("ob-catatan") ? document.getElementById("ob-catatan").value.trim() : ""),
     items: []
   };
 
@@ -10874,7 +10883,7 @@ async function eksekusiCancelOutbound() {
           const checkerKlopTd = r.qtyCheckerKlop > 0 ? `<td class="text-center text-success fw-bold">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           const shortpickTd = r.qtyShortpick > 0 ? `<td class="text-center text-warning fw-bold">${r.qtyShortpick.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           return `<tr>
-            <td class="fw-bold">${r.noRequest}</td>
+            <td class="fw-bold">${r.noRequest}${r.catatan ? ` <span class="text-muted fw-normal" style="font-size:11px;">(${escapeHtmlAttr(r.catatan)})</span>` : ''}</td>
             <td style="white-space:nowrap;">${r.tglRequest}</td>
             <td>${r.kodeStore}</td>
             <td>${r.kodeSku}</td>
@@ -10957,6 +10966,7 @@ async function eksekusiCancelOutbound() {
 
       const dataExport = rows.map(r => ({
         'No Request': r.noRequest,
+        'Catatan': r.catatan || '',
         'Tanggal': r.tglRequest,
         'Store': r.kodeStore,
         'SKU': r.kodeSku,
@@ -10971,7 +10981,7 @@ async function eksekusiCancelOutbound() {
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
 
