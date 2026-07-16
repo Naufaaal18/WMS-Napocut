@@ -1938,6 +1938,72 @@ window.fetch = function (url, options) {
       }
       #sub-inventory-dashboard .inv-mobile-cards td[colspan]::before { content: none; }
     }
+
+    /* =========================================================================
+       FITUR BARU: TAMPILAN MOBILE — MODUL INBOUND
+       (Inbound Receiving list SKU & Validasi Inbound sebelum QC)
+       -------------------------------------------------------------------------
+       Kedua tabel ini berisi input qty/lokasi per baris, jadi tiap baris diubah
+       jadi kartu dengan tata letak flex: checkbox+SKU di baris atas, lalu
+       input-input ditumpuk penuh di bawahnya supaya mudah diisi dengan jari.
+       Tidak mengubah apa pun di layar >= 577px (desktop/tablet tetap tabel biasa).
+       ========================================================================= */
+    @media (max-width: 576px) {
+      /* --- Inbound Receiving (Open PO): daftar SKU pada PO --- */
+      #sub-inbound #ib-list-container thead { display: none; }
+      #ib-list-tbody, #ib-list-tbody tr, #ib-list-tbody td { display: block; width: 100%; }
+      #ib-list-tbody tr {
+        display: flex; flex-wrap: wrap; align-items: center;
+        background: #fff; border: 1px solid #e3e6ec; border-radius: 10px;
+        padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      }
+      #ib-list-tbody td { border: none !important; padding: 4px 0 !important; }
+      #ib-list-tbody td:nth-child(1) { order: 1; flex: 0 0 auto; }
+      #ib-list-tbody td:nth-child(1) input { width: 20px; height: 20px; }
+      #ib-list-tbody td:nth-child(2) { order: 2; flex: 1 1 auto; font-size: 14.5px; }
+      #ib-list-tbody td:nth-child(6) { order: 3; flex: 0 0 auto; text-align: right; }
+      #ib-list-tbody td:nth-child(6) input { width: 20px; height: 20px; }
+      #ib-list-tbody td:nth-child(3) {
+        order: 4; flex: 0 0 100%; display: flex; justify-content: space-between;
+        font-size: 13px; padding-top: 6px !important; margin-top: 4px; border-top: 1px solid #f0f1f4 !important;
+      }
+      #ib-list-tbody td:nth-child(3)::before { content: attr(data-label); font-weight: 600; color: #8a92a6; font-size: 11.5px; }
+      #ib-list-tbody td:nth-child(4) { order: 5; flex: 0 0 100%; }
+      #ib-list-tbody td:nth-child(4)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
+      #ib-list-tbody td:nth-child(4) input { width: 100%; min-height: 38px; }
+      #ib-list-tbody td:nth-child(5) { order: 6; flex: 0 0 100%; }
+      #ib-list-tbody td:nth-child(5):has(input[type="hidden"]) { display: none; }
+      #ib-list-tbody td:nth-child(5)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
+      #ib-list-tbody td:nth-child(5) input { width: 100%; min-height: 38px; }
+
+      /* --- Validasi Inbound (Sebelum QC) --- */
+      #sub-validasi-inbound #vi-table-wrap thead { display: none; }
+      #vi-tbody, #vi-tbody tr, #vi-tbody td { display: block; width: 100%; }
+      #vi-tbody tr {
+        display: flex; flex-wrap: wrap; align-items: center;
+        background: #fff; border: 1px solid #e3e6ec; border-radius: 10px;
+        padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      }
+      #vi-tbody tr:has(td[colspan]) { display: block; background: transparent; border: none; box-shadow: none; padding: 0; }
+      #vi-tbody td { border: none !important; padding: 4px 0 !important; }
+      #vi-tbody td[colspan] { text-align: center; }
+      #vi-tbody td:nth-child(1) { order: 1; flex: 0 0 auto; }
+      #vi-tbody td:nth-child(1) input { width: 20px; height: 20px; }
+      #vi-tbody td:nth-child(2) { order: 2; flex: 1 1 auto; font-size: 14.5px; }
+      #vi-tbody td:nth-child(3) {
+        order: 4; flex: 0 0 100%; font-size: 13px; color: #495057;
+        padding-top: 6px !important; margin-top: 4px; border-top: 1px solid #f0f1f4 !important;
+      }
+      #vi-tbody td:nth-child(3)::before { content: attr(data-label) ": "; font-weight: 600; color: #8a92a6; }
+      #vi-tbody td:nth-child(4) { order: 5; flex: 0 0 100%; text-align: left; }
+      #vi-tbody td:nth-child(4)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
+      #vi-tbody td:nth-child(4) input { width: 140px !important; }
+      #vi-tbody td:nth-child(5) { order: 6; flex: 0 0 100%; display: flex; justify-content: space-between; font-size: 13px; }
+      #vi-tbody td:nth-child(5)::before { content: attr(data-label); font-weight: 600; color: #8a92a6; font-size: 11.5px; }
+
+      /* Tombol Validasi Terpilih / Cetak Bukti Terima ditumpuk penuh agar tidak sempit */
+      #vi-action-btns { flex-direction: column; }
+    }
   </style>
 </head>
 
@@ -2579,7 +2645,7 @@ window.fetch = function (url, options) {
               </table>
             </div>
 
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2" id="vi-action-btns">
               <button type="button" class="btn btn-success btn-sm fw-bold flex-grow-1" onclick="submitValidasiInboundTerpilih()">
                 <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
               </button>
@@ -9777,9 +9843,9 @@ function onInboundPoSelected() {
     return `<tr data-sku-row="${skuCode}">
         <td class="text-center"><input type="checkbox" class="ib-row-check" data-sku="${skuCode}"></td>
         <td class="fw-bold">${skuCode}<input type="hidden" class="ib-row-grade" data-sku="${skuCode}" value="${gradeAuto}"></td>
-        <td class="text-center text-muted">${maxQty}</td>
-        <td><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0"></td>
-        <td>${kolomLokasi}</td>
+        <td class="text-center text-muted" data-label="Sisa Order">${maxQty}</td>
+        <td data-label="Qty Diterima"><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0"></td>
+        <td data-label="Lokasi Rak">${kolomLokasi}</td>
         <td class="text-center"><input type="checkbox" class="ib-row-short" data-sku="${skuCode}" title="Short Putaway SKU ini. Bisa dicentang dengan Qty tetap 0/kosong jika barang SAMA SEKALI tidak diterima dari Supplier."></td>
       </tr>`;
   }).join('');
@@ -10045,13 +10111,13 @@ function renderValidasiInboundTable() {
     <tr>
       <td class="text-center"><input type="checkbox" class="vi-item-check" data-idx="${idx}"></td>
       <td class="fw-bold">${item.sku || '-'}</td>
-      <td>${item.deskripsi || '-'}</td>
-      <td class="text-center">
+      <td data-label="Deskripsi">${item.deskripsi || '-'}</td>
+      <td class="text-center" data-label="Qty Divalidasi">
         <input type="number" class="form-control form-control-sm vi-item-qty text-center fw-bold"
                data-idx="${idx}" value="${item.qtyBelumQC || 0}" min="1" max="${item.qtyBelumQC || 0}" style="width:80px; display:inline-block;">
         <div class="text-muted" style="font-size:10px;">dari ${item.qtyBelumQC || 0}</div>
       </td>
-      <td>${item.tglTerima || '-'}</td>
+      <td data-label="Tgl Terima">${item.tglTerima || '-'}</td>
     </tr>`).join('');
 }
 
