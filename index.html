@@ -11041,13 +11041,31 @@ async function eksekusiCancelOutbound() {
         const allPicked = elegibleAlloc.length > 0 && elegibleAlloc.every(r => Number(r.qtyPicker || 0) >= Number(r.qtyAllocated || 0));
         const allChecked = elegibleAlloc.length > 0 && elegibleAlloc.every(r => Number(r.qtyCheckerKlop || 0) >= Number(r.qtyAllocated || 0));
 
-        const baseStatus = (rowsSku[0] && rowsSku[0].status) || 'Open';
+        // PERBAIKAN BUG: sebelumnya "baseStatus" (nilai default sebelum override In
+        // Packing/Ready to Ship) diambil dari status baris SKU PERTAMA SAJA (rowsSku[0]).
+        // Ini salah -- kalau kebetulan SKU pertama itu statusnya sudah "Closed" di database
+        // padahal SKU LAIN dalam No Request yang sama belum selesai (mis. masih ada
+        // Stockout), Trailing Status ikut salah menampilkan "Closed" walau jelas belum
+        // semua SKU kelar. "Closed"/"Cancelled" HANYA boleh tampil kalau BENAR-BENAR semua
+        // baris SKU berstatus itu (lihat semuaClosed/semuaCancelled di bawah). Untuk nilai
+        // default lainnya, sekarang diambil dari status "paling rendah progress-nya" (utk
+        // Trailing) / "paling tinggi progress-nya" (utk Leading) di ANTARA SEMUA baris SKU
+        // yang bukan Closed/Cancelled -- bukan asal baris pertama.
+        const RANK = { 'Stockout': 0, 'Open': 0, 'Picking Pending': 1, 'In Packing': 2 };
+        const statusNonTerminal = rowsSku.map(r => r.status).filter(s => s && s !== 'Closed' && s !== 'Cancelled');
+        const rankOf = (s) => (RANK.hasOwnProperty(s) ? RANK[s] : 0);
+        const worstStatus = statusNonTerminal.length
+          ? statusNonTerminal.reduce((a, b) => rankOf(b) < rankOf(a) ? b : a)
+          : 'Open';
+        const bestStatus = statusNonTerminal.length
+          ? statusNonTerminal.reduce((a, b) => rankOf(b) > rankOf(a) ? b : a)
+          : 'Open';
 
-        let leadingStatus = baseStatus;
+        let leadingStatus = bestStatus;
         if (anyPicked) leadingStatus = 'In Packing';
         if (anyChecked) leadingStatus = 'Ready to Ship';
 
-        let trailingStatus = baseStatus;
+        let trailingStatus = worstStatus;
         if (allPicked) trailingStatus = 'In Packing';
         if (allChecked) trailingStatus = 'Ready to Ship';
 
