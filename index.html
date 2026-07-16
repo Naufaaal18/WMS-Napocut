@@ -587,9 +587,10 @@ Object.assign(ENDPOINTS, {
       // Dashboard jadi lebih sedikit dari jumlah No Request yang sebenarnya ada
       // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
       // berapa pun jumlahnya.
-      const [obData, ckData] = await Promise.all([
+      const [obData, ckData, pkData] = await Promise.all([
         _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status'),
-        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker')
+        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker'),
+        _fetchAllRows('picking', 'no_request, kode_sku, qty_diambil')
       ]);
 
       // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
@@ -597,15 +598,20 @@ Object.assign(ENDPOINTS, {
       // tidak ada selisih). Dikelompokkan per No Request + SKU supaya bisa ditotal ulang
       // sesuai filter yang aktif di tabel Dashboard Outbound.
       //
-      // FITUR BARU: Qty Picker -- sama seperti Qty Checker (Klop) di atas, tapi menjumlahkan
-      // kolom qty_picker (bukan qty_checker) dari tabel `checking`. Sengaja HANYA dari baris
-      // yang sudah Klop (bukan status Selisih), karena 1 baris Picking yang belum klop bisa
-      // menghasilkan beberapa percobaan checking dgn qty_picker yang SAMA (dicoba ulang sampai
-      // qty_checker-nya cocok) -- kalau ikut dijumlah, angkanya akan double count. Karena
-      // no_request+kode_sku yang sama tetap dipakai ulang saat ada Outbound Request tambahan
-      // (lihat addSkuToExistingOutboundRequest), qty_picker & qty_checker di sini otomatis
-      // TERAKUMULASI merangkum semua batch checking (mis. 2 Pcs batch pertama + 10 Pcs batch
-      // tambahan = 12 Pcs), tidak perlu logic tambahan apapun.
+      // FITUR BARU: Qty Picker -- SEKARANG diambil dari 2 sumber (digabung), supaya tetap
+      // menunjukkan progres picking walau belum sempat di-checking:
+      //   1) Tabel `picking` -- barang yang SUDAH dipicking tapi BELUM di-checking sama sekali
+      //      (baris ini otomatis TERHAPUS dari tabel `picking` begitu Checking-nya klop, lihat
+      //      log 'Checking klop & baris Picking dihapus'). Jadi kalau masih ada baris di sini,
+      //      artinya belum ada progres Checking untuk qty tersebut -- diambil dari sini.
+      //   2) Tabel `checking` -- HANYA baris yang sudah Klop (qty_checker = qty_picker), untuk
+      //      qty yang sudah selesai di-checking. Sengaja tidak ikutkan baris Selisih di sini,
+      //      karena 1 baris Picking yang belum klop bisa menghasilkan beberapa percobaan
+      //      checking dgn qty_picker yang SAMA (dicoba ulang sampai qty_checker-nya cocok) --
+      //      kalau ikut dijumlah, angkanya akan double count.
+      // Tidak ada risiko double-count antara sumber (1) dan (2): begitu satu baris Picking
+      // selesai di-checking dengan klop, baris itu dihapus dari `picking` sehingga otomatis
+      // "berpindah" murni ke sumber (2), tidak pernah dihitung di keduanya sekaligus.
       const klopMap = {};
       const pickerMap = {};
       (ckData || []).forEach(r => {
@@ -614,6 +620,11 @@ Object.assign(ENDPOINTS, {
         const key = r.no_request + '||' + r.kode_sku;
         klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
         pickerMap[key] = (pickerMap[key] || 0) + Number(r.qty_picker || 0);
+      });
+      (pkData || []).forEach(r => {
+        if (!r.no_request || !r.kode_sku) return;
+        const key = r.no_request + '||' + r.kode_sku;
+        pickerMap[key] = (pickerMap[key] || 0) + Number(r.qty_diambil || 0);
       });
 
       // FITUR BARU: sort hasil akhir berdasarkan No Request (naik, natural/numeric-aware
@@ -12168,7 +12179,12 @@ async function eksekusiCancelOutbound() {
           listNoReq.forEach(noReq => {
             const opt = document.createElement('option');
             opt.value = noReq;
-            opt.textContent = noReq;
+            // FITUR BARU: tampilkan Grade Asal di teks No Request (mis. "RQC-000011 (Minor)"),
+            // bukan lagi di dropdown SKU Awal. Kalau dalam 1 No Request ternyata ada lebih dari
+            // 1 grade asal yang berbeda (jarang terjadi, tapi bisa saja), tampilkan semuanya
+            // dipisah koma, mis. "RQC-000011 (Minor, Bagus)".
+            const daftarGrade = [...new Set((SWA_STAGING_DATA[noReq] || []).map(it => it.gradeAsal).filter(g => g && g !== '-'))];
+            opt.textContent = daftarGrade.length > 0 ? `${noReq} (${daftarGrade.join(', ')})` : noReq;
             noReqSel.appendChild(opt);
           });
         })
@@ -12195,10 +12211,7 @@ async function eksekusiCancelOutbound() {
         listItems.forEach(item => {
           const opt = document.createElement('option');
           opt.value = item.sku.toString().trim();
-          // FITUR BARU: tampilkan Grade Asal barang di teks dropdown, supaya tim QC
-          // Swarovski langsung tahu dari grade apa barang ini di-request tanpa perlu
-          // buka layar/modul lain.
-          opt.textContent = `${item.sku} (Grade Asal: ${item.gradeAsal}, Sisa: ${item.maxQty} Pcs)`;
+          opt.textContent = `${item.sku} (Sisa: ${item.maxQty} Pcs)`;
           skuSel.appendChild(opt);
         });
       } else {
@@ -12218,7 +12231,7 @@ async function eksekusiCancelOutbound() {
       const listItems = SWA_STAGING_DATA[noReqSelected] || [];
       const match = listItems.find(item => item.sku.toString().trim() === skuSelected);
       if (match) {
-        if (info) info.textContent = `*Grade Asal barang ini: ${match.gradeAsal}. Batas sisa stok di Staging QC Swarovski: ${match.maxQty} PCS.`;
+        if (info) info.textContent = `*Batas sisa stok di Staging QC Swarovski: ${match.maxQty} PCS.`;
         if (qtyInput) qtyInput.max = match.maxQty;
       }
     }
