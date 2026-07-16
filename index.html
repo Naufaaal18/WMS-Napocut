@@ -1612,10 +1612,62 @@ window.fetch = function (url, options) {
     }
     /* Di layar, area cetak bukti terima inbound selalu tersembunyi */
     #vi-print-area { display: none; }
+
+    /* =========================================================================
+       VERSI MOBILE vs DESKTOP (deteksi device -- lihat tag script di awal <body>)
+       Pola generik dipakai supaya gampang direplikasi ke modul lain nanti:
+       - Elemen dengan class "ob-desktop-table" = tabel biasa, tampil di desktop.
+       - Elemen dengan class "ob-mobile-cards"  = tampilan kartu, tampil di HP.
+       Default (kalau JS deteksi device belum sempat jalan / gagal): anggap
+       desktop, supaya tidak ada tampilan kosong.
+       ========================================================================= */
+    .ob-mobile-cards { display: none; }
+    html.device-mobile .ob-desktop-table { display: none !important; }
+    html.device-mobile .ob-mobile-cards { display: block; }
+    /* Filter/pencarian jadi lebar penuh di HP supaya enak diketik jarinya */
+    html.device-mobile #modul-dashob input[type="text"].form-control-sm { max-width: none !important; width: 100%; }
+    html.device-mobile #modul-dashob .d-flex.justify-content-between.align-items-center.mb-1 { flex-wrap: wrap; gap: 6px; }
+    /* Kartu Form Request & Detail per No Request di HP */
+    .ob-mcard { border: 1px solid #dee2e6; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: #fff; }
+    .ob-mcard:active { background: #f8f9fa; }
+    .ob-mcard-title { font-weight: 700; color: #dc3545; font-size: 13px; }
+    .ob-mcard-sub { font-size: 11px; color: #6c757d; }
+    .ob-mcard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 4px; margin-top: 8px; font-size: 11px; }
+    .ob-mcard-grid .lbl { color: #6c757d; display: block; font-size: 10px; }
+    .ob-mcard-grid .val { font-weight: 700; }
+    .ob-mcard-status-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #dee2e6; font-size: 11px; }
   </style>
 </head>
 
 <body>
+
+  <script>
+    // =========================================================================
+    // DETEKSI DEVICE (HP vs Desktop) -- dijalankan sesegera mungkin (sebelum
+    // konten lain dirender) supaya tidak ada "kedipan" tampilan salah dulu baru
+    // berubah. Dipasang sebagai class di <html>, bukan sekadar media query lebar
+    // layar, supaya desktop yang browsernya diperkecil TIDAK ikut dianggap HP.
+    // Kombinasi 2 sinyal:
+    //   1) User-Agent -- mendeteksi OS mobile (Android/iPhone/iPad/dst).
+    //   2) Tipe pointer utama -- "coarse" (jari) vs "fine" (mouse/trackpad).
+    // Device dianggap MOBILE kalau salah satu dari kedua sinyal itu positif.
+    // Fungsi window.isMobileDevice() bisa dipanggil di JS lain kapan saja untuk
+    // bikin keputusan render mobile vs desktop per modul.
+    // =========================================================================
+    (function () {
+      function deteksiMobile() {
+        const ua = navigator.userAgent || navigator.vendor || '';
+        const uaMobile = /Android|iPhone|iPad|iPod|IEMobile|BlackBerry|Opera Mini|Mobile/i.test(ua);
+        // iPadOS 13+ menyamar sebagai "Macintosh" di UA, tapi punya touch point > 1
+        const iPadOsSamaran = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+        let pointerCoarse = false;
+        try { pointerCoarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+        return uaMobile || iPadOsSamaran || pointerCoarse;
+      }
+      window.isMobileDevice = function () { return document.documentElement.classList.contains('device-mobile'); };
+      document.documentElement.classList.add(deteksiMobile() ? 'device-mobile' : 'device-desktop');
+    })();
+  </script>
 
   <div id="halaman-login" class="container login-screen">
     <div class="card p-4 w-100" style="max-width: 400px;">
@@ -3941,7 +3993,7 @@ async function eksekusiAddSkuOutbound() {
             <small class="fw-bold text-secondary">Form Request <span class="text-muted fw-normal">(klik salah satu baris untuk lihat detail per SKU)</span></small>
             <input type="text" id="ob-dash-filter-summary" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter No Request/Store" oninput="renderDashboardOutboundSummaryTable()">
           </div>
-          <div class="table-responsive" style="max-height:420px;">
+          <div class="table-responsive ob-desktop-table" style="max-height:420px;">
             <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
               <thead class="table-light" style="position:sticky;top:0;">
                 <tr>
@@ -3965,6 +4017,8 @@ async function eksekusiAddSkuOutbound() {
               </tbody>
             </table>
           </div>
+          <!-- Versi kartu untuk HP (device-mobile) -- diisi & ditampilkan lewat JS, lihat renderDashboardOutboundSummaryTable() -->
+          <div id="ob-dash-summary-cards" class="ob-mobile-cards" style="max-height:480px; overflow-y:auto;"></div>
         </div>
 
         <!-- ===== VIEW 2: DETAIL PER NO REQUEST (muncul setelah klik baris di Form Request) ===== -->
@@ -3978,7 +4032,7 @@ async function eksekusiAddSkuOutbound() {
             </div>
             <input type="text" id="ob-dash-filter" class="form-control form-control-sm" style="max-width:140px;" placeholder="Filter No/Store/SKU/Grade" oninput="renderDashboardOutboundTable()">
           </div>
-          <div class="table-responsive" style="max-height:360px;">
+          <div class="table-responsive ob-desktop-table" style="max-height:360px;">
             <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
               <thead class="table-light" style="position:sticky;top:0;">
                 <tr>
@@ -4002,6 +4056,8 @@ async function eksekusiAddSkuOutbound() {
               </tbody>
             </table>
           </div>
+          <!-- Versi kartu untuk HP (device-mobile) -- diisi & ditampilkan lewat JS, lihat renderDashboardOutboundTable() -->
+          <div id="ob-dash-detail-cards" class="ob-mobile-cards" style="max-height:420px; overflow-y:auto;"></div>
         </div>
 
         <!-- Ringkasan per Store -->
@@ -10907,10 +10963,12 @@ async function eksekusiCancelOutbound() {
       // memang tidak bisa lagi dipicking/dicheck) -- dipakai untuk menyembunyikan
       // tombol Re-Allocate pada baris Stockout milik No Request yang sudah final itu.
       const finalSet = hitungNoRequestFinalSet(DASHOB_DATA_OB);
+      const cardsWrap = document.getElementById('ob-dash-detail-cards');
       if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
       } else {
-        tbody.innerHTML = rows.map(r => {
+        const rowsRendered = rows.map(r => {
           const statusColor = r.status === 'Stockout' ? 'text-danger fw-bold' : r.status === 'Picking Pending' ? 'text-warning' : r.status === 'In Packing' ? 'text-info' : r.status === 'Closed' ? 'text-success' : '';
           const stockoutTd = r.qtyStockout > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyStockout}</td>` : '<td class="text-center text-muted">-</td>';
           const noRequestFinal = finalSet.has(r.noRequest);
@@ -10931,10 +10989,16 @@ async function eksekusiCancelOutbound() {
                  </button>
                </td>`
             : '<td class="text-center text-muted">-</td>';
+          const aksiBtnMobile = bisaRealokasi
+            ? `<button type="button" class="btn btn-outline-warning btn-sm w-100 mt-2 ob-realloc-btn" style="font-size:11px;"
+                 data-noreq="${escapeHtmlAttr(r.noRequest)}" data-sku="${escapeHtmlAttr(r.kodeSku)}" data-grade="${escapeHtmlAttr(r.grade || '')}">
+                 <i class="fa-solid fa-rotate"></i> Re-Allocate
+               </button>`
+            : '';
           const pickerTd = r.qtyPicker > 0 ? `<td class="text-center text-primary fw-bold">${r.qtyPicker.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           const checkerKlopTd = r.qtyCheckerKlop > 0 ? `<td class="text-center text-success fw-bold">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
           const shortpickTd = r.qtyShortpick > 0 ? `<td class="text-center text-warning fw-bold">${r.qtyShortpick.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
-          return `<tr>
+          const trHtml = `<tr>
             <td class="fw-bold">${r.noRequest}${r.catatan ? ` <span class="text-muted fw-normal" style="font-size:11px;">(${escapeHtmlAttr(r.catatan)})</span>` : ''}</td>
             <td style="white-space:nowrap;">${r.tglRequest}</td>
             <td>${r.kodeStore}</td>
@@ -10949,7 +11013,28 @@ async function eksekusiCancelOutbound() {
             <td class="${statusColor}" style="font-size:10px;">${statusText}</td>
             ${aksiTd}
           </tr>`;
-        }).join('');
+          const cardHtml = `<div class="ob-mcard">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="ob-mcard-title" style="color:#212529;">${r.kodeSku}</div>
+                <div class="ob-mcard-sub">${r.tglRequest} • ${r.kodeStore} • ${r.grade || '-'}${r.catatan ? ` • ${escapeHtmlAttr(r.catatan)}` : ''}</div>
+              </div>
+              <span class="${statusColor}" style="font-size:11px;white-space:nowrap;">${statusText}</span>
+            </div>
+            <div class="ob-mcard-grid">
+              <div><span class="lbl">Qty Req</span><span class="val">${r.qtyRequest}</span></div>
+              <div><span class="lbl">Qty Alloc</span><span class="val">${r.qtyAllocated}</span></div>
+              <div><span class="lbl">Picker</span><span class="val">${r.qtyPicker || '-'}</span></div>
+              <div><span class="lbl">Checker</span><span class="val">${r.qtyCheckerKlop || '-'}</span></div>
+              <div><span class="lbl">Shortpick</span><span class="val">${r.qtyShortpick || '-'}</span></div>
+              <div><span class="lbl">Stockout</span><span class="val ${r.qtyStockout > 0 ? 'text-danger' : ''}">${r.qtyStockout || '-'}</span></div>
+            </div>
+            ${aksiBtnMobile}
+          </div>`;
+          return { trHtml, cardHtml };
+        });
+        tbody.innerHTML = rowsRendered.map(x => x.trHtml).join('');
+        if (cardsWrap) cardsWrap.innerHTML = rowsRendered.map(x => x.cardHtml).join('');
       }
 
       // Summary
@@ -11148,8 +11233,11 @@ async function eksekusiCancelOutbound() {
         (r.kodeStore || '').toLowerCase().includes(filter)
       );
 
+      const cardsWrap = document.getElementById('ob-dash-summary-cards');
+
       if (!summaryRows.length) {
         tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
         return;
       }
 
@@ -11175,10 +11263,40 @@ async function eksekusiCancelOutbound() {
         </tr>`;
       }).join('');
 
+      // ---- Versi kartu (HP) ----
+      if (cardsWrap) {
+        cardsWrap.innerHTML = summaryRows.map(r => {
+          const finalNote = (r.finalMeskiStockout && r.qtyStockout > 0)
+            ? ` <i class="fa-solid fa-circle-info text-muted" style="font-size:9px;" title="Request ini sudah final -- sisa Stockout tidak akan dicoba dialokasikan ulang lagi"></i>` : '';
+          return `<div class="ob-mcard ob-form-request-row" data-noreq="${escapeHtmlAttr(r.noRequest)}">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="ob-mcard-title">${r.noRequest}</div>
+                <div class="ob-mcard-sub">${r.tglRequest} • ${r.kodeStore} • ${r.grade}</div>
+              </div>
+              <i class="fa-solid fa-chevron-right text-muted mt-1"></i>
+            </div>
+            <div class="ob-mcard-grid">
+              <div><span class="lbl">SKU</span><span class="val">${r.skuCount}</span></div>
+              <div><span class="lbl">Qty Req</span><span class="val">${r.qtyRequest.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Qty Alloc</span><span class="val">${r.qtyAllocated.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Picker</span><span class="val">${r.qtyPicker.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Checker</span><span class="val">${r.qtyCheckerKlop.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Stockout</span><span class="val ${r.qtyStockout > 0 ? 'text-danger' : ''}">${r.qtyStockout > 0 ? r.qtyStockout.toLocaleString('id-ID') : '-'}</span></div>
+            </div>
+            <div class="ob-mcard-status-row">
+              <span class="${_dashObStatusClass(r.leadingStatus)}">Leading: <b>${r.leadingStatus}</b>${finalNote}</span>
+              <span class="${_dashObStatusClass(r.trailingStatus)}">Trailing: <b>${r.trailingStatus}</b></span>
+            </div>
+          </div>`;
+        }).join('');
+      }
+
       // Delegasi klik baris -> buka Detail per No Request (dipasang ulang tiap render
-      // supaya baris hasil re-render tetap bisa diklik).
-      tbody.querySelectorAll('.ob-form-request-row').forEach(tr => {
-        tr.onclick = () => bukaDetailNoRequest(tr.getAttribute('data-noreq'));
+      // supaya baris hasil re-render tetap bisa diklik). Berlaku untuk baris tabel
+      // (desktop) MAUPUN kartu (HP) -- keduanya pakai class .ob-form-request-row.
+      document.querySelectorAll('.ob-form-request-row').forEach(el => {
+        el.onclick = () => bukaDetailNoRequest(el.getAttribute('data-noreq'));
       });
     }
 
@@ -11592,12 +11710,14 @@ async function eksekusiCancelOutbound() {
     // Grade mengandung karakter kutip/spesial (penyebab tombol "tidak merespon sama sekali").
     (function initReAllocateButtonDelegation() {
       const tbody = document.getElementById('ob-dash-tbody');
-      if (!tbody) return;
-      tbody.addEventListener('click', function(e) {
+      const cardsWrap = document.getElementById('ob-dash-detail-cards');
+      function handler(e) {
         const btn = e.target.closest('.ob-realloc-btn');
-        if (!btn || !tbody.contains(btn)) return;
+        if (!btn) return;
         reAllocateSatuBaris(btn.dataset.noreq, btn.dataset.sku, btn.dataset.grade);
-      });
+      }
+      if (tbody) tbody.addEventListener('click', handler);
+      if (cardsWrap) cardsWrap.addEventListener('click', handler); // Versi kartu (HP) pakai tombol yang sama
     })();
 
     // Re-Allocate SATU baris spesifik (No Request + SKU + Grade) yang dipilih user dari tabel detail.
