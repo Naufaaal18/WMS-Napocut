@@ -3139,9 +3139,16 @@ function submitOutboundRequestAplikasi() {
     }
   }
   
-  const user = document.getElementById("user-display") ? document.getElementById("user-display").textContent : "Demand Planner";
+  // PERBAIKAN BUG: sebelumnya userLogin diambil langsung dari teks elemen header
+  // "user-display" yang formatnya "Nama (Role)" (mis. "Sifa Fatimah (Admin)") -- teks
+  // itu memang didesain untuk ditampilkan ke UI, bukan untuk dikirim sebagai data user_login
+  // ke Movement History. Sekarang diprioritaskan pakai DEKLARASI_USER.nama (username bersih,
+  // tanpa embel-embel role), sama seperti pola yang sudah benar dipakai di modul-modul lain.
+  const user = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama)
+    ? DEKLARASI_USER.nama
+    : (document.getElementById("user-display") ? document.getElementById("user-display").textContent : "Demand Planner");
 
-  let payload = {
+  const payload = {
     tanggalRequest: tglRequest,
     kodeStore: kodeStore,
     tipeOutbound: tipeOutbound,
@@ -3312,8 +3319,10 @@ async function eksekusiAddSkuOutbound() {
     return;
   }
 
-  const user = document.getElementById("user-display") ? document.getElementById("user-display").textContent : "Demand Planner";
-  let userAktif = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama) ? DEKLARASI_USER.nama : user;
+  // PERBAIKAN BUG: fallback sebelumnya membaca teks header "user-display" yang formatnya
+  // "Nama (Role)" -- kalau DEKLARASI_USER.nama tidak tersedia, sekarang fallback ke label
+  // generik biasa (bukan teks ber-role) supaya user_login yang tercatat selalu bersih.
+  let userAktif = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama) ? DEKLARASI_USER.nama : "Operator Gudang";
 
   let payload = {
     noRequest: noRequest,
@@ -4692,6 +4701,14 @@ async function eksekusiAddSkuOutbound() {
               <input type="text" id="mhexp-filter-user" list="mhexp-list-user" class="form-control form-control-sm" placeholder="Cth: Andi">
               <datalist id="mhexp-list-user"></datalist>
             </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Tgl Dari</label>
+              <input type="date" id="mhexp-filter-tgl-dari" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Tgl Sampai</label>
+              <input type="date" id="mhexp-filter-tgl-sampai" class="form-control form-control-sm">
+            </div>
           </div>
 
           <button type="button" class="btn btn-sm fw-bold w-100 py-2 text-white" style="background:#37474F;" onclick="generateMovementHistoryExport()">
@@ -4803,6 +4820,15 @@ async function eksekusiAddSkuOutbound() {
         <div class="mb-2">
           <input type="text" id="av-inbound-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateInboundTable()">
         </div>
+        <div class="mb-2 d-flex gap-2 align-items-center">
+          <label class="small text-muted mb-0" style="white-space:nowrap;">Tgl Dari</label>
+          <input type="date" id="av-inbound-filter-tgl-dari" class="form-control form-control-sm" onchange="renderAdminValidateInboundTable()">
+          <label class="small text-muted mb-0" style="white-space:nowrap;">s/d</label>
+          <input type="date" id="av-inbound-filter-tgl-sampai" class="form-control form-control-sm" onchange="renderAdminValidateInboundTable()">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="Reset Filter Tanggal" onclick="document.getElementById('av-inbound-filter-tgl-dari').value='';document.getElementById('av-inbound-filter-tgl-sampai').value='';renderAdminValidateInboundTable()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
         <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
           <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
@@ -4859,6 +4885,15 @@ async function eksekusiAddSkuOutbound() {
             <option value="Kotor">Kotor</option>
             <option value="Perbaikan">Perbaikan</option>
           </select>
+        </div>
+        <div class="mb-2 d-flex gap-2 align-items-center">
+          <label class="small text-muted mb-0" style="white-space:nowrap;">Tgl Dari</label>
+          <input type="date" id="av-qc-filter-tgl-dari" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
+          <label class="small text-muted mb-0" style="white-space:nowrap;">s/d</label>
+          <input type="date" id="av-qc-filter-tgl-sampai" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="Reset Filter Tanggal" onclick="document.getElementById('av-qc-filter-tgl-dari').value='';document.getElementById('av-qc-filter-tgl-sampai').value='';renderAdminValidateQCTable()">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
         <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
           <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
@@ -7142,7 +7177,10 @@ async function eksekusiAddSkuOutbound() {
         supplier: supplier,
         kategori: kategori,
         tanggal: tanggal,
-        items: itemsArray
+        items: itemsArray,
+        // PERBAIKAN BUG: sebelumnya userLogin tidak diikutkan sama sekali di payload,
+        // sehingga tercatat sebagai default generik 'Operator PO' di Movement History.
+        userLogin: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama) ? DEKLARASI_USER.nama : 'Operator PO'
       };
 
       showAlert("Mendaftarkan Open PO ke database...", "info");
@@ -7222,7 +7260,10 @@ async function eksekusiAddSkuOutbound() {
           fileInput.value = ""; // Reset input file
         })
         .withFailureHandler(err => showAlert("🚨 Gagal Import: " + err.message, "danger"))
-        .importOpenPoExcel({ excelRows: rowsArray });
+        // PERBAIKAN BUG: sebelumnya payload tidak menyertakan userLogin sama sekali,
+        // sehingga SELALU jatuh ke default generik 'Operator PO' di manapun proses ini
+        // dijalankan. Sekarang selalu ikutkan username asli yang sedang login.
+        .importOpenPoExcel({ excelRows: rowsArray, userLogin: (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator PO' });
 
     } catch (err) {
       showAlert("🚨 Gagal membaca file Excel: " + err.message, "danger");
@@ -9778,24 +9819,36 @@ async function eksekusiCancelOutbound() {
         });
     }
 
-    // Terapkan filter No SKU / No. Referensi / Tipe Transaksi / User ke data mentah
-    // dari server, lalu render ke tabel preview + kartu ringkasan.
+    // Terapkan filter No SKU / No. Referensi / Tipe Transaksi / User / Tanggal ke data
+    // mentah dari server, lalu render ke tabel preview + kartu ringkasan.
     function renderMovementHistoryExport(allData) {
       const fSkuRaw  = document.getElementById('mhexp-filter-sku').value.trim();
       const fRefRaw  = document.getElementById('mhexp-filter-ref').value.trim();
       const fType    = document.getElementById('mhexp-filter-type').value.trim();
       const fUserRaw = document.getElementById('mhexp-filter-user').value.trim();
+      // FITUR BARU: filter tanggal (Tgl Dari s/d Tgl Sampai), membandingkan tanggal saja
+      // (bukan jam) dari kolom `timestampRaw`. Kalau salah satu/kedua dikosongkan, filter
+      // itu diabaikan (dianggap tidak ada batas ke arah tsb).
+      const fTglDari    = document.getElementById('mhexp-filter-tgl-dari').value.trim();
+      const fTglSampai  = document.getElementById('mhexp-filter-tgl-sampai').value.trim();
 
       const fSku  = sanitizeFilterInput(fSkuRaw);
       const fRef  = sanitizeFilterInput(fRefRaw);
       const fUser = sanitizeFilterInput(fUserRaw);
 
-      const rows = allData.filter(r =>
-        (fSku === "" || (r.sku || "").toLowerCase().includes(fSku)) &&
-        (fRef === "" || (r.ref || "").toLowerCase().includes(fRef)) &&
-        (fType === "" || r.type === fType) &&
-        (fUser === "" || (r.user || "").toLowerCase().includes(fUser))
-      );
+      const rows = allData.filter(r => {
+        if (fSku !== "" && !(r.sku || "").toLowerCase().includes(fSku)) return false;
+        if (fRef !== "" && !(r.ref || "").toLowerCase().includes(fRef)) return false;
+        if (fType !== "" && r.type !== fType) return false;
+        if (fUser !== "" && !(r.user || "").toLowerCase().includes(fUser)) return false;
+        if (fTglDari || fTglSampai) {
+          if (!r.timestampRaw) return false;
+          const tglBaris = r.timestampRaw.slice(0, 10); // YYYY-MM-DD
+          if (fTglDari && tglBaris < fTglDari) return false;
+          if (fTglSampai && tglBaris > fTglSampai) return false;
+        }
+        return true;
+      });
       // Data terbaru tampil paling atas
       rows.sort((a, b) => new Date(b.timestampRaw) - new Date(a.timestampRaw));
 
@@ -9808,6 +9861,7 @@ async function eksekusiCancelOutbound() {
       bagianFilter.push(`No. Referensi: ${fRefRaw || 'Semua'}`);
       bagianFilter.push(`Tipe Transaksi: ${fType || 'Semua'}`);
       bagianFilter.push(`User: ${fUserRaw || 'Semua'}`);
+      bagianFilter.push(`Tanggal: ${fTglDari || '...'} s/d ${fTglSampai || '...'}`);
       document.getElementById('mhexp-filter-info').textContent = 'Filter aktif — ' + bagianFilter.join('  |  ');
 
       let html = '', totalQtyMasuk = 0, totalQtyKeluar = 0;
@@ -11065,11 +11119,12 @@ async function eksekusiCancelOutbound() {
     function exportAdminValidateInboundExcel() {
       if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
       const keyword = (document.getElementById('av-inbound-filter-po').value || '').trim().toLowerCase();
-      const rows = keyword
-        ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword))
-        : AV_DATA_INBOUND;
+      const rows = _avFilterTanggal(
+        keyword ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword)) : AV_DATA_INBOUND,
+        'av-inbound'
+      );
 
-      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO, atau memang tidak ada yang pending)."); return; }
+      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO/Tanggal, atau memang tidak ada yang pending)."); return; }
 
       const dataExport = rows.map(r => ({
         'No PO': r.no_po || '-',
@@ -11097,8 +11152,9 @@ async function eksekusiCancelOutbound() {
       let rows = AV_DATA_QC;
       if (keyword) rows = rows.filter(r => (r.ref || '').toLowerCase().includes(keyword));
       if (gradeTerpilih) rows = rows.filter(r => (r.grade || '').toLowerCase() === gradeTerpilih);
+      rows = _avFilterTanggal(rows, 'av-qc');
 
-      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO/Grade, atau memang tidak ada yang pending)."); return; }
+      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO/Grade/Tanggal, atau memang tidak ada yang pending)."); return; }
 
       const dataExport = rows.map(r => ({
         'No QC': r.no_qc,
@@ -11438,6 +11494,25 @@ async function eksekusiCancelOutbound() {
     }
 
     // ----- SUB: VALIDATE INBOUND -----
+    // FITUR BARU: filter tanggal untuk Pending Validate (Inbound & QC). Membandingkan
+    // tanggal (bukan jam) dari kolom `waktu` terhadap range Tgl Dari s/d Tgl Sampai yang
+    // diisi user. Kalau salah satu/kedua tanggal dikosongkan, filter itu diabaikan (dianggap
+    // tidak ada batas ke arah tsb).
+    function _avFilterTanggal(rows, prefixId) {
+      const dariEl = document.getElementById(prefixId + '-filter-tgl-dari');
+      const sampaiEl = document.getElementById(prefixId + '-filter-tgl-sampai');
+      const dari = dariEl && dariEl.value ? dariEl.value : null;
+      const sampai = sampaiEl && sampaiEl.value ? sampaiEl.value : null;
+      if (!dari && !sampai) return rows;
+      return rows.filter(r => {
+        if (!r.waktu) return false;
+        const tglBaris = new Date(r.waktu).toISOString().slice(0, 10); // YYYY-MM-DD
+        if (dari && tglBaris < dari) return false;
+        if (sampai && tglBaris > sampai) return false;
+        return true;
+      });
+    }
+
     function loadAdminValidateInbound() {
       const tbody = document.getElementById('av-inbound-tbody');
       tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>';
@@ -11463,9 +11538,10 @@ async function eksekusiCancelOutbound() {
         return;
       }
 
-      const dataTampil = keyword
-        ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword))
-        : AV_DATA_INBOUND;
+      const dataTampil = _avFilterTanggal(
+        keyword ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword)) : AV_DATA_INBOUND,
+        'av-inbound'
+      );
 
       if (dataTampil.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada No PO yang cocok dengan "${keyword}".</td></tr>`;
@@ -11553,6 +11629,7 @@ async function eksekusiCancelOutbound() {
       let dataTampil = AV_DATA_QC;
       if (keyword) dataTampil = dataTampil.filter(r => (r.ref || '').toLowerCase().includes(keyword));
       if (gradeTerpilih) dataTampil = dataTampil.filter(r => (r.grade || '').toLowerCase() === gradeTerpilih);
+      dataTampil = _avFilterTanggal(dataTampil, 'av-qc');
 
       if (dataTampil.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data yang cocok dengan filter saat ini.</td></tr>`;
