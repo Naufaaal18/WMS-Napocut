@@ -1270,6 +1270,74 @@ window.fetch = function (url, options) {
       font-size: 16px;
       flex-shrink: 0;
     }
+    .home-hamburger-btn {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      border-radius: 50%;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    /* ===== MENU UTAMA SEBAGAI SIDEBAR (dibuka via tombol hamburger pojok kiri atas) ===== */
+    .home-sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1040;
+    }
+    .home-sidebar-overlay.open { display: block; }
+    .home-sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 86%;
+      max-width: 340px;
+      background: #f8f9fa;
+      z-index: 1050;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      overflow-y: auto;
+      box-shadow: 2px 0 16px rgba(0,0,0,0.25);
+    }
+    .home-sidebar.open { transform: translateX(0); }
+    .home-sidebar-header {
+      position: sticky;
+      top: 0;
+      background: linear-gradient(135deg, #0d6efd, #0b5ed7);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      z-index: 1;
+    }
+    .home-sidebar-close {
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .home-sidebar .home-section-label { padding-top: 12px; }
     .home-section-label {
       font-size: 11px;
       font-weight: 700;
@@ -1648,6 +1716,10 @@ window.fetch = function (url, options) {
        #whdash-root supaya style-nya tidak bocor ke elemen lain.
        ========================================================================= */
     #whdash-root {
+      /* FITUR BARU: default disembunyikan, hanya dimunculkan lewat JS (lihat
+         inisialisasiAplikasi) untuk role setingkat Admin ke atas -- supaya
+         role lain tidak sempat melihat widget ini "berkedip" sebelum RBAC jalan. */
+      display: none;
       background: #12182b;
       color: #e7ebf5;
       padding: 10px 12px 4px;
@@ -1832,9 +1904,14 @@ window.fetch = function (url, options) {
   <!-- ===== HALAMAN HOME: DAFTAR MODUL (muncul setelah login) ===== -->
   <div id="halaman-home">
     <div class="home-header">
-      <div>
-        <h5><i class="fa-solid fa-boxes-stacked me-2"></i>Napocut StockFlow</h5>
-        <small id="home-user-display">Memuat data user...</small>
+      <div class="d-flex align-items-center" style="gap:10px;">
+        <button class="home-hamburger-btn" onclick="toggleHomeSidebar()" title="Menu Utama" aria-label="Buka Menu Utama">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div>
+          <h5><i class="fa-solid fa-boxes-stacked me-2"></i>Napocut StockFlow</h5>
+          <small id="home-user-display">Memuat data user...</small>
+        </div>
       </div>
       <button class="home-logout-btn" onclick="eksekusiLogout()" title="Keluar">
         <i class="fa-solid fa-power-off"></i>
@@ -1917,7 +1994,14 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <div class="home-section-label">Menu Utama</div>
+    <div id="home-sidebar-overlay" class="home-sidebar-overlay" onclick="closeHomeSidebar()"></div>
+    <div id="home-sidebar-menu" class="home-sidebar">
+      <div class="home-sidebar-header">
+        <span>Menu Utama</span>
+        <button class="home-sidebar-close" onclick="closeHomeSidebar()" title="Tutup" aria-label="Tutup Menu">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
 
     <!-- MODUL: MASTER PO -->
     <div class="module-list-group" id="home-group-openpo" style="display:none;">
@@ -2258,7 +2342,9 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <div style="height: 30px;"></div>
+      <div style="height: 30px;"></div>
+    </div>
+    <!-- ===== AKHIR SIDEBAR MENU UTAMA ===== -->
   </div>
   <!-- ===== AKHIR HALAMAN HOME ===== -->
 
@@ -5796,6 +5882,16 @@ async function eksekusiAddSkuOutbound() {
                                   'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT']
       };
 
+      // FITUR BARU: Warehouse Dashboard (widget KPI/Inbound/Outbound/Work/Employees
+      // di atas Menu Utama) HANYA untuk role setingkat Admin ke atas. Daftar ini
+      // sengaja disamakan dengan role yang punya RBAC_AKSES_PENUH_TANPA_KELOLA_USER
+      // (Administrator sendiri + Admin/Supervisor/Manager/COO) supaya konsisten
+      // dengan definisi "Admin ke atas" yang sudah dipakai di RBAC_PER_ROLE.
+      const ROLE_BOLEH_LIHAT_DASHBOARD = [
+        'Administrator', 'Admin', 'Supervisor Gudang', 'Manager Gudang',
+        'Admin Gudang', 'Supervisor', 'COO'
+      ];
+
       function terapkanFiturRBAC(kunciFitur) {
         const f = RBAC_FITUR[kunciFitur];
         if (!f) return;
@@ -5830,8 +5926,15 @@ async function eksekusiAddSkuOutbound() {
       // Juga simpan user-display untuk konten-aplikasi (dipakai saat masuk modul)
       document.getElementById('user-display').innerText = `${user.nama} (${user.role})`;
 
-      // FITUR BARU: muat Warehouse Dashboard (KPI/Inbound/Outbound/Work/Employees)
-      loadHomeDashboard();
+      // FITUR BARU: Warehouse Dashboard hanya tampil untuk role Admin ke atas.
+      // Role lain tidak melihat widget ini sama sekali di halaman Home.
+      const whdashRootEl = document.getElementById('whdash-root');
+      if (ROLE_BOLEH_LIHAT_DASHBOARD.includes(r)) {
+        if (whdashRootEl) whdashRootEl.style.display = 'block';
+        loadHomeDashboard();
+      } else {
+        if (whdashRootEl) whdashRootEl.style.display = 'none';
+      }
     }
 
     // =========================================================================
@@ -6069,6 +6172,23 @@ async function eksekusiAddSkuOutbound() {
     }
 
     // Buka/tutup sub-modul di halaman home
+    // =========================================================================
+    // FITUR BARU: MENU UTAMA sebagai sidebar (dibuka lewat tombol hamburger
+    // di pojok kiri atas Home, meniru pola umum "Warehouse dashboard").
+    // =========================================================================
+    function openHomeSidebar() {
+      document.getElementById('home-sidebar-menu').classList.add('open');
+      document.getElementById('home-sidebar-overlay').classList.add('open');
+    }
+    function closeHomeSidebar() {
+      document.getElementById('home-sidebar-menu').classList.remove('open');
+      document.getElementById('home-sidebar-overlay').classList.remove('open');
+    }
+    function toggleHomeSidebar() {
+      const el = document.getElementById('home-sidebar-menu');
+      if (el && el.classList.contains('open')) closeHomeSidebar(); else openHomeSidebar();
+    }
+
     function toggleHomeModule(subId, rowEl) {
       const subList = document.getElementById(subId);
       const isOpen = subList.classList.contains('open');
@@ -6087,6 +6207,7 @@ async function eksekusiAddSkuOutbound() {
     // (seperti modul-checking: sub-picking & sub-dashboard-checker), hanya card ini yang
     // akan ditampilkan, card lain di modul yang sama otomatis disembunyikan.
     function bukaModulDariHome(tabId, modulId, subCardId) {
+      closeHomeSidebar();
       document.getElementById('halaman-home').style.display = 'none';
       document.querySelector('.nav-bottom').style.display = 'none';
       document.getElementById('konten-aplikasi').style.display = 'block';
@@ -6140,8 +6261,12 @@ async function eksekusiAddSkuOutbound() {
       document.querySelectorAll('.sub-module-list.open').forEach(el => el.classList.remove('open'));
       document.querySelectorAll('.module-row.open').forEach(el => el.classList.remove('open'));
 
-      // FITUR BARU: refresh angka Warehouse Dashboard tiap kali kembali ke Home
-      loadHomeDashboard();
+      // FITUR BARU: refresh angka Warehouse Dashboard tiap kali kembali ke Home,
+      // tapi hanya untuk role yang memang boleh melihat widget ini (Admin ke atas).
+      const whdashRootElKembali = document.getElementById('whdash-root');
+      if (whdashRootElKembali && whdashRootElKembali.style.display !== 'none') {
+        loadHomeDashboard();
+      }
     }
 
     // Navigasi Antar Halaman Tab
