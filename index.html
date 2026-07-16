@@ -1843,6 +1843,101 @@ window.fetch = function (url, options) {
     @media (min-width: 640px) {
       .whdash-kpi-strip { grid-template-columns: repeat(7, 1fr); }
     }
+
+    /* =========================================================================
+       FITUR BARU: TAMPILAN MOBILE — DASHBOARD INVENTORY (Stock_FG)
+       -------------------------------------------------------------------------
+       Di layar <= 576px: kartu ringkasan & filter dibuat lebih lega untuk jari,
+       dan ke-4 tabel (Stock_FG, Open PO, Belum QC, Pending Return) diubah dari
+       tabel sempit jadi tumpukan kartu (thead disembunyikan, tiap baris jadi
+       kartu dengan label:value). Di layar >= 577px tampilan lama (tabel biasa)
+       tetap dipakai persis seperti sebelumnya -- tidak ada yang berubah untuk
+       desktop/tablet.
+       ========================================================================= */
+    @media (max-width: 576px) {
+      /* --- Kartu ringkasan SKU Aktif / Qty Available / Qty On Hand --- */
+      #sub-inventory-dashboard .inv-summary-row { gap: 6px; }
+      #sub-inventory-dashboard .inv-summary-box {
+        padding: 10px 4px;
+        border-radius: 10px;
+      }
+      #sub-inventory-dashboard .inv-summary-box .small { font-size: 10.5px; }
+      #sub-inventory-dashboard .inv-summary-box .fs-5 { font-size: 16px !important; }
+
+      /* --- Filter: tumpuk penuh 1 kolom, target sentuh lebih besar --- */
+      #sub-inventory-dashboard .inv-filter-row { row-gap: 8px; }
+      #sub-inventory-dashboard .inv-filter-row > div { width: 100%; flex: 0 0 100%; max-width: 100%; }
+      #sub-inventory-dashboard .inv-filter-row .form-control,
+      #sub-inventory-dashboard .inv-filter-row .form-select {
+        min-height: 40px;
+        font-size: 14px;
+      }
+      #sub-inventory-dashboard .d-flex.justify-content-between.align-items-center.mb-2 {
+        gap: 8px;
+      }
+      #sub-inventory-dashboard .d-flex.justify-content-between.align-items-center.mb-2 #inv-info-jumlah {
+        font-size: 11.5px;
+      }
+      #sub-inventory-dashboard button[onclick="loadInventoryDashboard()"] {
+        min-width: 40px; min-height: 36px; flex: 0 0 auto;
+      }
+
+      /* --- Tabel -> kartu (thead disembunyikan, tr jadi kartu) --- */
+      #sub-inventory-dashboard .table-responsive { max-height: none !important; overflow: visible; }
+      #sub-inventory-dashboard .inv-mobile-cards { border: 0; }
+      #sub-inventory-dashboard .inv-mobile-cards thead { display: none; }
+      #sub-inventory-dashboard .inv-mobile-cards,
+      #sub-inventory-dashboard .inv-mobile-cards tbody,
+      #sub-inventory-dashboard .inv-mobile-cards tr,
+      #sub-inventory-dashboard .inv-mobile-cards td {
+        display: block;
+        width: 100%;
+      }
+      #sub-inventory-dashboard .inv-mobile-cards tr {
+        background: #fff;
+        border: 1px solid #e3e6ec;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      }
+      #sub-inventory-dashboard .inv-mobile-cards tr.inv-row-clickable:active { background: #f4f8ff; }
+      #sub-inventory-dashboard .inv-mobile-cards td {
+        border: none !important;
+        padding: 3px 0 !important;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        text-align: right;
+      }
+      /* Sel pertama tiap kartu (SKU) tampil sebagai judul kartu, bukan baris label:value */
+      #sub-inventory-dashboard .inv-mobile-cards td:first-child {
+        display: block;
+        text-align: left;
+        font-size: 14.5px;
+        padding-bottom: 6px !important;
+        margin-bottom: 4px;
+        border-bottom: 1px solid #f0f1f4 !important;
+      }
+      #sub-inventory-dashboard .inv-mobile-cards td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #8a92a6;
+        font-size: 11.5px;
+        text-align: left;
+        flex: 0 0 auto;
+      }
+      #sub-inventory-dashboard .inv-mobile-cards td:first-child::before { content: none; }
+      /* Baris status kosong/loading/error (pakai colspan) tetap ditampilkan rata tengah polos */
+      #sub-inventory-dashboard .inv-mobile-cards td[colspan] {
+        display: block;
+        text-align: center;
+        border: none !important;
+      }
+      #sub-inventory-dashboard .inv-mobile-cards td[colspan]::before { content: none; }
+    }
   </style>
 </head>
 
@@ -3957,37 +4052,37 @@ async function eksekusiAddSkuOutbound() {
       <div id="sub-inventory-dashboard" class="card p-3 mb-3 border-start border-4 border-info">
         <h6 class="fw-bold text-info mb-2"><i class="fa-solid fa-table-cells-large me-2"></i>Dashboard Inventory (Stock_FG)</h6>
 
-        <div class="row g-2 mb-3 text-center">
+        <div class="row g-2 mb-3 text-center inv-summary-row">
           <div class="col-4">
-            <div class="border rounded p-2">
+            <div class="border rounded p-2 inv-summary-box">
               <div class="small text-muted">SKU Aktif</div>
               <div class="fw-bold fs-5" id="inv-sum-sku">0</div>
             </div>
           </div>
           <div class="col-4">
-            <div class="border rounded p-2">
+            <div class="border rounded p-2 inv-summary-box">
               <div class="small text-muted">Qty Available</div>
               <div class="fw-bold fs-5 text-success" id="inv-sum-available">0</div>
             </div>
           </div>
           <div class="col-4">
-            <div class="border rounded p-2">
+            <div class="border rounded p-2 inv-summary-box">
               <div class="small text-muted">Qty On Hand</div>
               <div class="fw-bold fs-5" id="inv-sum-onhand">0</div>
             </div>
           </div>
         </div>
 
-        <div class="row g-2 mb-3 text-center">
+        <div class="row g-2 mb-3 text-center inv-summary-row">
           <div class="col-12">
-            <div class="border rounded p-2">
+            <div class="border rounded p-2 inv-summary-box">
               <div class="small text-muted">Qty Open PO (Status Active)</div>
               <div class="fw-bold fs-5 text-warning" id="inv-sum-openpo">0</div>
             </div>
           </div>
         </div>
 
-        <div class="row g-2 mb-2">
+        <div class="row g-2 mb-2 inv-filter-row">
           <div class="col-4">
             <input type="text" id="inv-filter-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Filter SKU" oninput="renderInventoryTable(); renderInventorySupplementary();">
             <datalist id="inv-list-sku"></datalist>
@@ -4016,7 +4111,7 @@ async function eksekusiAddSkuOutbound() {
         </div>
 
         <div class="table-responsive" style="max-height: 320px;">
-          <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+          <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
               <tr>
                 <th>SKU</th>
@@ -4040,7 +4135,7 @@ async function eksekusiAddSkuOutbound() {
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-file-invoice me-2"></i>Stok Open PO
             (Status Active — Belum Diterima Penuh dari Supplier)</h6>
           <div class="table-responsive" style="max-height: 160px;">
-            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
                   <th>No PO</th>
@@ -4062,7 +4157,7 @@ async function eksekusiAddSkuOutbound() {
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-truck-fast me-2"></i>Stok Belum Di-QC
             (Stock_Inbound)</h6>
           <div class="table-responsive" style="max-height: 160px;">
-            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
                   <th>SKU</th>
@@ -4083,7 +4178,7 @@ async function eksekusiAddSkuOutbound() {
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-rotate-left me-2"></i>Stok Pending
             Putaway Return (Stock_Return)</h6>
           <div class="table-responsive" style="max-height: 160px;">
-            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
                   <th>SKU</th>
@@ -5934,6 +6029,14 @@ async function eksekusiAddSkuOutbound() {
         loadHomeDashboard();
       } else {
         if (whdashRootEl) whdashRootEl.style.display = 'none';
+
+        // FITUR BARU: role yang tidak punya akses melihat Warehouse Dashboard di Home
+        // akan langsung disambut sidebar "Menu Utama" secara otomatis (tanpa perlu klik
+        // tombol hamburger pojok kiri atas), supaya mereka tidak mendarat di halaman
+        // Home yang tampak kosong. setTimeout kecil dipakai supaya animasi 'open' sidebar
+        // berjalan mulus setelah halaman-home selesai ditampilkan (style.display = 'block'
+        // di atas baru saja diterapkan pada frame yang sama).
+        setTimeout(openHomeSidebar, 50);
       }
     }
 
@@ -10350,13 +10453,13 @@ async function eksekusiCancelOutbound() {
       } else {
         tbody.innerHTML = filtered.map((r, idx) => `
           <tr${USER_PUNYA_AKSES_TRANSFER ? ` class="inv-row-clickable" style="cursor:pointer;" onclick="bukaTransferDariDashboard(${idx})" title="Klik untuk isi form Transfer Lokasi/Grade dengan baris ini"` : ''}>
-            <td class="fw-bold">${r.sku}</td>
-            <td>${r.deskripsi || '-'}</td>
-            <td>${r.lokasi}</td>
-            <td class="text-center">${r.grade}</td>
-            <td class="text-center fw-bold text-success">${Number(r.qtyAvailable || 0).toLocaleString('id-ID')}</td>
-            <td class="text-center">${Number(r.qtyOnHand || 0).toLocaleString('id-ID')}</td>
-            ${USER_PUNYA_AKSES_TRANSFER ? `<td class="text-center text-primary"><i class="fa-solid fa-arrows-left-right"></i></td>` : ''}
+            <td class="fw-bold" data-label="SKU">${r.sku}</td>
+            <td data-label="Deskripsi">${r.deskripsi || '-'}</td>
+            <td data-label="Lokasi">${r.lokasi}</td>
+            <td class="text-center" data-label="Grade">${r.grade}</td>
+            <td class="text-center fw-bold text-success" data-label="Qty Available">${Number(r.qtyAvailable || 0).toLocaleString('id-ID')}</td>
+            <td class="text-center" data-label="Qty On Hand">${Number(r.qtyOnHand || 0).toLocaleString('id-ID')}</td>
+            ${USER_PUNYA_AKSES_TRANSFER ? `<td class="text-center text-primary" data-label="Aksi"><i class="fa-solid fa-arrows-left-right"></i></td>` : ''}
           </tr>
         `).join('');
       }
@@ -10413,7 +10516,7 @@ async function eksekusiCancelOutbound() {
       const tbodyPo = document.getElementById('inv-tbody-openpo');
       tbodyPo.innerHTML = filteredOpenPO.length === 0
         ? '<tr><td colspan="4" class="text-center text-muted py-2">Tidak ada PO berstatus Active.</td></tr>'
-        : filteredOpenPO.map(r => `<tr><td class="fw-bold">${r.noPo}</td><td>${r.sku}</td><td>${r.supplier || '-'}</td><td class="text-center">${Number(r.qtyOpenPO || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+        : filteredOpenPO.map(r => `<tr><td class="fw-bold" data-label="No PO">${r.noPo}</td><td data-label="SKU">${r.sku}</td><td data-label="Supplier">${r.supplier || '-'}</td><td class="text-center" data-label="Qty Sisa PO">${Number(r.qtyOpenPO || 0).toLocaleString('id-ID')}</td></tr>`).join('');
       const totalOpenPO = filteredOpenPO.reduce((a, r) => a + Number(r.qtyOpenPO || 0), 0);
       document.getElementById('inv-sum-openpo').innerText = totalOpenPO.toLocaleString('id-ID');
 
@@ -10424,7 +10527,7 @@ async function eksekusiCancelOutbound() {
       const tbodyIn = document.getElementById('inv-tbody-inbound');
       tbodyIn.innerHTML = filteredInbound.length === 0
         ? '<tr><td colspan="3" class="text-center text-muted py-2">Tidak ada stok belum QC.</td></tr>'
-        : filteredInbound.map(r => `<tr><td class="fw-bold">${r.sku}</td><td>${r.lokasi}</td><td class="text-center">${Number(r.qtyBelumQC || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+        : filteredInbound.map(r => `<tr><td class="fw-bold" data-label="SKU">${r.sku}</td><td data-label="Lokasi">${r.lokasi}</td><td class="text-center" data-label="Qty Belum QC">${Number(r.qtyBelumQC || 0).toLocaleString('id-ID')}</td></tr>`).join('');
 
       const filteredReturn = INV_DATA_RETURN.filter(r =>
         (fSku === "" || r.sku.toLowerCase().includes(fSku)) &&
@@ -10433,7 +10536,7 @@ async function eksekusiCancelOutbound() {
       const tbodyRet = document.getElementById('inv-tbody-return');
       tbodyRet.innerHTML = filteredReturn.length === 0
         ? '<tr><td colspan="4" class="text-center text-muted py-2">Tidak ada stok pending putaway return.</td></tr>'
-        : filteredReturn.map(r => `<tr><td class="fw-bold">${r.sku}</td><td>${r.lokasi}</td><td class="text-center">${r.grade}</td><td class="text-center">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+        : filteredReturn.map(r => `<tr><td class="fw-bold" data-label="SKU">${r.sku}</td><td data-label="Lokasi">${r.lokasi}</td><td class="text-center" data-label="Grade">${r.grade}</td><td class="text-center" data-label="Qty">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
     }
 
     // =========================================================================
