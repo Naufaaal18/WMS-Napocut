@@ -10902,15 +10902,26 @@ async function eksekusiCancelOutbound() {
 
       const tbody = document.getElementById('ob-dash-tbody');
       if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman, tidak perlu crash.
+      // FITUR BARU: hitung dari SELURUH data (bukan cuma yang lolos filter) No Request
+      // mana saja yang sudah "final" (semua baris Closed, kecuali sisa Stockout yang
+      // memang tidak bisa lagi dipicking/dicheck) -- dipakai untuk menyembunyikan
+      // tombol Re-Allocate pada baris Stockout milik No Request yang sudah final itu.
+      const finalSet = hitungNoRequestFinalSet(DASHOB_DATA_OB);
       if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
       } else {
         tbody.innerHTML = rows.map(r => {
           const statusColor = r.status === 'Stockout' ? 'text-danger fw-bold' : r.status === 'Picking Pending' ? 'text-warning' : r.status === 'In Packing' ? 'text-info' : r.status === 'Closed' ? 'text-success' : '';
           const stockoutTd = r.qtyStockout > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyStockout}</td>` : '<td class="text-center text-muted">-</td>';
-          // Tombol Re-Allocate HANYA muncul untuk baris yang masih ada sisa Stockout (Kolom I > 0)
-          // & belum di status final (Closed/Cancelled) — selaras dengan validasi di backend reAllocateStockoutSKU.
-          const bisaRealokasi = r.qtyStockout > 0 && r.status !== 'Closed' && r.status !== 'Cancelled';
+          const noRequestFinal = finalSet.has(r.noRequest);
+          const statusText = (r.status === 'Stockout' && noRequestFinal)
+            ? `Stockout <span class="text-muted fw-normal" style="font-size:9px;" title="Request ini sudah final, sisa Stockout tidak akan dialokasikan ulang lagi">(Final)</span>`
+            : r.status;
+          // Tombol Re-Allocate HANYA muncul untuk baris yang masih ada sisa Stockout (Kolom I > 0),
+          // belum di status final (Closed/Cancelled), DAN No Request-nya belum "final" (lihat
+          // hitungNoRequestFinalSet -- kalau semua SKU lain di Request yang sama sudah Closed,
+          // sisa Stockout ini dianggap permanen dan tidak akan dicoba direalokasikan lagi).
+          const bisaRealokasi = r.qtyStockout > 0 && r.status !== 'Closed' && r.status !== 'Cancelled' && !noRequestFinal;
           const aksiTd = bisaRealokasi
             ? `<td class="text-center">
                  <button type="button" class="btn btn-outline-warning btn-sm ob-realloc-btn" style="font-size:9px;padding:2px 6px;"
@@ -10935,7 +10946,7 @@ async function eksekusiCancelOutbound() {
             ${checkerKlopTd}
             ${shortpickTd}
             ${stockoutTd}
-            <td class="${statusColor}" style="font-size:10px;">${r.status}</td>
+            <td class="${statusColor}" style="font-size:10px;">${statusText}</td>
             ${aksiTd}
           </tr>`;
         }).join('');
@@ -11003,7 +11014,39 @@ async function eksekusiCancelOutbound() {
     // "Cancelled" di database, status itu tetap dipakai apa adanya (final/tidak
     // bisa "mundur" ke In Packing/Ready to Ship lagi).
     // =========================================================================
+    // =========================================================================
+    // FITUR BARU: sebuah No Request dianggap SUDAH SELESAI TOTAL (final) kalau
+    // SEMUA baris SKU-nya sudah "Closed", KECUALI baris yang memang "Stockout"
+    // (barang tsb sudah pasti tidak bisa dipicking/dicheck lagi karena memang
+    // tidak ada qty yang teralokasi). Begitu kondisi ini terpenuhi:
+    //   1) Leading & Trailing Status di Form Request otomatis ditampilkan "Closed".
+    //   2) Tombol "Re-Allocate" pada baris Stockout di Detail per No Request
+    //      DISEMBUNYIKAN -- Request ini dianggap final, sisa Stockout-nya tidak
+    //      akan dicoba dialokasikan ulang lagi.
+    // Syarat "ada minimal 1 baris Closed" ditambahkan supaya No Request yang
+    // SEMUA baris SKU-nya masih Stockout (belum ada satupun yang berhasil
+    // diproses sama sekali) TIDAK ikut dianggap final -- itu kasus berbeda,
+    // masih layak dicoba di re-allocate.
+    // =========================================================================
+    function hitungNoRequestFinalSet(rows) {
+      const map = {};
+      (rows || []).forEach(r => {
+        if (!r.noRequest) return;
+        if (!map[r.noRequest]) map[r.noRequest] = [];
+        map[r.noRequest].push(r.status);
+      });
+      const set = new Set();
+      Object.keys(map).forEach(noReq => {
+        const statuses = map[noReq];
+        const semuaClosedAtauStockout = statuses.length > 0 && statuses.every(s => s === 'Closed' || s === 'Stockout');
+        const adaClosed = statuses.some(s => s === 'Closed');
+        if (semuaClosedAtauStockout && adaClosed) set.add(noReq);
+      });
+      return set;
+    }
+
     function computeDashboardOutboundSummary(rows) {
+      const finalSet = hitungNoRequestFinalSet(rows);
       const map = {};
       const urutan = [];
       (rows || []).forEach(r => {
@@ -11032,6 +11075,7 @@ async function eksekusiCancelOutbound() {
       return urutan.map(noReq => {
         const g = map[noReq];
         const rowsSku = g._rows;
+        const finalMeskiStockout = finalSet.has(noReq); // Closed penuh, kecuali sisa Stockout yang tidak akan direalokasi lagi
         const semuaClosed = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Closed');
         const semuaCancelled = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Cancelled');
 
@@ -11069,7 +11113,7 @@ async function eksekusiCancelOutbound() {
         if (allPicked) trailingStatus = 'In Packing';
         if (allChecked) trailingStatus = 'Ready to Ship';
 
-        if (semuaClosed) { leadingStatus = 'Closed'; trailingStatus = 'Closed'; }
+        if (semuaClosed || finalMeskiStockout) { leadingStatus = 'Closed'; trailingStatus = 'Closed'; }
         else if (semuaCancelled) { leadingStatus = 'Cancelled'; trailingStatus = 'Cancelled'; }
 
         return {
@@ -11077,7 +11121,7 @@ async function eksekusiCancelOutbound() {
           skuCount: g.skuSet.size, grade: Array.from(g.gradeSet).sort().join(', ') || '-',
           qtyRequest: g.qtyRequest, qtyAllocated: g.qtyAllocated, qtyPicker: g.qtyPicker,
           qtyCheckerKlop: g.qtyCheckerKlop, qtyShortpick: g.qtyShortpick, qtyStockout: g.qtyStockout,
-          leadingStatus, trailingStatus
+          leadingStatus, trailingStatus, finalMeskiStockout
         };
       });
     }
@@ -11112,6 +11156,8 @@ async function eksekusiCancelOutbound() {
       tbody.innerHTML = summaryRows.map(r => {
         const stockoutTd = r.qtyStockout > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyStockout.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
         const shortpickTd = r.qtyShortpick > 0 ? `<td class="text-center text-warning fw-bold">${r.qtyShortpick.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        const finalNote = (r.finalMeskiStockout && r.qtyStockout > 0)
+          ? ` <i class="fa-solid fa-circle-info text-muted" style="font-size:9px;" title="Request ini sudah final -- sisa Stockout tidak akan dicoba dialokasikan ulang lagi"></i>` : '';
         return `<tr class="ob-form-request-row" style="cursor:pointer;" data-noreq="${escapeHtmlAttr(r.noRequest)}" title="Klik untuk lihat detail per SKU">
           <td class="fw-bold">${r.noRequest}</td>
           <td style="white-space:nowrap;">${r.tglRequest}</td>
@@ -11124,8 +11170,8 @@ async function eksekusiCancelOutbound() {
           <td class="text-center">${r.qtyCheckerKlop.toLocaleString('id-ID')}</td>
           ${shortpickTd}
           ${stockoutTd}
-          <td class="${_dashObStatusClass(r.leadingStatus)}" style="font-size:10px;">${r.leadingStatus}</td>
-          <td class="${_dashObStatusClass(r.trailingStatus)}" style="font-size:10px;">${r.trailingStatus}</td>
+          <td class="${_dashObStatusClass(r.leadingStatus)}" style="font-size:10px;">${r.leadingStatus}${finalNote}</td>
+          <td class="${_dashObStatusClass(r.trailingStatus)}" style="font-size:10px;">${r.trailingStatus}${finalNote}</td>
         </tr>`;
       }).join('');
 
