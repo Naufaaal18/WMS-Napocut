@@ -494,6 +494,17 @@ Object.assign(ENDPOINTS, {
       .sort((a, b) => a.lokasi.localeCompare(b.lokasi) || a.id - b.id);
   },
 
+  // FITUR STRUKTURAL 2026-07-17: baca lokasi picking dari LEDGER RESMI (outbound_alokasi_lokasi),
+  // yaitu mapping persis "baris Outbound Request <-> lokasi stock_fg yang direservasi saat
+  // alokasi terjadi" -- bukan lagi menebak ulang dari sisa qty_available saat ini (yang sudah
+  // terbukti bisa meleset: lokasi yang JUSTRU dipakai reservasi baris ini sendiri qty_available-nya
+  // sudah 0, jadi "hilang" dari hasil tebakan). Dipakai untuk DAFTAR UTAMA picking (bukan untuk
+  // dropdown Override -- itu tetap pakai getLokasiAlokasiBySkuGrade karena tujuannya memang
+  // mencari stok BEBAS di lokasi LAIN, bukan lokasi yang sudah direservasi).
+  getLokasiReservasiPicking: (noRequest, kodeSku, grade) => _callRpc('get_lokasi_reservasi_picking', {
+    p_no_request: noRequest, p_kode_sku: kodeSku, p_grade: grade
+  }).then(rows => (rows || []).map(r => ({ lokasi: r.kode_lokasi, qty: Number(r.qty), id: null }))),
+
   getSkuListForPicking: async (noRequest) => {
     if (!noRequest) return [];
     const { data, error } = await _sb.from('outbound_request')
@@ -510,9 +521,14 @@ Object.assign(ENDPOINTS, {
     // flatList tetap mengikuti urutan baris `data` seperti semula), cuma jauh lebih cepat.
     const rows = data || [];
     const detailPerRow = await Promise.all(rows.map(async (row) => {
+      // PERBAIKAN STRUKTURAL 2026-07-17: lokasi picking SEKARANG dibaca dari ledger resmi
+      // (getLokasiReservasiPicking / outbound_alokasi_lokasi) -- lokasi persis yang direservasi
+      // saat request ini dibuat -- bukan lagi dari getLokasiAlokasiBySkuGrade (qty_available
+      // global) yang bisa menunjuk ke lokasi yang salah / menyebabkan "Tidak ada" padahal
+      // barangnya ada & memang sudah dijanjikan ke request ini.
       const [qtySudahDipicking, lokasiList] = await Promise.all([
         _callRpc('get_qty_sudah_dipicking', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
-        ENDPOINTS.getLokasiAlokasiBySkuGrade(row.kode_sku, row.grade)
+        ENDPOINTS.getLokasiReservasiPicking(noRequest, row.kode_sku, row.grade)
       ]);
       return { row, qtySudahDipicking, lokasiList };
     }));
