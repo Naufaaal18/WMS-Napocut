@@ -655,6 +655,44 @@ Object.assign(ENDPOINTS, {
     }
   },
 
+  // FITUR BARU: DASHBOARD OUTBOUND - REQUEST QC ULANG (Re-Check QC / QC Swarovski)
+  // Sumbernya tabel `qc_ulang_request` (1 baris per SKU per No Request QC Ulang, mirip
+  // struktur `outbound_request`). Beda dengan Form Request biasa: tidak ada tahap Checking,
+  // jadi progress hanya 2 tahap -- "Picking Pending" (belum/masih dipicking) dan "Closed"
+  // (sudah selesai dipicking penuh, lihat process_picking_qc_ulang_sku). "tujuan" dipetakan
+  // ke label yang enak dibaca (Re-Check QC / QC Swarovski) untuk ditampilkan di kolom "Tujuan"
+  // -- pengganti kolom "Store" pada Dashboard Form Request biasa.
+  getDashboardQCUlangData: async (bulan, tahun) => {
+    try {
+      const rows = await _fetchAllRows('qc_ulang_request',
+        'no_request, tanggal_request, tujuan, kode_sku, grade_asal, qty_request, qty_allocated, qty_sudah_dipicking, qty_oos, status, keterangan');
+
+      const labelTujuan = (t) => {
+        const v = (t || '').toString().trim().toUpperCase();
+        if (v === 'QC_SWAROVSKI') return 'QC Swarovski';
+        if (v === 'RECHECK_QC' || v === '') return 'Re-Check QC';
+        return t;
+      };
+
+      const result = (rows || [])
+        .filter(r => r.no_request && r.tanggal_request && _cocokBulanTahun(r.tanggal_request, bulan, tahun))
+        .map(r => ({
+          noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), tujuan: labelTujuan(r.tujuan),
+          kodeSku: r.kode_sku, grade: r.grade_asal, qtyRequest: Number(r.qty_request || 0),
+          qtyAllocated: Number(r.qty_allocated || 0), qtyPicker: Number(r.qty_sudah_dipicking || 0),
+          qtyOos: Number(r.qty_oos || 0), status: (r.status || '').toString().trim(), keterangan: r.keterangan || ''
+        }))
+        .sort((a, b) => {
+          const c = String(a.noRequest).localeCompare(String(b.noRequest), 'id', { numeric: true, sensitivity: 'base' });
+          if (c !== 0) return c;
+          return String(a.kodeSku).localeCompare(String(b.kodeSku), 'id', { numeric: true, sensitivity: 'base' });
+        });
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, message: 'Gagal memuat data Dashboard Request QC Ulang: ' + err.message };
+    }
+  },
+
   getDashboardInboundData: async (bulan, tahun) => {
     try {
       // PERBAIKAN BUG (PENTING): sebelumnya open_po & movement_history diambil langsung tanpa
@@ -4572,6 +4610,91 @@ async function eksekusiAddSkuOutbound() {
         </div>
 
         <div id="ob-dash-alert" class="mt-2"></div>
+
+        <!-- ===== FITUR BARU: DASHBOARD OUTBOUND - REQUEST QC ULANG (Re-Check QC / QC Swarovski) =====
+             Pola tabel & Leading/Trailing Status meniru Form Request di atas, hanya saja:
+               - Kolom "Store" diganti "Tujuan" (isinya Re-Check QC / QC Swarovski).
+               - Tidak ada tahap Checking (tidak ada Qty Checker/Shortpick), progress QC Ulang
+                 hanya 2 status: "Picking Pending" -> "Closed" (lihat computeDashboardQCUlangSummary). -->
+        <div class="mt-4 pt-3 border-top">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Dashboard Outbound Request QC Ulang</h6>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadDashboardQCUlang()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+          <div class="small text-muted mb-2">Mengikuti filter Bulan/Tahun Dashboard Outbound di atas.</div>
+
+          <!-- VIEW 1 (DEFAULT): FORM REQUEST QC ULANG -- 1 baris per No Request QC Ulang -->
+          <div id="qcu-dash-view-summary">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <small class="fw-bold text-secondary">Form Request QC Ulang <span class="text-muted fw-normal">(klik salah satu baris untuk lihat detail per SKU)</span></small>
+              <input type="text" id="qcu-dash-filter-summary" class="form-control form-control-sm" style="max-width:170px;" placeholder="Filter No Request/Tujuan" oninput="renderDashboardQCUlangSummaryTable()">
+            </div>
+            <div class="table-responsive ob-desktop-table" style="max-height:380px;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                <thead class="table-light" style="position:sticky;top:0;">
+                  <tr>
+                    <th>No QC Ulang</th>
+                    <th>Tgl</th>
+                    <th>Tujuan</th>
+                    <th class="text-center" title="Jumlah SKU berbeda dalam 1 No Request QC Ulang">SKU</th>
+                    <th>Grade Asal</th>
+                    <th class="text-center">Qty Req</th>
+                    <th class="text-center">Qty Alloc</th>
+                    <th class="text-center">Qty Picker</th>
+                    <th class="text-center">Qty OOS</th>
+                    <th title="Berubah begitu SALAH SATU SKU dalam Request ini sudah Closed (selesai dipicking penuh)">Leading Status</th>
+                    <th title="Berubah setelah SEMUA SKU dalam Request ini Closed (selesai dipicking penuh)">Trailing Status</th>
+                  </tr>
+                </thead>
+                <tbody id="qcu-dash-summary-tbody">
+                  <tr><td colspan="11" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Versi kartu untuk HP (device-mobile) -- diisi & ditampilkan lewat JS -->
+            <div id="qcu-dash-summary-cards" class="ob-mobile-cards" style="max-height:420px; overflow-y:auto;"></div>
+          </div>
+
+          <!-- VIEW 2: DETAIL PER NO REQUEST QC ULANG (muncul setelah klik baris di Form Request QC Ulang) -->
+          <div id="qcu-dash-view-detail" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+              <div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="kembaliKeSummaryDashQCUlang()" title="Kembali ke Form Request QC Ulang">
+                  <i class="fa-solid fa-arrow-left"></i> Kembali
+                </button>
+                <small class="fw-bold text-secondary ms-2">Detail per No Request QC Ulang: <span id="qcu-dash-detail-title" style="color:#8E24AA;"></span></small>
+              </div>
+              <input type="text" id="qcu-dash-filter" class="form-control form-control-sm" style="max-width:140px;" placeholder="Filter No/Tujuan/SKU/Grade" oninput="renderDashboardQCUlangTable()">
+            </div>
+            <div class="table-responsive ob-desktop-table" style="max-height:340px;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                <thead class="table-light" style="position:sticky;top:0;">
+                  <tr>
+                    <th>No QC Ulang</th>
+                    <th>Tgl</th>
+                    <th>Tujuan</th>
+                    <th>SKU</th>
+                    <th>Grade Asal</th>
+                    <th class="text-center">Qty Req</th>
+                    <th class="text-center">Qty Alloc</th>
+                    <th class="text-center" title="Total qty yang sudah berhasil dipicking (qty_sudah_dipicking) untuk baris SKU ini">Qty Picker</th>
+                    <th class="text-center" title="Qty yang tidak ketemu fisik saat picking (Short Pick), dicatat sebagai OOS ke lokasi TEMPA">Qty OOS</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="qcu-dash-tbody">
+                  <tr><td colspan="10" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Versi kartu untuk HP (device-mobile) -- diisi & ditampilkan lewat JS -->
+            <div id="qcu-dash-detail-cards" class="ob-mobile-cards" style="max-height:400px; overflow-y:auto;"></div>
+          </div>
+
+          <div id="qcu-dash-alert" class="mt-2"></div>
+        </div>
       </div>
 
       <!-- SUB: DASHBOARD INBOUND -->
@@ -11671,6 +11794,7 @@ async function eksekusiCancelOutbound() {
     // MODUL DASHBOARD OUTBOUND VS INBOUND
     // =========================================================================
     let DASHOB_DATA_OB = [];
+    let DASHOB_DATA_QCULANG = [];
     let DASHIB_DATA_IB = [];
 
     // Inisialisasi filter bulan & tahun ke nilai sekarang
@@ -11749,6 +11873,259 @@ async function eksekusiCancelOutbound() {
           if (tbody) tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">Gagal memuat data: ${err.message}</td></tr>`;
         })
         .getDashboardOutboundData(bulan, tahun);
+
+      // FITUR BARU: Dashboard Outbound Request QC Ulang -- selalu ikut dimuat ulang
+      // bersamaan (memakai filter Bulan/Tahun yang sama dengan Dashboard Outbound di atas).
+      loadDashboardQCUlang(bulan, tahun);
+    }
+
+    // =========================================================================
+    // FITUR BARU: DASHBOARD OUTBOUND - REQUEST QC ULANG (Re-Check QC / QC Swarovski)
+    // Pola & Leading/Trailing Status meniru Form Request di atas persis, hanya saja
+    // progress QC Ulang cuma 2 tahap (tidak ada Checking): "Picking Pending" -> "Closed".
+    // =========================================================================
+    function loadDashboardQCUlang(bulanArg, tahunArg) {
+      const bulanEl = document.getElementById('ob-dash-bulan');
+      const tahunEl = document.getElementById('ob-dash-tahun');
+      const bulan = bulanArg || (bulanEl ? parseInt(bulanEl.value) : (new Date().getMonth() + 1));
+      const tahun = tahunArg || (tahunEl ? parseInt(tahunEl.value) : new Date().getFullYear());
+      const tbody = document.getElementById('qcu-dash-summary-tbody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          const alertEl = document.getElementById('qcu-dash-alert');
+          if (!res.success) {
+            if (alertEl) alertEl.innerHTML = `<div class="alert alert-danger small py-2">${res.message}</div>`;
+            return;
+          }
+          if (alertEl) alertEl.innerHTML = '';
+          DASHOB_DATA_QCULANG = res.data || [];
+          kembaliKeSummaryDashQCUlang(); // reload/ganti bulan-tahun selalu kembali ke tampilan Form Request QC Ulang dulu
+          renderDashboardQCUlangTable();
+          renderDashboardQCUlangSummaryTable();
+        })
+        .withFailureHandler(function(err) {
+          const alertEl = document.getElementById('qcu-dash-alert');
+          if (alertEl) alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal: ${err.message}</div>`;
+          if (tbody) tbody.innerHTML = `<tr><td colspan="11" class="text-center text-danger py-3">Gagal memuat data: ${err.message}</td></tr>`;
+        })
+        .getDashboardQCUlangData(bulan, tahun);
+    }
+
+    // Definisi Leading/Trailing Status utk Request QC Ulang -- sama persis logikanya dengan
+    // Form Request (Outbound Store) di atas, HANYA SAJA di sini cuma ada 2 status non-final:
+    // "Picking Pending" (belum/masih ada SKU yang belum selesai dipicking) dan "Closed" (semua
+    // SKU sudah selesai dipicking penuh). Tidak ada tahap "In Packing"/"Ready to Ship" karena
+    // Request QC Ulang memang tidak melalui proses Checking seperti Outbound biasa.
+    //  - Leading Status  = "Closed" begitu SALAH SATU baris SKU dalam Request ini sudah Closed.
+    //  - Trailing Status = "Closed" setelah SEMUA baris SKU dalam Request ini sudah Closed
+    //                      (baris yang statusnya "Stockout" tidak menghalangi, sama seperti
+    //                      hitungNoRequestFinalSet pada Form Request biasa -- dipakai ulang).
+    function computeDashboardQCUlangSummary(rows) {
+      const finalSet = hitungNoRequestFinalSet(rows); // fungsi generik, sudah ada (dipakai juga oleh Form Request biasa)
+      const map = {};
+      const urutan = [];
+      (rows || []).forEach(r => {
+        if (!r.noRequest) return;
+        if (!map[r.noRequest]) {
+          map[r.noRequest] = {
+            noRequest: r.noRequest, tglRequest: r.tglRequest, tujuan: r.tujuan,
+            skuSet: new Set(), gradeSet: new Set(),
+            qtyRequest: 0, qtyAllocated: 0, qtyPicker: 0, qtyOos: 0,
+            _rows: []
+          };
+          urutan.push(r.noRequest);
+        }
+        const g = map[r.noRequest];
+        g.skuSet.add(r.kodeSku);
+        if (r.grade) g.gradeSet.add(r.grade);
+        g.qtyRequest += Number(r.qtyRequest || 0);
+        g.qtyAllocated += Number(r.qtyAllocated || 0);
+        g.qtyPicker += Number(r.qtyPicker || 0);
+        g.qtyOos += Number(r.qtyOos || 0);
+        g._rows.push(r);
+      });
+
+      return urutan.map(noReq => {
+        const g = map[noReq];
+        const rowsSku = g._rows;
+        const finalMeskiStockout = finalSet.has(noReq);
+        const semuaClosed = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Closed');
+        const semuaCancelled = rowsSku.length > 0 && rowsSku.every(r => r.status === 'Cancelled');
+        const anyClosed = rowsSku.some(r => r.status === 'Closed');
+
+        let leadingStatus = anyClosed ? 'Closed' : 'Picking Pending';
+        let trailingStatus = (semuaClosed || finalMeskiStockout) ? 'Closed' : 'Picking Pending';
+
+        if (semuaCancelled) { leadingStatus = 'Cancelled'; trailingStatus = 'Cancelled'; }
+
+        return {
+          noRequest: g.noRequest, tglRequest: g.tglRequest, tujuan: g.tujuan,
+          skuCount: g.skuSet.size, grade: Array.from(g.gradeSet).sort().join(', ') || '-',
+          qtyRequest: g.qtyRequest, qtyAllocated: g.qtyAllocated, qtyPicker: g.qtyPicker, qtyOos: g.qtyOos,
+          leadingStatus, trailingStatus, finalMeskiStockout
+        };
+      });
+    }
+
+    function _dashQcUlangStatusClass(status) {
+      return status === 'Stockout' ? 'text-danger fw-bold'
+        : status === 'Picking Pending' ? 'text-warning'
+        : status === 'Closed' ? 'text-success'
+        : status === 'Cancelled' ? 'text-muted'
+        : '';
+    }
+
+    function renderDashboardQCUlangSummaryTable() {
+      const tbody = document.getElementById('qcu-dash-summary-tbody');
+      if (!tbody) return; // Modul sedang tidak aktif di DOM -- aman, tidak perlu render.
+      const filterEl = document.getElementById('qcu-dash-filter-summary');
+      const filter = ((filterEl ? filterEl.value : '') || '').trim().toLowerCase();
+
+      const summaryRows = computeDashboardQCUlangSummary(DASHOB_DATA_QCULANG).filter(r =>
+        !filter ||
+        r.noRequest.toLowerCase().includes(filter) ||
+        (r.tujuan || '').toLowerCase().includes(filter)
+      );
+
+      const cardsWrap = document.getElementById('qcu-dash-summary-cards');
+
+      if (!summaryRows.length) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
+        return;
+      }
+
+      tbody.innerHTML = summaryRows.map(r => {
+        const oosTd = r.qtyOos > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyOos.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        return `<tr class="qcu-form-request-row" style="cursor:pointer;" data-noreq="${escapeHtmlAttr(r.noRequest)}" title="Klik untuk lihat detail per SKU">
+          <td class="fw-bold">${r.noRequest}</td>
+          <td style="white-space:nowrap;">${r.tglRequest}</td>
+          <td>${r.tujuan}</td>
+          <td class="text-center">${r.skuCount}</td>
+          <td>${r.grade}</td>
+          <td class="text-center">${r.qtyRequest.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyAllocated.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyPicker.toLocaleString('id-ID')}</td>
+          ${oosTd}
+          <td class="${_dashQcUlangStatusClass(r.leadingStatus)}" style="font-size:10px;">${r.leadingStatus}</td>
+          <td class="${_dashQcUlangStatusClass(r.trailingStatus)}" style="font-size:10px;">${r.trailingStatus}</td>
+        </tr>`;
+      }).join('');
+
+      // ---- Versi kartu (HP) ----
+      if (cardsWrap) {
+        cardsWrap.innerHTML = summaryRows.map(r => `<div class="ob-mcard qcu-form-request-row" data-noreq="${escapeHtmlAttr(r.noRequest)}">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="ob-mcard-title" style="color:#8E24AA;">${r.noRequest}</div>
+                <div class="ob-mcard-sub">${r.tglRequest} • ${r.tujuan} • ${r.grade}</div>
+              </div>
+              <i class="fa-solid fa-chevron-right text-muted mt-1"></i>
+            </div>
+            <div class="ob-mcard-grid">
+              <div><span class="lbl">SKU</span><span class="val">${r.skuCount}</span></div>
+              <div><span class="lbl">Qty Req</span><span class="val">${r.qtyRequest.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Qty Alloc</span><span class="val">${r.qtyAllocated.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">Picker</span><span class="val">${r.qtyPicker.toLocaleString('id-ID')}</span></div>
+              <div><span class="lbl">OOS</span><span class="val ${r.qtyOos > 0 ? 'text-danger' : ''}">${r.qtyOos > 0 ? r.qtyOos.toLocaleString('id-ID') : '-'}</span></div>
+            </div>
+            <div class="ob-mcard-status-row">
+              <span class="${_dashQcUlangStatusClass(r.leadingStatus)}">Leading: <b>${r.leadingStatus}</b></span>
+              <span class="${_dashQcUlangStatusClass(r.trailingStatus)}">Trailing: <b>${r.trailingStatus}</b></span>
+            </div>
+          </div>`).join('');
+      }
+
+      // Delegasi klik baris -> buka Detail per No Request QC Ulang (dipasang ulang tiap
+      // render supaya baris hasil re-render tetap bisa diklik). Berlaku untuk baris tabel
+      // (desktop) MAUPUN kartu (HP) -- keduanya pakai class .qcu-form-request-row.
+      document.querySelectorAll('.qcu-form-request-row').forEach(el => {
+        el.onclick = () => bukaDetailNoRequestQCUlang(el.getAttribute('data-noreq'));
+      });
+    }
+
+    // Buka halaman "Detail per No Request QC Ulang" (per SKU) untuk 1 No Request QC Ulang
+    // yang diklik dari Form Request QC Ulang.
+    function bukaDetailNoRequestQCUlang(noRequest) {
+      const viewSummary = document.getElementById('qcu-dash-view-summary');
+      const viewDetail = document.getElementById('qcu-dash-view-detail');
+      const filterDetail = document.getElementById('qcu-dash-filter');
+      const titleEl = document.getElementById('qcu-dash-detail-title');
+      if (filterDetail) filterDetail.value = noRequest;
+      if (titleEl) titleEl.textContent = noRequest;
+      if (viewSummary) viewSummary.style.display = 'none';
+      if (viewDetail) viewDetail.style.display = 'block';
+      renderDashboardQCUlangTable();
+    }
+
+    // Kembali dari Detail per No Request QC Ulang ke Form Request QC Ulang (ringkasan).
+    function kembaliKeSummaryDashQCUlang() {
+      const viewSummary = document.getElementById('qcu-dash-view-summary');
+      const viewDetail = document.getElementById('qcu-dash-view-detail');
+      const filterDetail = document.getElementById('qcu-dash-filter');
+      if (filterDetail) filterDetail.value = '';
+      if (viewDetail) viewDetail.style.display = 'none';
+      if (viewSummary) viewSummary.style.display = 'block';
+    }
+
+    function renderDashboardQCUlangTable() {
+      const filterEl = document.getElementById('qcu-dash-filter');
+      const filter = ((filterEl ? filterEl.value : '') || '').trim().toLowerCase();
+      const rows = DASHOB_DATA_QCULANG.filter(r =>
+        !filter ||
+        r.noRequest.toLowerCase().includes(filter) ||
+        (r.tujuan || '').toLowerCase().includes(filter) ||
+        r.kodeSku.toLowerCase().includes(filter) ||
+        (r.grade || '').toLowerCase().includes(filter)
+      );
+
+      const tbody = document.getElementById('qcu-dash-tbody');
+      if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman.
+      const cardsWrap = document.getElementById('qcu-dash-detail-cards');
+
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
+        return;
+      }
+
+      const rowsRendered = rows.map(r => {
+        const statusColor = _dashQcUlangStatusClass(r.status);
+        const oosTd = r.qtyOos > 0 ? `<td class="text-center text-danger fw-bold">${r.qtyOos.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        const pickerTd = r.qtyPicker > 0 ? `<td class="text-center text-primary fw-bold">${r.qtyPicker.toLocaleString('id-ID')}</td>` : '<td class="text-center text-muted">-</td>';
+        const trHtml = `<tr>
+          <td class="fw-bold">${r.noRequest}${r.keterangan ? ` <span class="text-muted fw-normal" style="font-size:11px;">(${escapeHtmlAttr(r.keterangan)})</span>` : ''}</td>
+          <td style="white-space:nowrap;">${r.tglRequest}</td>
+          <td>${r.tujuan}</td>
+          <td>${r.kodeSku}</td>
+          <td>${r.grade || '-'}</td>
+          <td class="text-center">${r.qtyRequest.toLocaleString('id-ID')}</td>
+          <td class="text-center">${r.qtyAllocated.toLocaleString('id-ID')}</td>
+          ${pickerTd}
+          ${oosTd}
+          <td class="${statusColor}" style="font-size:10px;">${r.status}</td>
+        </tr>`;
+        const cardHtml = `<div class="ob-mcard">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="ob-mcard-title" style="color:#8E24AA;">${r.kodeSku}</div>
+              <div class="ob-mcard-sub">${r.tglRequest} • ${r.tujuan} • ${r.grade || '-'}${r.keterangan ? ` • ${escapeHtmlAttr(r.keterangan)}` : ''}</div>
+            </div>
+            <span class="${statusColor}" style="font-size:11px;white-space:nowrap;">${r.status}</span>
+          </div>
+          <div class="ob-mcard-grid">
+            <div><span class="lbl">Qty Req</span><span class="val">${r.qtyRequest}</span></div>
+            <div><span class="lbl">Qty Alloc</span><span class="val">${r.qtyAllocated}</span></div>
+            <div><span class="lbl">Picker</span><span class="val">${r.qtyPicker || '-'}</span></div>
+            <div><span class="lbl">OOS</span><span class="val ${r.qtyOos > 0 ? 'text-danger' : ''}">${r.qtyOos || '-'}</span></div>
+          </div>
+        </div>`;
+        return { trHtml, cardHtml };
+      });
+      tbody.innerHTML = rowsRendered.map(x => x.trHtml).join('');
+      if (cardsWrap) cardsWrap.innerHTML = rowsRendered.map(x => x.cardHtml).join('');
     }
 
     function renderDashboardOutboundTable() {
