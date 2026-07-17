@@ -6115,9 +6115,22 @@ async function eksekusiAddSkuOutbound() {
       // FITUR BARU: Warehouse Dashboard hanya tampil untuk role Admin ke atas.
       // Role lain tidak melihat widget ini sama sekali di halaman Home.
       const whdashRootEl = document.getElementById('whdash-root');
+      const hamburgerBtnEl = document.querySelector('.home-hamburger-btn');
+      const sidebarMenuEl = document.getElementById('home-sidebar-menu');
       if (ROLE_BOLEH_LIHAT_DASHBOARD.includes(r)) {
         if (whdashRootEl) whdashRootEl.style.display = 'block';
         loadHomeDashboard();
+
+        // PERBAIKAN: aplikasi ini SPA -- logout TIDAK me-reload halaman (lihat
+        // eksekusiLogout()), jadi kalau sebelumnya sempat login sebagai role yang
+        // hamburger-nya disembunyikan & menunya dibuat inline (lihat blok else di
+        // bawah), status itu harus di-reset di sini setiap kali role yang SEKARANG
+        // login memang berhak lihat Dashboard -- supaya tidak "kebawa" dari sesi
+        // login sebelumnya di tab/browser yang sama.
+        if (hamburgerBtnEl) hamburgerBtnEl.style.display = '';
+        if (sidebarMenuEl) sidebarMenuEl.classList.remove('home-sidebar-inline', 'open');
+        const sidebarOverlayEl = document.getElementById('home-sidebar-overlay');
+        if (sidebarOverlayEl) sidebarOverlayEl.classList.remove('open');
       } else {
         if (whdashRootEl) whdashRootEl.style.display = 'none';
 
@@ -6127,9 +6140,7 @@ async function eksekusiAddSkuOutbound() {
         // sempat terbuka. Sekarang daftar menunya langsung ditanam (inline) di halaman Home,
         // dan tombol hamburger disembunyikan karena memang tidak ada apa pun lagi untuk
         // ditoggle -- menu utama-lah yang jadi konten utama halaman ini untuk role tersebut.
-        const hamburgerBtnEl = document.querySelector('.home-hamburger-btn');
         if (hamburgerBtnEl) hamburgerBtnEl.style.display = 'none';
-        const sidebarMenuEl = document.getElementById('home-sidebar-menu');
         if (sidebarMenuEl) sidebarMenuEl.classList.add('home-sidebar-inline');
       }
     }
