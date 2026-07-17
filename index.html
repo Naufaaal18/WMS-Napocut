@@ -1882,8 +1882,17 @@ window.fetch = function (url, options) {
         min-width: 40px; min-height: 36px; flex: 0 0 auto;
       }
 
-      /* --- Tabel -> kartu (thead disembunyikan, tr jadi kartu) --- */
-      #sub-inventory-dashboard .table-responsive { max-height: none !important; overflow: visible; }
+      /* --- Tabel -> kartu (thead disembunyikan, tr jadi kartu) ---
+         PERBAIKAN: sebelumnya max-height dihapus total (overflow: visible) supaya kartu
+         terlihat penuh, tapi efeknya dengan ribuan SKU halaman jadi sangat panjang dan
+         filter/search ikut ter-scroll jauh ke bawah bersama tabel. Sekarang tabel tetap
+         dibatasi tinggi & scroll SENDIRI (seperti desktop), jadi filter selalu terlihat
+         tanpa harus scroll balik ke atas, dan halaman jadi jauh lebih pendek. */
+      #inv-dashboard-table-wrap {
+        max-height: 55vh !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch;
+      }
       #sub-inventory-dashboard .inv-mobile-cards { border: 0; }
       #sub-inventory-dashboard .inv-mobile-cards thead { display: none; }
       #sub-inventory-dashboard .inv-mobile-cards,
@@ -2296,17 +2305,17 @@ window.fetch = function (url, options) {
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
       <div class="sub-module-list" id="home-sub-inventory">
-        <div class="sub-module-row" id="home-subrow-inv-dashboard" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+        <div class="sub-module-row" id="home-subrow-inv-dashboard" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory', 'sub-inventory-dashboard')">
           <span class="sub-dot dot-inventory"></span>
           <span class="sub-module-name">Dashboard Stock FG</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-inv-adjustment" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+        <div class="sub-module-row" id="home-subrow-inv-adjustment" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory', 'sub-inventory-adjustment')">
           <span class="sub-dot dot-inventory"></span>
           <span class="sub-module-name">Adjustment Stock</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-inv-transfer" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory')">
+        <div class="sub-module-row" id="home-subrow-inv-transfer" onclick="bukaModulDariHome('tab-inventory', 'modul-inventory', 'sub-inventory-transfer')">
           <span class="sub-dot dot-inventory"></span>
           <span class="sub-module-name">Transfer Lokasi / Grade</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
@@ -4176,7 +4185,7 @@ async function eksekusiAddSkuOutbound() {
           </button>
         </div>
 
-        <div class="table-responsive" style="max-height: 320px;">
+        <div class="table-responsive" id="inv-dashboard-table-wrap" style="max-height: 320px;">
           <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
               <tr>
@@ -6399,6 +6408,18 @@ async function eksekusiAddSkuOutbound() {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('d-none', id !== subCardId);
           });
+        }
+
+        // FITUR PERBAIKAN: modul-inventory TIDAK pakai toggle seperti modul lain, karena
+        // ke-3 sub-card-nya (Dashboard/Adjustment/Transfer) memang boleh tampil bersamaan
+        // sesuai hak akses role. Supaya user tidak perlu scroll manual melewati ribuan baris
+        // SKU di Dashboard untuk sampai ke Adjustment/Transfer, langsung scroll ke sub-card
+        // yang diklik dari menu Home.
+        if (modulId === 'modul-inventory') {
+          setTimeout(() => {
+            const target = document.getElementById(subCardId);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 50);
         }
       }
 
