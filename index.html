@@ -1878,7 +1878,16 @@ window.fetch = function (url, options) {
         border-radius: 10px;
       }
       #sub-inventory-dashboard .inv-summary-box .small { font-size: 10.5px; }
-      #sub-inventory-dashboard .inv-summary-box .fs-5 { font-size: 16px !important; }
+      /* PERBAIKAN: angka besar (mis. "1.303.410,24") meluber keluar kotak karena
+         teksnya tidak boleh membungkus ke baris baru dan kotaknya sempit (col-4,
+         cuma ~1/3 lebar layar). Sekarang izinkan membungkus + turunkan sedikit
+         ukuran fontnya supaya angka besar tetap muat di dalam kotak. */
+      #sub-inventory-dashboard .inv-summary-box .fs-5 {
+        font-size: 15px !important;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.15;
+      }
 
       /* --- Filter: tumpuk penuh 1 kolom, target sentuh lebih besar --- */
       #sub-inventory-dashboard .inv-filter-row { row-gap: 8px; }
