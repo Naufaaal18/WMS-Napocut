@@ -1338,6 +1338,22 @@ window.fetch = function (url, options) {
       flex-shrink: 0;
     }
     .home-sidebar .home-section-label { padding-top: 12px; }
+    /* FITUR PERBAIKAN: varian sidebar "tertanam" (bukan panel overlay) dipakai untuk
+       role yang tidak punya akses Warehouse Dashboard -- supaya daftar menu langsung
+       terlihat menyatu di halaman Home tanpa perlu klik tombol hamburger sama sekali. */
+    .home-sidebar.home-sidebar-inline {
+      position: static;
+      top: auto; left: auto; bottom: auto;
+      width: 100%;
+      max-width: none;
+      transform: none;
+      transition: none;
+      box-shadow: none;
+      background: transparent;
+      overflow-y: visible;
+      z-index: auto;
+    }
+    .home-sidebar.home-sidebar-inline .home-sidebar-header { display: none; }
     .home-section-label {
       font-size: 11px;
       font-weight: 700;
@@ -4185,7 +4201,7 @@ async function eksekusiAddSkuOutbound() {
           </button>
         </div>
 
-        <div class="table-responsive" id="inv-dashboard-table-wrap" style="max-height: 320px;">
+        <div class="table-responsive" id="inv-dashboard-table-wrap" style="max-height: 320px; overflow-y: auto;">
           <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
             <thead class="table-light" style="position: sticky; top: 0;">
               <tr>
@@ -4209,7 +4225,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-file-invoice me-2"></i>Stok Open PO
             (Status Active — Belum Diterima Penuh dari Supplier)</h6>
-          <div class="table-responsive" style="max-height: 160px;">
+          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
@@ -4231,7 +4247,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-truck-fast me-2"></i>Stok Belum Di-QC
             (Stock_Inbound)</h6>
-          <div class="table-responsive" style="max-height: 160px;">
+          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
@@ -4252,7 +4268,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-rotate-left me-2"></i>Stok Pending
             Putaway Return (Stock_Return)</h6>
-          <div class="table-responsive" style="max-height: 160px;">
+          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
@@ -6105,13 +6121,16 @@ async function eksekusiAddSkuOutbound() {
       } else {
         if (whdashRootEl) whdashRootEl.style.display = 'none';
 
-        // FITUR BARU: role yang tidak punya akses melihat Warehouse Dashboard di Home
-        // akan langsung disambut sidebar "Menu Utama" secara otomatis (tanpa perlu klik
-        // tombol hamburger pojok kiri atas), supaya mereka tidak mendarat di halaman
-        // Home yang tampak kosong. setTimeout kecil dipakai supaya animasi 'open' sidebar
-        // berjalan mulus setelah halaman-home selesai ditampilkan (style.display = 'block'
-        // di atas baru saja diterapkan pada frame yang sama).
-        setTimeout(openHomeSidebar, 50);
+        // FITUR PERBAIKAN: role yang tidak punya akses melihat Warehouse Dashboard di Home
+        // TIDAK LAGI disambut panel sidebar melayang (overlay) yang harus dibuka/di-trigger --
+        // sebelumnya ini kadang mendarat di halaman Home yang tampak kosong sebelum sidebar
+        // sempat terbuka. Sekarang daftar menunya langsung ditanam (inline) di halaman Home,
+        // dan tombol hamburger disembunyikan karena memang tidak ada apa pun lagi untuk
+        // ditoggle -- menu utama-lah yang jadi konten utama halaman ini untuk role tersebut.
+        const hamburgerBtnEl = document.querySelector('.home-hamburger-btn');
+        if (hamburgerBtnEl) hamburgerBtnEl.style.display = 'none';
+        const sidebarMenuEl = document.getElementById('home-sidebar-menu');
+        if (sidebarMenuEl) sidebarMenuEl.classList.add('home-sidebar-inline');
       }
     }
 
