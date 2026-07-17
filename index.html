@@ -440,19 +440,20 @@ Object.assign(ENDPOINTS, {
   }),
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
-    // PENTING: urutan HARUS sama dengan urutan yang dipakai submit_outbound_request_multi /
-    // submit_qc_ulang_request_multi / alokasikan_dari_stock_fg di database (order by
-    // kode_lokasi ASC, lalu id ASC) saat memotong qty_available. Sejak 2026-07-08, allocation
-    // SELALU mengambil dari lokasi dengan KODE LOKASI TERKECIL dulu (misal SKU ada di
-    // F3-A1-01 & F3-A1-02 -> F3-A1-01 duluan), bukan lagi urutan id/FIFO putaway. Kalau
-    // urutan di sini beda, "lokasi asli" yang disarankan ke picker bisa berbeda dari lokasi
-    // yang benar-benar dialokasikan, sehingga saat Override dipakai, koreksi qty_available
-    // bisa salah sasaran (lihat riwayat perbaikan 2026-07-08).
-    // FITUR PERBAIKAN: lokasi "Staging QC", "Staging Inbound", dan "Tempa" TIDAK BOLEH
-    // pernah muncul sebagai kandidat lokasi yang bisa di-allocate / dipakai Override,
-    // baik untuk Outbound Picking maupun Picking QC Ulang (lokasi-lokasi ini adalah area
-    // transit/staging internal, bukan lokasi rak simpan asli). Filter case-insensitive
-    // supaya tidak lolos walau variasi penulisan di database berbeda.
+    // FUNGSI INI KHUSUS UNTUK SARAN LOKASI "TEMAN" DI MODUL PUTAWAY (loadPutawaySuggestion,
+    // loadPutawayReturnSuggestion) -- menampilkan SEMUA lokasi yang SUDAH punya stok fisik
+    // SKU+Grade ini (qty_on_hand > 0), TERLEPAS dari qty_available-nya, supaya operator bisa
+    // konsolidasi stok baru ke lokasi yang sama walau lokasi itu sedang "penuh dijanjikan"
+    // (qty_available = 0) untuk request lain. SENGAJA TIDAK dipakai untuk keperluan
+    // picking/alokasi -- untuk itu pakai getLokasiAlokasiBySkuGrade (qty_available-based).
+    //
+    // PERBAIKAN 2026-07-17: sebelumnya fungsi INI JUGA dipakai untuk saran lokasi picking
+    // (Outbound Picking, Picking QC Ulang), padahal filternya qty_on_hand > 0. Itu jadi akar
+    // penyebab 9 baris anomali qty_available > qty_on_hand (picker bisa disarankan memicking
+    // dari lokasi yang qty_available-nya sudah 0, sementara alokasi qty_available sebenarnya
+    // terjadi di lokasi lain -- lihat audit 17 Juli 2026). Fungsi picking sekarang pakai
+    // getLokasiAlokasiBySkuGrade yang terpisah; fungsi INI dikembalikan ke perilaku semula
+    // (qty_on_hand) karena memang benar untuk kebutuhan saran Putaway.
     const LOKASI_TIDAK_BOLEH_ALLOCATE = ['TEMPA', 'STAGING QC', 'STAGING INBOUND'];
     const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_on_hand')
       .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0);
@@ -460,6 +461,36 @@ Object.assign(ENDPOINTS, {
     return (data || [])
       .filter(r => !LOKASI_TIDAK_BOLEH_ALLOCATE.includes((r.kode_lokasi || '').toString().trim().toUpperCase()))
       .map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id }))
+      .sort((a, b) => a.lokasi.localeCompare(b.lokasi) || a.id - b.id);
+  },
+
+  // FUNGSI BARU 2026-07-17: pecahan dari getLokasiRakBySkuGrade, KHUSUS untuk kebutuhan
+  // picking/alokasi (daftar lokasi picking di getSkuListForPicking, Override Lokasi Outbound
+  // Picking, Override Lokasi Picking QC Ulang). Urutan HARUS sama dengan urutan yang dipakai
+  // submit_outbound_request_multi / submit_qc_ulang_request_multi / alokasikan_dari_stock_fg
+  // di database (order by kode_lokasi ASC, lalu id ASC) saat memotong qty_available. Sejak
+  // 2026-07-08, allocation SELALU mengambil dari lokasi dengan KODE LOKASI TERKECIL dulu.
+  // FILTER pakai qty_available > 0 (BUKAN qty_on_hand > 0) supaya SAMA dengan filter yang
+  // dipakai alokasikan_dari_stock_fg -- lokasi yang fisiknya masih ada tapi qty_available-nya
+  // sudah 0 (sudah "dijanjikan" ke request lain) TIDAK BOLEH muncul sebagai kandidat picking,
+  // karena kalau dipicking lewat jalur normal (non-Override), process_picking_sku hanya
+  // memotong qty_on_hand di lokasi itu dan TIDAK PERNAH menyentuh qty_available di manapun --
+  // membuat qty_available di lokasi lain (tempat alokasi sebenarnya terjadi) "menggantung"
+  // lebih tinggi dari qty_on_hand-nya. Ini akar penyebab 9 baris anomali qty_available >
+  // qty_on_hand yang ditemukan & dikoreksi tanggal 17 Juli 2026.
+  getLokasiAlokasiBySkuGrade: async (kodeSku, grade) => {
+    // FITUR PERBAIKAN: lokasi "Staging QC", "Staging Inbound", dan "Tempa" TIDAK BOLEH
+    // pernah muncul sebagai kandidat lokasi yang bisa di-allocate / dipakai Override,
+    // baik untuk Outbound Picking maupun Picking QC Ulang (lokasi-lokasi ini adalah area
+    // transit/staging internal, bukan lokasi rak simpan asli). Filter case-insensitive
+    // supaya tidak lolos walau variasi penulisan di database berbeda.
+    const LOKASI_TIDAK_BOLEH_ALLOCATE = ['TEMPA', 'STAGING QC', 'STAGING INBOUND'];
+    const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_available')
+      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_available', 0);
+    if (error) throw new Error(error.message);
+    return (data || [])
+      .filter(r => !LOKASI_TIDAK_BOLEH_ALLOCATE.includes((r.kode_lokasi || '').toString().trim().toUpperCase()))
+      .map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_available, id: r.id }))
       .sort((a, b) => a.lokasi.localeCompare(b.lokasi) || a.id - b.id);
   },
 
@@ -481,7 +512,7 @@ Object.assign(ENDPOINTS, {
     const detailPerRow = await Promise.all(rows.map(async (row) => {
       const [qtySudahDipicking, lokasiList] = await Promise.all([
         _callRpc('get_qty_sudah_dipicking', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
-        ENDPOINTS.getLokasiRakBySkuGrade(row.kode_sku, row.grade)
+        ENDPOINTS.getLokasiAlokasiBySkuGrade(row.kode_sku, row.grade)
       ]);
       return { row, qtySudahDipicking, lokasiList };
     }));
@@ -7077,7 +7108,7 @@ async function eksekusiAddSkuOutbound() {
           selectEl.innerHTML = '<option value="">-- Gagal memuat lokasi --</option>';
           infoEl.textContent = 'Error: ' + err.message;
         })
-        .getLokasiRakBySkuGrade(item.kodeSku, item.grade);
+        .getLokasiAlokasiBySkuGrade(item.kodeSku, item.grade);
     }
 
     function applyOverrideLokasi(idx) {
@@ -13721,7 +13752,7 @@ async function eksekusiCancelOutbound() {
     // FITUR OVERRIDE LOKASI PICKING QC ULANG (sama persis polanya dengan Outbound Picking)
     // -------------------------------------------------------------------------
     // Dipakai saat lokasi yang disarankan sistem ternyata TIDAK ADA barangnya secara
-    // fisik. Daftar lokasi pengganti diambil dari getLokasiRakBySkuGrade, yang SUDAH
+    // fisik. Daftar lokasi pengganti diambil dari getLokasiAlokasiBySkuGrade, yang SUDAH
     // meng-exclude lokasi "Staging QC", "Staging Inbound", dan "Tempa" -- lokasi-lokasi
     // ini tidak boleh pernah muncul sebagai kandidat allocation / override.
     // =========================================================================
@@ -13763,7 +13794,7 @@ async function eksekusiCancelOutbound() {
           selectEl.innerHTML = '<option value="">-- Gagal memuat lokasi --</option>';
           infoEl.textContent = 'Error: ' + err.message;
         })
-        .getLokasiRakBySkuGrade(item.kodeSku, item.grade);
+        .getLokasiAlokasiBySkuGrade(item.kodeSku, item.grade);
     }
 
     function applyOverrideLokasiQcUlang(idx) {
