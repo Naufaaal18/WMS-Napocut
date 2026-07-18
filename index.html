@@ -1219,6 +1219,24 @@ Object.assign(ENDPOINTS, {
     }
   },
 
+  // FITUR BARU: MODAL "Detail SKU" (dibuka dari Dashboard Inventory) -- riwayat
+  // pergerakan stok 1 SKU tertentu, dipakai untuk tab History Inbound & History
+  // Outbound. Dibatasi 300 baris terbaru per SKU (cukup untuk keperluan cek riwayat,
+  // dan menghindari query lambat kalau SKU tsb sudah punya ribuan baris histori).
+  getMovementHistoryForSku: async (kodeSku) => {
+    try {
+      const { data, error } = await _sb.from('movement_history')
+        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
+        .eq('kode_sku', kodeSku)
+        .order('waktu', { ascending: false })
+        .limit(300);
+      if (error) throw new Error(error.message);
+      return { success: true, data: data || [] };
+    } catch (err) {
+      return { success: false, message: 'Gagal memuat riwayat SKU: ' + err.message };
+    }
+  },
+
 });
 
 // =========================================================================
@@ -5824,6 +5842,104 @@ async function eksekusiAddSkuOutbound() {
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupDetailPO()">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DETAIL SKU (dibuka dari Dashboard Inventory, klik baris kecuali kolom Aksi) -->
+  <!-- Sama seperti modal-detail-po, sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home. -->
+  <div class="modal fade" id="modal-detail-sku" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2" style="background:#0288D1;color:#fff;">
+          <h6 class="modal-title fw-bold mb-0"><i class="fa-solid fa-boxes-stacked me-2"></i>Detail SKU — <span id="dsku-modal-sku">-</span></h6>
+          <button type="button" class="btn-close btn-close-white" onclick="tutupDetailSKU()"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="small text-muted mb-2" id="dsku-modal-deskripsi">-</p>
+
+          <ul class="nav nav-tabs nav-tabs-sm mb-2" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dsku-pane-lokasi" type="button" role="tab">
+                <i class="fa-solid fa-location-dot me-1"></i>Lokasi
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dsku-pane-inbound" type="button" role="tab">
+                <i class="fa-solid fa-arrow-down me-1 text-success"></i>History Inbound
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dsku-pane-outbound" type="button" role="tab">
+                <i class="fa-solid fa-arrow-up me-1 text-danger"></i>History Outbound
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content">
+            <!-- HALAMAN 1: Lokasi -- semua lokasi Stock_FG tempat SKU ini tersimpan saat ini -->
+            <div class="tab-pane fade show active" id="dsku-pane-lokasi" role="tabpanel">
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11.5px;">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Lokasi</th>
+                      <th class="text-center">Grade</th>
+                      <th class="text-end">Qty Available</th>
+                      <th class="text-end">Qty On Hand</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dsku-tbody-lokasi"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- HALAMAN 2: History Inbound -- movement_history tipe RECEIVING_INBOUND, PUTAWAY_FG,
+                 PUTAWAY_RETURN, QC_FG_SUBMIT, VALIDATE_QC_FG, ADJUSTMENT_IN_FG (kategori "success"
+                 di LMH_TIPE_STYLE, sudah dipakai konsisten oleh fitur Live Movement History). -->
+            <div class="tab-pane fade" id="dsku-pane-inbound" role="tabpanel">
+              <div class="table-responsive" style="max-height:420px; overflow-y:auto;">
+                <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                  <thead class="table-light" style="position:sticky;top:0;">
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Tipe</th>
+                      <th>Ref</th>
+                      <th>Lokasi</th>
+                      <th class="text-end">Qty</th>
+                      <th>User</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dsku-tbody-inbound"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- HALAMAN 3: History Outbound -- movement_history tipe OUTBOUND_REQUEST_ALLOC,
+                 OUTBOUND_REQUEST_REALLOC, PICKING_OUT, CHECKING_OUT, ADJUSTMENT_OUT_FG
+                 (kategori "danger" di LMH_TIPE_STYLE). -->
+            <div class="tab-pane fade" id="dsku-pane-outbound" role="tabpanel">
+              <div class="table-responsive" style="max-height:420px; overflow-y:auto;">
+                <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                  <thead class="table-light" style="position:sticky;top:0;">
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Tipe</th>
+                      <th>Ref</th>
+                      <th>Lokasi</th>
+                      <th class="text-end">Qty</th>
+                      <th>User</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dsku-tbody-outbound"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupDetailSKU()">Tutup</button>
         </div>
       </div>
     </div>
@@ -10938,15 +11054,19 @@ async function eksekusiCancelOutbound() {
       if (filtered.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${kolomTabel}" class="text-center text-muted py-3">Tidak ada data yang cocok dengan filter.</td></tr>`;
       } else {
+        // FITUR BARU: seluruh baris (kecuali kolom Aksi) sekarang membuka modal "Detail SKU"
+        // (tab Lokasi / History Inbound / History Outbound). Kolom Aksi (ikon Transfer) tetap
+        // punya perilaku lama (isi form Transfer Lokasi/Grade) -- pakai stopPropagation supaya
+        // klik di kolom Aksi TIDAK ikut memicu modal Detail SKU dari <tr> onclick di atasnya.
         tbody.innerHTML = filtered.map((r, idx) => `
-          <tr${USER_PUNYA_AKSES_TRANSFER ? ` class="inv-row-clickable" style="cursor:pointer;" onclick="bukaTransferDariDashboard(${idx})" title="Klik untuk isi form Transfer Lokasi/Grade dengan baris ini"` : ''}>
+          <tr class="inv-row-clickable" style="cursor:pointer;" onclick="bukaDetailSKU(${idx})" title="Klik untuk lihat Detail SKU (Lokasi &amp; Riwayat Inbound/Outbound)">
             <td class="fw-bold" data-label="SKU">${r.sku}</td>
             <td data-label="Deskripsi">${r.deskripsi || '-'}</td>
             <td data-label="Lokasi">${r.lokasi}</td>
             <td class="text-center" data-label="Grade">${r.grade}</td>
             <td class="text-center fw-bold text-success" data-label="Qty Available">${Number(r.qtyAvailable || 0).toLocaleString('id-ID')}</td>
             <td class="text-center" data-label="Qty On Hand">${Number(r.qtyOnHand || 0).toLocaleString('id-ID')}</td>
-            ${USER_PUNYA_AKSES_TRANSFER ? `<td class="text-center text-primary" data-label="Aksi"><i class="fa-solid fa-arrows-left-right"></i></td>` : ''}
+            ${USER_PUNYA_AKSES_TRANSFER ? `<td class="text-center text-primary" data-label="Aksi" onclick="event.stopPropagation(); bukaTransferDariDashboard(${idx})" title="Klik untuk isi form Transfer Lokasi/Grade dengan baris ini"><i class="fa-solid fa-arrows-left-right"></i></td>` : ''}
           </tr>
         `).join('');
       }
@@ -11380,6 +11500,83 @@ async function eksekusiCancelOutbound() {
         setTimeout(() => cardTransfer.classList.remove('border-warning'), 1500);
       }
       qtyInput.focus();
+    }
+
+    // =========================================================================
+    // FITUR BARU: MODAL "Detail SKU" -- dibuka dengan klik baris di Dashboard
+    // Inventory (kecuali kolom Aksi). 3 halaman/tab: Lokasi (semua lokasi SKU ini
+    // saat ini), History Inbound & History Outbound (riwayat pergerakan dari
+    // movement_history, dikategorikan pakai LMH_TIPE_STYLE yang sama dengan Live
+    // Movement History supaya definisi "inbound"/"outbound" konsisten di seluruh app).
+    // =========================================================================
+    function bukaDetailSKU(idx) {
+      const r = INV_TABLE_FILTERED_ROWS[idx];
+      if (!r) return;
+
+      document.getElementById('dsku-modal-sku').textContent = r.sku;
+      document.getElementById('dsku-modal-deskripsi').textContent = r.deskripsi || '-';
+
+      // Tab Lokasi: data SKU ini sudah ada di memori (INV_DATA_FG, hasil dashboard yang sedang
+      // tampil), jadi langsung tampil tanpa perlu query baru ke server.
+      const semuaLokasiSku = INV_DATA_FG.filter(x => x.sku === r.sku);
+      document.getElementById('dsku-tbody-lokasi').innerHTML = semuaLokasiSku.length
+        ? semuaLokasiSku.map(x => `<tr>
+            <td>${escapeHtmlAttr(x.lokasi)}</td>
+            <td class="text-center">${escapeHtmlAttr(x.grade)}</td>
+            <td class="text-end text-success fw-bold">${Number(x.qtyAvailable || 0).toLocaleString('id-ID')}</td>
+            <td class="text-end">${Number(x.qtyOnHand || 0).toLocaleString('id-ID')}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="text-center text-muted py-3">Tidak ada data lokasi untuk SKU ini.</td></tr>';
+
+      // Tab Inbound & Outbound: tampilkan loading dulu, baru fetch riwayat ke server.
+      const pesanMuat = '<tr><td colspan="6" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat...</td></tr>';
+      document.getElementById('dsku-tbody-inbound').innerHTML = pesanMuat;
+      document.getElementById('dsku-tbody-outbound').innerHTML = pesanMuat;
+
+      const modalEl = document.getElementById('modal-detail-sku');
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.show();
+
+      ENDPOINTS.getMovementHistoryForSku(r.sku).then(res => {
+        if (!res.success) {
+          const pesanGagal = `<tr><td colspan="6" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`;
+          document.getElementById('dsku-tbody-inbound').innerHTML = pesanGagal;
+          document.getElementById('dsku-tbody-outbound').innerHTML = pesanGagal;
+          return;
+        }
+        const rows = res.data || [];
+        // "success" (hijau) di LMH_TIPE_STYLE = stok masuk, "danger" (merah) = stok keluar --
+        // definisi yang sama persis dengan badge warna di Live Movement History.
+        const inboundRows = rows.filter(x => LMH_TIPE_STYLE[x.tipe] && LMH_TIPE_STYLE[x.tipe].warna === 'success');
+        const outboundRows = rows.filter(x => LMH_TIPE_STYLE[x.tipe] && LMH_TIPE_STYLE[x.tipe].warna === 'danger');
+        document.getElementById('dsku-tbody-inbound').innerHTML = _renderBarisHistorySKU(inboundRows, 'Belum ada riwayat inbound untuk SKU ini.');
+        document.getElementById('dsku-tbody-outbound').innerHTML = _renderBarisHistorySKU(outboundRows, 'Belum ada riwayat outbound untuk SKU ini.');
+      }).catch(err => {
+        const pesanGagal = `<tr><td colspan="6" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`;
+        document.getElementById('dsku-tbody-inbound').innerHTML = pesanGagal;
+        document.getElementById('dsku-tbody-outbound').innerHTML = pesanGagal;
+      });
+    }
+
+    function _renderBarisHistorySKU(rows, pesanKosong) {
+      if (!rows.length) return `<tr><td colspan="6" class="text-center text-muted py-3">${pesanKosong}</td></tr>`;
+      return rows.map(x => {
+        const info = LMH_TIPE_STYLE[x.tipe] || { warna: 'secondary', label: x.tipe };
+        return `<tr>
+          <td>${x.waktu ? new Date(x.waktu).toLocaleString('id-ID') : '-'}</td>
+          <td><span class="badge bg-${info.warna}">${escapeHtmlAttr(info.label)}</span></td>
+          <td>${escapeHtmlAttr(x.ref || '-')}</td>
+          <td>${escapeHtmlAttr(x.lokasi || '-')}</td>
+          <td class="text-end">${Number(x.qty || 0).toLocaleString('id-ID')}</td>
+          <td>${escapeHtmlAttr(x.user_login || '-')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function tutupDetailSKU() {
+      const modalEl = document.getElementById('modal-detail-sku');
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.hide();
     }
 
     // Submit Transfer Lokasi / Downgrade Grade Stock_FG
