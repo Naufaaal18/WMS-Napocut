@@ -62,10 +62,15 @@ const ENDPOINTS = {
     p_username: payload.username, p_password: payload.password, p_nama: payload.nama,
     p_role: payload.role, p_status: payload.status || 'Active', p_akses: payload.akses || null
   }),
+  // PERBAIKAN: p_akses punya 3 makna berbeda (lihat update_user_profile di DB) --
+  // undefined -> null (tidak mengubah akses), '' -> RESET eksplisit ke default Role,
+  // string JSON lain -> ganti akses jadi PERSIS daftar itu. Sengaja TIDAK memakai
+  // `payload.akses || null` di sini karena '' dianggap falsy dan akan salah ketuker
+  // jadi null (tidak mengubah), padahal '' seharusnya berarti RESET eksplisit.
   updateUserProfile: (payload) => _callRpc('update_user_profile', {
     p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
     p_username: payload.username, p_nama: payload.nama, p_role: payload.role,
-    p_status: payload.status, p_akses: payload.akses || null
+    p_status: payload.status, p_akses: (payload.akses === undefined ? null : payload.akses)
   }),
   updateUserPassword: (username, passwordBaru) => _callRpc('update_user_password', {
     p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
@@ -5614,7 +5619,7 @@ async function eksekusiAddSkuOutbound() {
             </div>
             <div class="col-6">
               <label class="form-label small fw-bold mb-1">Role</label>
-              <select id="ku-role" class="form-select form-select-sm">
+              <select id="ku-role" class="form-select form-select-sm" onchange="kuRoleBerubah()">
                 <option value="Administrator">Administrator (Akses Mutlak + Kelola User)</option>
                 <option value="Admin">Admin (Semua Akses kecuali Kelola User)</option>
                 <option value="Supervisor Gudang">Supervisor Gudang / SPV Gudang (Semua Akses kecuali Kelola User)</option>
@@ -5646,6 +5651,27 @@ async function eksekusiAddSkuOutbound() {
             </div>
           </div>
           <div id="ku-form-alert" class="mt-2"></div>
+
+          <!-- FITUR BARU: CHECKLIST AKSES PER-USER -- menggantikan sistem "akses hanya
+               berdasarkan Role" dengan kontrol granular per modul & sub-modul. Role di
+               atas tetap dipakai sebagai (1) label yang tampil di tabel, dan (2) preset
+               awal yang mengisi checklist ini, tapi hasil akhir akses user mengikuti
+               PERSIS checkbox yang dicentang di sini kalau berbeda dari default role-nya. -->
+          <div class="border rounded p-2 mt-2 bg-white">
+            <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+              <label class="form-label small fw-bold mb-0">Akses Modul &amp; Sub-Modul</label>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:10px;" onclick="kuSetDefaultRoleKeChecklist()" title="Isi checklist sesuai default Role yang dipilih di atas">
+                  <i class="fa-solid fa-rotate-left me-1"></i>Default Role
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:10px;" onclick="kuToggleSemuaChecklist(true)" title="Centang semua">Semua</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:10px;" onclick="kuToggleSemuaChecklist(false)" title="Kosongkan semua">Tidak Ada</button>
+              </div>
+            </div>
+            <p class="small text-muted mb-2" style="font-size:10px;">Centang fitur yang boleh diakses user ini. Klik <b>Default Role</b> untuk mengisi ulang sesuai preset Role yang dipilih di atas, atau kustomisasi bebas per fitur.</p>
+            <div id="ku-akses-checklist" style="max-height:260px; overflow-y:auto;"></div>
+          </div>
+
           <div class="d-flex gap-2 mt-2">
             <button type="button" class="btn btn-sm fw-bold text-white" style="background-color:#880E4F;" onclick="submitFormUser()">
               <i class="fa-solid fa-floppy-disk me-1"></i>Simpan
@@ -5977,6 +6003,127 @@ async function eksekusiAddSkuOutbound() {
       }
     }
 
+    // =========================================================================
+    // KONFIGURASI HAK AKSES (RBAC) - GLOBAL SCOPE.
+    // Dipindah (hoist) keluar dari inisialisasiAplikasi() supaya bisa dipakai ulang
+    // oleh modul Kelola User (checklist akses per-user), bukan cuma dipakai sekali
+    // saat login. Setiap "fitur" berikut punya definisi: grup (module-list-group),
+    // tab (nav-link di bottom nav), dan opsional subrow/subcard untuk fitur granular
+    // di dalam 1 modul. Menambah/mengubah akses di masa depan cukup edit RBAC_FITUR /
+    // RBAC_PER_ROLE / RBAC_LABEL di bawah, TIDAK perlu menambah if/else baru.
+    // =========================================================================
+    const RBAC_FITUR = {
+      INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
+      INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
+      QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
+      QC_REQUESTULANG_V2:   { grup: 'home-group-outbound',     tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang-v2',subcard: 'sub-request-qc-ulang-v2' },
+      QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
+      QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
+      MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
+      OUTBOUND_REQUEST:     { grup: 'home-group-outbound',     tab: 'tab-outbound',     subrow: 'home-subrow-outbound-kelola' },
+      OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
+      OPS_PUTAWAY:          { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putaway',       subcard: 'sub-putaway' },
+      OPS_PUTAWAYRETURN:    { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putawayreturn', subcard: 'sub-putaway-return' },
+      CHECKING_PICKING:     { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-picking-row',          subcard: 'sub-picking' },
+      CHECKING_DASHBOARD:   { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-dashchecker-row',      subcard: 'sub-dashboard-checker' },
+      CHECKING_LIVEMONITOR: { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-livechecker-row',      subcard: 'sub-live-checker-monitor' },
+      INV_DASHBOARD:        { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-dashboard' },
+      INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-adjustment',    subcard: 'sub-inventory-adjustment' },
+      INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-transfer',      subcard: 'sub-inventory-transfer' },
+      LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
+      DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
+      EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
+      EXPORT_LAPORAN:       { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-laporan' },
+      EXPORT_DATAQC:        { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-dataqc',     subcard: 'sub-export-dataqc' },
+      EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
+      ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
+      KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
+      CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
+    };
+    const RBAC_SEMUA_FITUR = Object.keys(RBAC_FITUR);
+
+    // Peta akses per role. "Administrator" = akses mutlak (termasuk Kelola User).
+    // Admin/Supervisor Gudang/Manager Gudang = semua akses KECUALI Kelola User
+    // (hanya Administrator yang boleh menambah/mengubah user). "Admin Gudang" &
+    // "Supervisor" adalah nama role lama yang sebelumnya juga akses penuh -
+    // dipertahankan di tier yang sama supaya tidak ada user lama yang tiba-tiba
+    // kehilangan akses.
+    const RBAC_AKSES_PENUH_TANPA_KELOLA_USER = RBAC_SEMUA_FITUR.filter(f => f !== 'KELOLA_USER');
+    const RBAC_PER_ROLE = {
+      'Administrator':       RBAC_SEMUA_FITUR,
+      'Admin':                RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+      'Supervisor Gudang':    RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+      'Manager Gudang':       RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+      'Admin Gudang':         RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+      'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+      'COO':                  RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
+
+      'Staff Inbound':        ['INBOUND_RECEIVING'],
+      'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
+      'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
+      'Tim Swarovski':        ['QC_SWAROVSKI'],
+      'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG'],
+      'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
+      'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
+      'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
+      'Marketing':            ['INV_DASHBOARD', 'EXPORT_LAPORAN'],
+      'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
+                                'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT',
+                                'CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR']
+    };
+    // "Checker" sengaja TIDAK dimasukkan ke RBAC_PER_ROLE (perilakunya di-hardcode
+    // terpisah di inisialisasiAplikasi) -- tapi tetap disertakan di sini sebagai
+    // referensi default checklist akses kalau admin membuka form Edit User untuk
+    // role Checker sebelum sempat dikustomisasi.
+    const RBAC_DEFAULT_CHECKER = ['CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR'];
+
+    // FITUR BARU: label & pengelompokan yang enak dibaca manusia, dipakai checklist
+    // akses per-user di modul Kelola User. Urutan grup di sini menentukan urutan
+    // tampil di checklist.
+    const RBAC_LABEL = {
+      INBOUND_RECEIVING:        { grup: 'Inbound',           label: 'Inbound Receiving (Terima Barang)' },
+      INBOUND_VALIDASI:         { grup: 'Inbound',           label: 'Validasi Inbound' },
+      MASTER_PO:                { grup: 'Open PO',           label: 'Master Open PO' },
+      QC_FINISHGOOD:            { grup: 'QC',                label: 'QC Finish Good' },
+      QC_RECHECK:                { grup: 'QC',                label: 'Re-Check QC' },
+      QC_SWAROVSKI:              { grup: 'QC',                label: 'QC Swarovski' },
+      QC_REQUESTULANG_V2:        { grup: 'Outbound',          label: 'Request QC Ulang Otomatis (V2)' },
+      OUTBOUND_REQUEST:          { grup: 'Outbound',          label: 'Kelola Outbound Request' },
+      OPS_VALIDATE:              { grup: 'Putaway',           label: 'Validate QC (Sebelum Putaway)' },
+      OPS_PUTAWAY:               { grup: 'Putaway',           label: 'Putaway' },
+      OPS_PUTAWAYRETURN:         { grup: 'Putaway',           label: 'Putaway Barang Return' },
+      CHECKING_PICKING:          { grup: 'Checking',          label: 'Picking Outbound' },
+      CHECKING_PICKING_QCULANG:  { grup: 'Checking',          label: 'Picking QC Ulang' },
+      CHECKING_DASHBOARD:        { grup: 'Checking',          label: 'Dashboard Checker' },
+      CHECKING_LIVEMONITOR:      { grup: 'Checking',          label: 'Live Monitor Checker' },
+      INV_DASHBOARD:             { grup: 'Inventory',         label: 'Dashboard Stock (Inventory)' },
+      INV_ADJUSTMENT:            { grup: 'Inventory',         label: 'Adjustment Inventory' },
+      INV_TRANSFER:              { grup: 'Inventory',         label: 'Transfer Lokasi / Grade' },
+      LIVE_MOVEMENT:             { grup: 'Live Movement',     label: 'Live Movement History' },
+      DASHBOARD_OBIB:            { grup: 'Dashboard OB/IB',   label: 'Dashboard Outbound/Inbound' },
+      EXPORT_SURATJALAN:         { grup: 'Export',            label: 'Export Surat Jalan' },
+      EXPORT_LAPORAN:            { grup: 'Export',            label: 'Export Laporan' },
+      EXPORT_DATAQC:             { grup: 'Export',            label: 'Export Data QC' },
+      EXPORT_MOVHISTORY:         { grup: 'Export',            label: 'Export Movement History' },
+      ADMIN_VALIDATE:            { grup: 'Admin Validate',    label: 'Admin Validate (Inbound & QC)' },
+      KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
+    };
+    const RBAC_URUTAN_GRUP = ['Inbound', 'Open PO', 'QC', 'Outbound', 'Putaway', 'Checking', 'Inventory',
+      'Live Movement', 'Dashboard OB/IB', 'Export', 'Admin Validate', 'Kelola User'];
+
+    // Helper: parse field 'akses' (string JSON dari DB, atau sudah array) jadi array kunci
+    // fitur RBAC yang valid, atau null kalau memang tidak ada kustomisasi (harus fallback
+    // ke default per-Role). Sengaja return array (termasuk array KOSONG "[]", yang berarti
+    // admin sudah sengaja mencabut SEMUA akses user tsb) supaya beda jelas dengan "belum
+    // pernah dikustomisasi" (null/undefined/string kosong).
+    function _kuParseAkses(akses) {
+      if (akses === null || akses === undefined || akses === '') return null;
+      try {
+        const parsed = typeof akses === 'string' ? JSON.parse(akses) : akses;
+        return Array.isArray(parsed) ? parsed : null;
+      } catch (e) { return null; }
+    }
+
     // SET HAK AKSES MENU SESUAI PERAN DI DATABASE (RBAC SYSTEM)
     // Sekarang menampilkan halaman home dulu, bukan langsung masuk modul
     function inisialisasiAplikasi(user) {
@@ -6054,73 +6201,9 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('sub-validate-qc').classList.add('d-none');
       document.getElementById('sub-putaway-return').classList.add('d-none');
 
-      // =========================================================================
-      // KONFIGURASI HAK AKSES PER ROLE (RBAC) - terpusat & deklaratif.
-      // Setiap "fitur" berikut punya definisi: grup (module-list-group), tab (nav-link
-      // di bottom nav), dan opsional subrow (baris sub-modul di Home) + subcard
-      // (kartu konten di dalam modul) untuk fitur yang granular di dalam 1 modul.
-      // Menambah/mengubah akses role di masa depan cukup edit RBAC_PER_ROLE di bawah,
-      // TIDAK perlu menambah if/else baru.
-      // =========================================================================
-      const RBAC_FITUR = {
-        INBOUND_RECEIVING:    { grup: 'home-group-inbound',      tab: 'tab-inbound' },
-        INBOUND_VALIDASI:     { grup: 'home-group-inbound',      tab: 'tab-inbound',      subrow: 'home-subrow-inbound-validasi',  subcard: 'sub-validasi-inbound' },
-        QC_FINISHGOOD:        { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-finishgood',     subcard: 'sub-qc-finishgood' },
-        QC_REQUESTULANG_V2:   { grup: 'home-group-outbound',     tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang-v2',subcard: 'sub-request-qc-ulang-v2' },
-        QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
-        QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
-        MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
-        OUTBOUND_REQUEST:     { grup: 'home-group-outbound',     tab: 'tab-outbound',     subrow: 'home-subrow-outbound-kelola' },
-        OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
-        OPS_PUTAWAY:          { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putaway',       subcard: 'sub-putaway' },
-        OPS_PUTAWAYRETURN:    { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putawayreturn', subcard: 'sub-putaway-return' },
-        CHECKING_PICKING:     { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-picking-row',          subcard: 'sub-picking' },
-        CHECKING_DASHBOARD:   { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-dashchecker-row',      subcard: 'sub-dashboard-checker' },
-        CHECKING_LIVEMONITOR: { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-livechecker-row',      subcard: 'sub-live-checker-monitor' },
-        INV_DASHBOARD:        { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-dashboard' },
-        INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-adjustment',    subcard: 'sub-inventory-adjustment' },
-        INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-transfer',      subcard: 'sub-inventory-transfer' },
-        LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
-        DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
-        EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
-        EXPORT_LAPORAN:       { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-laporan' },
-        EXPORT_DATAQC:        { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-dataqc',     subcard: 'sub-export-dataqc' },
-        EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
-        ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
-        KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
-        CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
-      };
-      const RBAC_SEMUA_FITUR = Object.keys(RBAC_FITUR);
-
-      // Peta akses per role. "Administrator" = akses mutlak (termasuk Kelola User).
-      // Admin/Supervisor Gudang/Manager Gudang = semua akses KECUALI Kelola User
-      // (hanya Administrator yang boleh menambah/mengubah user). "Admin Gudang" &
-      // "Supervisor" adalah nama role lama yang sebelumnya juga akses penuh -
-      // dipertahankan di tier yang sama supaya tidak ada user lama yang tiba-tiba
-      // kehilangan akses.
-      const RBAC_AKSES_PENUH_TANPA_KELOLA_USER = RBAC_SEMUA_FITUR.filter(f => f !== 'KELOLA_USER');
-      const RBAC_PER_ROLE = {
-        'Administrator':       RBAC_SEMUA_FITUR,
-        'Admin':                RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-        'Supervisor Gudang':    RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-        'Manager Gudang':       RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-        'Admin Gudang':         RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-        'Supervisor':           RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-        'COO':                  RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
-
-        'Staff Inbound':        ['INBOUND_RECEIVING'],
-        'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
-        'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
-        'Tim Swarovski':        ['QC_SWAROVSKI'],
-        'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG'],
-        'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
-        'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-        'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
-        'Marketing':            ['INV_DASHBOARD', 'EXPORT_LAPORAN'],
-        'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
-                                  'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT',
-                                  'CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR']
-      };
+      // (RBAC_FITUR, RBAC_SEMUA_FITUR, RBAC_PER_ROLE sekarang didefinisikan di scope
+      // GLOBAL di atas fungsi ini -- supaya bisa dipakai ulang oleh checklist akses
+      // per-user di modul Kelola User. Lihat konstanta RBAC_* sebelum inisialisasiAplikasi().)
 
       // FITUR BARU: Warehouse Dashboard (widget KPI/Inbound/Outbound/Work/Employees
       // di atas Menu Utama) HANYA untuk role setingkat Admin ke atas. Daftar ini
@@ -6144,12 +6227,26 @@ async function eksekusiAddSkuOutbound() {
 
       const r = user.role;
 
+      // FITUR BARU: kalau user ini punya kustomisasi akses per-user (kolom akses di DB
+      // sudah diisi array JSON valid, TERMASUK array kosong "[]" yang berarti sengaja
+      // dicabut semua aksesnya), PAKAI PERSIS daftar itu -- menggantikan seluruh default
+      // per-Role di bawah. Kalau akses NULL/kosong/tidak valid, fallback ke RBAC_PER_ROLE
+      // seperti sebelumnya (backward compatible untuk user lama yang belum dikustomisasi).
+      const FITUR_AKTIF_USER = _kuParseAkses(user.akses);
+
       // FITUR BARU: Klik-Baris-untuk-Transfer -- tentukan apakah role user ini punya akses
       // INV_TRANSFER (dipakai renderInventoryTable() untuk baris tabel yang bisa diklik).
-      // "Checker" sengaja tidak pernah punya akses ini (tidak dimigrasi ke RBAC_PER_ROLE).
-      USER_PUNYA_AKSES_TRANSFER = (r !== "Checker") && !!(RBAC_PER_ROLE[r] && RBAC_PER_ROLE[r].includes('INV_TRANSFER'));
+      // "Checker" sengaja tidak pernah punya akses ini secara default (tidak dimigrasi ke
+      // RBAC_PER_ROLE) -- KECUALI user tsb dikustomisasi eksplisit lewat checklist akses.
+      USER_PUNYA_AKSES_TRANSFER = FITUR_AKTIF_USER
+        ? FITUR_AKTIF_USER.includes('INV_TRANSFER')
+        : ((r !== "Checker") && !!(RBAC_PER_ROLE[r] && RBAC_PER_ROLE[r].includes('INV_TRANSFER')));
 
-      if (r === "Checker") {
+      if (FITUR_AKTIF_USER) {
+        // Kustomisasi per-user aktif dari checklist akses modul Kelola User: terapkan
+        // PERSIS daftar fitur yang dicentang admin, tidak peduli role user-nya apa.
+        FITUR_AKTIF_USER.forEach(terapkanFiturRBAC);
+      } else if (r === "Checker") {
         // Dashboard Checker & Live Monitor Checker — logika role ini dipertahankan
         // PERSIS seperti sebelumnya (tidak ikut migrasi RBAC_PER_ROLE di atas),
         // termasuk kartu Live Monitor yang subrow-nya tampil namun subcard-nya
@@ -12495,6 +12592,79 @@ async function eksekusiCancelOutbound() {
       'Demand Planner': 'secondary', 'RnD': 'secondary', 'Marketing': 'warning'
     };
 
+    // Ambil daftar akses DEFAULT untuk sebuah role (dipakai preset awal checklist).
+    // "Checker" ditangani terpisah karena sengaja tidak ada di RBAC_PER_ROLE (lihat
+    // catatan di RBAC_DEFAULT_CHECKER & inisialisasiAplikasi).
+    function kuAmbilDefaultAksesUntukRole(role) {
+      if (role === 'Checker') return RBAC_DEFAULT_CHECKER.slice();
+      return (RBAC_PER_ROLE[role] || []).slice();
+    }
+
+    // Render checklist akses (grouped by module) ke #ku-akses-checklist, dengan
+    // fitur yang ada di `selectedKeys` dicentang.
+    function kuRenderChecklist(selectedKeys) {
+      const dipilih = new Set(selectedKeys || []);
+      const grupMap = {};
+      RBAC_URUTAN_GRUP.forEach(g => { grupMap[g] = []; });
+      Object.keys(RBAC_LABEL).forEach(kunci => {
+        const info = RBAC_LABEL[kunci];
+        if (!grupMap[info.grup]) grupMap[info.grup] = [];
+        grupMap[info.grup].push({ kunci, label: info.label });
+      });
+
+      let html = '';
+      RBAC_URUTAN_GRUP.forEach(grup => {
+        const daftar = grupMap[grup];
+        if (!daftar || !daftar.length) return;
+        html += `<div class="mb-2">
+          <div class="fw-bold text-uppercase text-muted mb-1" style="font-size:9.5px;letter-spacing:.03em;">${escapeHtmlAttr(grup)}</div>`;
+        daftar.forEach(item => {
+          const checked = dipilih.has(item.kunci) ? 'checked' : '';
+          html += `<div class="form-check form-check-sm">
+            <input class="form-check-input ku-akses-item" type="checkbox" value="${item.kunci}" id="ku-akses-${item.kunci}" ${checked}>
+            <label class="form-check-label small" for="ku-akses-${item.kunci}" style="font-size:11px;">${escapeHtmlAttr(item.label)}</label>
+          </div>`;
+        });
+        html += `</div>`;
+      });
+      document.getElementById('ku-akses-checklist').innerHTML = html;
+    }
+
+    // Isi ulang checklist sesuai default Role yang SEDANG dipilih di dropdown Role.
+    function kuSetDefaultRoleKeChecklist() {
+      const role = document.getElementById('ku-role').value;
+      kuRenderChecklist(kuAmbilDefaultAksesUntukRole(role));
+    }
+
+    // Dipanggil saat dropdown Role berubah. Di mode "tambah" (user baru), checklist
+    // otomatis mengikuti default role terbaru karena belum ada kustomisasi apa pun.
+    // Di mode "edit", TIDAK auto-overwrite (supaya kustomisasi user yang sudah ada
+    // tidak hilang tanpa sengaja hanya karena admin mengganti Role) -- admin harus
+    // klik tombol "Default Role" secara eksplisit kalau memang mau mereset.
+    function kuRoleBerubah() {
+      const mode = document.getElementById('ku-form-mode').value;
+      if (mode === 'tambah') kuSetDefaultRoleKeChecklist();
+    }
+
+    function kuToggleSemuaChecklist(centang) {
+      document.querySelectorAll('#ku-akses-checklist .ku-akses-item').forEach(cb => { cb.checked = !!centang; });
+    }
+
+    // Kumpulkan semua kunci fitur yang tercentang di checklist, dalam urutan terurut
+    // (supaya perbandingan dengan default role di submitFormUser konsisten).
+    function kuAmbilAksesTerpilih() {
+      return Array.from(document.querySelectorAll('#ku-akses-checklist .ku-akses-item:checked'))
+        .map(cb => cb.value)
+        .sort();
+    }
+
+    // Bandingkan 2 array (tanpa peduli urutan) apakah isinya PERSIS sama.
+    function _kuArraySama(a, b) {
+      if (a.length !== b.length) return false;
+      const sa = a.slice().sort(), sb = b.slice().sort();
+      return sa.every((v, i) => v === sb[i]);
+    }
+
     function loadKelolaUserData() {
       const tbody = document.getElementById('ku-tbody');
       tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
@@ -12513,10 +12683,14 @@ async function eksekusiCancelOutbound() {
       tbody.innerHTML = KU_DATA.map(u => {
         const warnaRole = KU_ROLE_WARNA[u.role] || 'secondary';
         const warnaStatus = u.status === 'Active' ? 'success' : 'secondary';
+        const aksesKustom = _kuParseAkses(u.akses);
+        const badgeKustom = aksesKustom
+          ? `<span class="badge bg-purple ms-1" style="background-color:#6f42c1;font-size:9px;" title="Akses dikustomisasi manual (${aksesKustom.length} fitur), tidak mengikuti default Role">Kustom</span>`
+          : '';
         return `<tr>
           <td class="fw-bold">${escapeHtmlAttr(u.username)}</td>
           <td>${escapeHtmlAttr(u.nama)}</td>
-          <td><span class="badge bg-${warnaRole}">${escapeHtmlAttr(u.role)}</span></td>
+          <td><span class="badge bg-${warnaRole}">${escapeHtmlAttr(u.role)}</span>${badgeKustom}</td>
           <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(u.status)}</span></td>
           <td class="text-center">
             <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:9px;padding:2px 6px;" onclick="bukaFormEditUser('${escapeHtmlAttr(u.username)}')" title="Edit Nama/Role/Status">
@@ -12542,6 +12716,9 @@ async function eksekusiCancelOutbound() {
       document.getElementById('ku-password').value = '';
       document.getElementById('ku-password-wrapper').style.display = 'block';
       document.getElementById('ku-form-alert').innerHTML = '';
+      // FITUR BARU: checklist akses langsung diisi sesuai default Role terpilih
+      // ('Petugas QC') sebagai titik awal -- admin bebas mencentang/menghapus dari sini.
+      kuRenderChecklist(kuAmbilDefaultAksesUntukRole('Petugas QC'));
       document.getElementById('ku-form-wrapper').style.display = 'block';
     }
 
@@ -12559,6 +12736,12 @@ async function eksekusiCancelOutbound() {
       document.getElementById('ku-password').value = '';
       document.getElementById('ku-password-wrapper').style.display = 'none'; // ganti password lewat tombol Reset Password terpisah
       document.getElementById('ku-form-alert').innerHTML = '';
+      // FITUR BARU: kalau user ini sudah punya kustomisasi akses (akses IS NOT NULL di DB),
+      // checklist diisi PERSIS dengan itu. Kalau belum (masih ikut default Role), checklist
+      // diisi dari default Role-nya saat ini -- admin tinggal centang/hapus untuk mulai
+      // mengkustomisasi, atau biarkan saja kalau memang mau tetap ikut Role.
+      const aksesKustom = _kuParseAkses(u.akses);
+      kuRenderChecklist(aksesKustom !== null ? aksesKustom : kuAmbilDefaultAksesUntukRole(u.role));
       document.getElementById('ku-form-wrapper').style.display = 'block';
     }
 
@@ -12578,11 +12761,23 @@ async function eksekusiCancelOutbound() {
       if (!username || !nama) { alertBox.innerHTML = '<div class="alert alert-danger small py-1 mb-0">Username & Nama wajib diisi.</div>'; return; }
       if (mode === 'tambah' && password.length < 6) { alertBox.innerHTML = '<div class="alert alert-danger small py-1 mb-0">Password minimal 6 karakter.</div>'; return; }
 
+      // FITUR BARU: tentukan payload akses dari checklist. Kalau checklist yang tercentang
+      // PERSIS SAMA dengan default Role yang dipilih, tidak perlu disimpan sebagai kustomisasi
+      // -- user tsb tetap "mengikuti Role" secara dinamis (akses = null di DB, mode tambah)
+      // atau di-RESET eksplisit ke null (mode edit, via sinyal string kosong ''). Kalau
+      // berbeda dari default Role, simpan PERSIS daftar yang dicentang sebagai kustomisasi.
+      const aksesTerpilih = kuAmbilAksesTerpilih();
+      const aksesDefaultRole = kuAmbilDefaultAksesUntukRole(role).slice().sort();
+      const ikutDefaultRole = _kuArraySama(aksesTerpilih, aksesDefaultRole);
+      const aksesPayload = ikutDefaultRole
+        ? (mode === 'tambah' ? null : '')
+        : JSON.stringify(aksesTerpilih);
+
       alertBox.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan...</div>';
 
       const aksi = mode === 'tambah'
-        ? ENDPOINTS.createUser({ username, password, nama, role, status })
-        : ENDPOINTS.updateUserProfile({ username, nama, role, status });
+        ? ENDPOINTS.createUser({ username, password, nama, role, status, akses: aksesPayload })
+        : ENDPOINTS.updateUserProfile({ username, nama, role, status, akses: aksesPayload });
 
       aksi.then(res => {
         if (res && res.success === false) { alertBox.innerHTML = `<div class="alert alert-danger small py-1 mb-0">${escapeHtmlAttr(res.message || 'Gagal menyimpan.')}</div>`; return; }
