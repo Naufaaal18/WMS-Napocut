@@ -1176,6 +1176,49 @@ Object.assign(ENDPOINTS, {
     p_grade: payload.grade, p_qty: Number(payload.qty), p_petugas_qc: payload.petugasQc, p_user_login: payload.userLogin
   }),
 
+  // FITUR BARU: SUB-MODUL "Data PO" -- daftar semua Purchase Order yang sudah pernah
+  // dibuat di Master PO (input manual maupun upload Excel Massal), dikelompokkan per
+  // No PO. Query langsung ke tabel open_po (bukan RPC) mengikuti pola getter lain di
+  // Batch 6, dan pakai _fetchAllRows supaya tidak kena limit 1000 baris/request kalau
+  // open_po sudah banyak isinya.
+  getDataPOList: async () => {
+    try {
+      const rows = await _fetchAllRows('open_po',
+        'no_po, supplier, kode_sku, qty_order, qty_awal, kategori, created_date, status_po, created_by, grade, colour, size',
+        null, 'created_date');
+      const poMap = {};
+      const urutanNoPo = [];
+      (rows || []).forEach(r => {
+        if (!r.no_po) return;
+        if (!poMap[r.no_po]) {
+          poMap[r.no_po] = {
+            noPo: r.no_po, supplier: r.supplier, kategori: r.kategori,
+            tanggal: r.created_date, statusPo: r.status_po, createdBy: r.created_by,
+            items: [], totalQtyOrder: 0, totalQtySisa: 0
+          };
+          urutanNoPo.push(r.no_po);
+        }
+        const po = poMap[r.no_po];
+        po.items.push({
+          sku: r.kode_sku, qtyOrder: Number(r.qty_order || 0), qtySisa: Number(r.qty_awal || 0),
+          grade: r.grade, colour: r.colour, size: r.size
+        });
+        po.totalQtyOrder += Number(r.qty_order || 0);
+        po.totalQtySisa += Number(r.qty_awal || 0);
+      });
+      // Terbaru duluan (tanggal desc), No PO sebagai tie-breaker.
+      const result = urutanNoPo.map(noPo => poMap[noPo]).sort((a, b) => {
+        const da = a.tanggal ? new Date(a.tanggal).getTime() : 0;
+        const db = b.tanggal ? new Date(b.tanggal).getTime() : 0;
+        if (db !== da) return db - da;
+        return String(b.noPo).localeCompare(String(a.noPo));
+      });
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, message: 'Gagal memuat Data PO: ' + err.message };
+    }
+  },
+
 });
 
 // =========================================================================
@@ -2186,9 +2229,14 @@ window.fetch = function (url, options) {
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
       <div class="sub-module-list" id="home-sub-openpo">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo')">
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-po-buat')">
           <span class="sub-dot dot-po"></span>
           <span class="sub-module-name">Kelola Purchase Order</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-po-data'); setTimeout(loadDataPOList, 300);">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">Data PO</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -2651,6 +2699,7 @@ window.fetch = function (url, options) {
       </div>
 
       <div id="modul-openpo" class="form-section">
+        <div id="sub-po-buat">
         <div class="card p-3 mb-3 border-start border-4 border-warning">
           <h6 class="fw-bold text-warning mb-3"><i class="fa-solid fa-file-signature me-2"></i>Penerbitan Open PO/Faktur
             Baru (Manual)</h6>
@@ -2741,6 +2790,43 @@ window.fetch = function (url, options) {
             </div>
           </div>
         </div>
+        <!-- FITUR BARU: SUB-MODUL "Data PO" -- daftar semua PO yang sudah pernah dibuat
+             di Master PO (input manual maupun upload Excel), dikelompokkan per No PO,
+             supaya admin bisa cek ringkasan (jumlah SKU, total qty, status) tanpa perlu
+             buka Excel/Google Sheet terpisah. Disembunyikan (d-none) sampai dibuka lewat
+             sub-modul "Data PO" di Home. -->
+        <div id="sub-po-data" class="d-none">
+          <div class="card p-3 mb-3 border-start border-4" style="border-color:#E65100!important;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-bold mb-0" style="color:#E65100;"><i class="fa-solid fa-table-list me-2"></i>Data PO</h6>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadDataPOList()" title="Muat Ulang">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+            <p class="small text-muted mb-2">Semua PO yang sudah tercatat di Master PO (input manual maupun upload Excel), dikelompokkan per No PO. Klik salah satu baris untuk lihat rincian SKU-nya.</p>
+            <input type="text" id="pod-filter" class="form-control form-control-sm mb-2" placeholder="Cari No PO / Supplier..." oninput="renderDataPOTable()">
+            <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                <thead class="table-light" style="position:sticky;top:0;">
+                  <tr>
+                    <th>No PO</th>
+                    <th>Supplier</th>
+                    <th>Kategori</th>
+                    <th>Tanggal</th>
+                    <th class="text-center">Jml SKU</th>
+                    <th class="text-end">Total Qty Order</th>
+                    <th class="text-end">Sisa Qty</th>
+                    <th class="text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="pod-tbody">
+                  <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
 
       </div>
       <div id="modul-qc" class="form-section">
@@ -6581,7 +6667,8 @@ async function eksekusiAddSkuOutbound() {
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
-          'modul-export': ['sub-export-suratjalan', 'sub-export-inventory', 'sub-export-dataqc', 'sub-export-movhistory']
+          'modul-export': ['sub-export-suratjalan', 'sub-export-inventory', 'sub-export-dataqc', 'sub-export-movhistory'],
+          'modul-openpo': ['sub-po-buat', 'sub-po-data']
         };
         const daftarSub = mapSubCards[modulId];
         if (daftarSub) {
@@ -8248,6 +8335,9 @@ async function eksekusiAddSkuOutbound() {
             </tr>
           `;
           onPoKategoriChanged(); // Reset tampilan kolom Grade sesuai kategori default form
+          // FITUR BARU: sinkronkan sub-modul "Data PO" (kalau sudah pernah dibuka) supaya
+          // PO yang baru saja dibuat langsung muncul tanpa perlu klik Muat Ulang manual.
+          if (typeof loadDataPOList === 'function') loadDataPOList();
         })
         .withFailureHandler(err => showAlert("🚨 Gagal membuat PO: " + err.message, "danger"))
         .saveOpenPoManual(payload);
@@ -8309,6 +8399,7 @@ async function eksekusiAddSkuOutbound() {
         .withSuccessHandler(res => {
           showAlert(res.message, "success");
           fileInput.value = ""; // Reset input file
+          if (typeof loadDataPOList === 'function') loadDataPOList();
         })
         .withFailureHandler(err => showAlert("🚨 Gagal Import: " + err.message, "danger"))
         // PERBAIKAN BUG: sebelumnya payload tidak menyertakan userLogin sama sekali,
@@ -8344,6 +8435,80 @@ function downloadTemplatePO() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Template Open PO");
   XLSX.writeFile(wb, "Template_Import_Open_PO.xlsx");
+}
+
+// =========================================================================
+// FITUR BARU: SUB-MODUL "Data PO" -- menampilkan semua PO yang sudah pernah
+// dibuat/didaftarkan di Master PO (baik input manual maupun upload Excel Massal),
+// dikelompokkan per No PO. Klik salah satu baris untuk expand rincian SKU-nya
+// (Qty Order, Sisa Qty, Grade) tanpa perlu buka Excel/Google Sheet terpisah.
+// =========================================================================
+let PO_DATA_LIST = [];
+let PO_DATA_EXPANDED = new Set();
+
+const PO_STATUS_WARNA = {
+  'ACTIVE': 'success', 'OPEN': 'success', 'CLOSED': 'secondary', 'CANCEL': 'danger', 'CANCELLED': 'danger'
+};
+
+function loadDataPOList() {
+  const tbody = document.getElementById('pod-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+  ENDPOINTS.getDataPOList()
+    .then(res => {
+      if (!res.success) { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
+      PO_DATA_LIST = res.data || [];
+      PO_DATA_EXPANDED = new Set();
+      renderDataPOTable();
+    })
+    .catch(err => { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
+}
+
+function toggleDetailDataPO(noPo) {
+  if (PO_DATA_EXPANDED.has(noPo)) PO_DATA_EXPANDED.delete(noPo); else PO_DATA_EXPANDED.add(noPo);
+  renderDataPOTable();
+}
+
+function renderDataPOTable() {
+  const tbody = document.getElementById('pod-tbody');
+  const keyword = (document.getElementById('pod-filter').value || '').trim().toLowerCase();
+  const daftar = keyword
+    ? PO_DATA_LIST.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword))
+    : PO_DATA_LIST;
+
+  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
+
+  tbody.innerHTML = daftar.map(po => {
+    const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
+    const terbuka = PO_DATA_EXPANDED.has(po.noPo);
+    const barisUtama = `<tr style="cursor:pointer;" onclick="toggleDetailDataPO('${escapeHtmlAttr(po.noPo)}')">
+      <td class="fw-bold"><i class="fa-solid fa-chevron-${terbuka ? 'down' : 'right'} me-1 text-muted" style="font-size:9px;"></i>${escapeHtmlAttr(po.noPo)}</td>
+      <td>${escapeHtmlAttr(po.supplier || '-')}</td>
+      <td>${escapeHtmlAttr(po.kategori || '-')}</td>
+      <td>${po.tanggal ? new Date(po.tanggal).toLocaleDateString('id-ID') : '-'}</td>
+      <td class="text-center">${po.items.length}</td>
+      <td class="text-end">${po.totalQtyOrder.toLocaleString('id-ID')}</td>
+      <td class="text-end">${po.totalQtySisa.toLocaleString('id-ID')}</td>
+      <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span></td>
+    </tr>`;
+
+    if (!terbuka) return barisUtama;
+
+    const barisDetail = `<tr><td colspan="8" class="p-0" style="background:#fbfbfb;">
+      <table class="table table-sm mb-0" style="font-size:10.5px;">
+        <thead><tr class="text-muted"><th class="ps-3">Kode SKU</th><th class="text-end">Qty Order</th><th class="text-end">Sisa Qty</th><th>Grade</th></tr></thead>
+        <tbody>
+          ${po.items.map(it => `<tr>
+            <td class="ps-3">${escapeHtmlAttr(it.sku)}</td>
+            <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
+            <td class="text-end">${it.qtySisa.toLocaleString('id-ID')}</td>
+            <td>${escapeHtmlAttr(it.grade || '-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </td></tr>`;
+
+    return barisUtama + barisDetail;
+  }).join('');
 }
 
 // (Listener DOMContentLoaded duplikat di sini sudah dihapus — sudah ditangani oleh listener session-check di awal script)
@@ -10548,6 +10713,9 @@ async function eksekusiCancelPO() {
         document.getElementById("cancel-po-no").value = "";
         // Jika ada fungsi refresh dropdown PO jalankan di sini, contoh:
         if (typeof loadOpenPOToInboundDropdown === 'function') loadOpenPOToInboundDropdown();
+        // FITUR BARU: sinkronkan sub-modul "Data PO" supaya status Cancel langsung
+        // terlihat tanpa perlu klik Muat Ulang manual.
+        if (typeof loadDataPOList === 'function') loadDataPOList();
       }
     })
     .withFailureHandler(function(error) {
