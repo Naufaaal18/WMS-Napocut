@@ -5787,6 +5787,48 @@ async function eksekusiAddSkuOutbound() {
 
   </div>
 
+  <!-- MODAL: DETAIL PO (dibuka dari sub-modul "Data PO") -->
+  <!-- Sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home, sama seperti
+       modal-custom-confirm/modal-custom-alert di bawah, supaya markup-nya tidak perlu
+       ikut campur tangan dengan struktur div modul-openpo yang sudah ada. -->
+  <div class="modal fade" id="modal-detail-po" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2" style="background:#E65100;color:#fff;">
+          <h6 class="modal-title fw-bold mb-0"><i class="fa-solid fa-file-invoice me-2"></i>Detail PO — <span id="dpo-modal-nopo">-</span></h6>
+          <button type="button" class="btn-close btn-close-white" onclick="tutupDetailPO()"></button>
+        </div>
+        <div class="modal-body p-3">
+          <div class="row g-2 mb-3 small">
+            <div class="col-6"><span class="text-muted">Supplier</span><br><span class="fw-bold" id="dpo-modal-supplier">-</span></div>
+            <div class="col-6"><span class="text-muted">Kategori</span><br><span class="fw-bold" id="dpo-modal-kategori">-</span></div>
+            <div class="col-6"><span class="text-muted">Tanggal Dokumen</span><br><span class="fw-bold" id="dpo-modal-tanggal">-</span></div>
+            <div class="col-6"><span class="text-muted">Status</span><br><span id="dpo-modal-status">-</span></div>
+            <div class="col-6"><span class="text-muted">Dibuat oleh</span><br><span class="fw-bold" id="dpo-modal-createdby">-</span></div>
+            <div class="col-6"><span class="text-muted">Jumlah SKU / Total Qty Order / Sisa Qty</span><br><span class="fw-bold" id="dpo-modal-ringkasan">-</span></div>
+          </div>
+          <p class="small fw-bold text-secondary mb-1">Rincian Item:</p>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11.5px;">
+              <thead class="table-light">
+                <tr>
+                  <th>Kode SKU</th>
+                  <th class="text-end">Qty Order</th>
+                  <th class="text-end">Sisa Qty</th>
+                  <th>Grade</th>
+                </tr>
+              </thead>
+              <tbody id="dpo-modal-items"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupDetailPO()">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: KONFIRMASI KUSTOM (PENGGANTI window.confirm() BAWAAN BROWSER) -->
   <!-- Sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home (bukan nested di dalamnya),
        supaya tetap bisa tampil walau sedang berada di halaman Home / Login sekalipun
@@ -8440,11 +8482,10 @@ function downloadTemplatePO() {
 // =========================================================================
 // FITUR BARU: SUB-MODUL "Data PO" -- menampilkan semua PO yang sudah pernah
 // dibuat/didaftarkan di Master PO (baik input manual maupun upload Excel Massal),
-// dikelompokkan per No PO. Klik salah satu baris untuk expand rincian SKU-nya
-// (Qty Order, Sisa Qty, Grade) tanpa perlu buka Excel/Google Sheet terpisah.
+// dikelompokkan per No PO. Klik salah satu baris untuk membuka modal Detail PO
+// berisi rincian SKU-nya (Qty Order, Sisa Qty, Grade).
 // =========================================================================
 let PO_DATA_LIST = [];
-let PO_DATA_EXPANDED = new Set();
 
 const PO_STATUS_WARNA = {
   'ACTIVE': 'success', 'OPEN': 'success', 'CLOSED': 'secondary', 'CANCEL': 'danger', 'CANCELLED': 'danger'
@@ -8457,15 +8498,44 @@ function loadDataPOList() {
     .then(res => {
       if (!res.success) { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
       PO_DATA_LIST = res.data || [];
-      PO_DATA_EXPANDED = new Set();
       renderDataPOTable();
     })
     .catch(err => { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
 }
 
-function toggleDetailDataPO(noPo) {
-  if (PO_DATA_EXPANDED.has(noPo)) PO_DATA_EXPANDED.delete(noPo); else PO_DATA_EXPANDED.add(noPo);
-  renderDataPOTable();
+// FITUR BARU: klik baris No PO membuka modal "Detail PO" (bukan expand baris inline
+// seperti sebelumnya) supaya rincian SKU tampil lebih lega & tidak menggeser baris
+// PO lain di tabel utama.
+function bukaDetailPO(noPo) {
+  const po = PO_DATA_LIST.find(p => p.noPo === noPo);
+  if (!po) return;
+  const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
+
+  document.getElementById('dpo-modal-nopo').textContent = po.noPo;
+  document.getElementById('dpo-modal-supplier').textContent = po.supplier || '-';
+  document.getElementById('dpo-modal-kategori').textContent = po.kategori || '-';
+  document.getElementById('dpo-modal-tanggal').textContent = po.tanggal ? new Date(po.tanggal).toLocaleDateString('id-ID') : '-';
+  document.getElementById('dpo-modal-status').innerHTML = `<span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span>`;
+  document.getElementById('dpo-modal-createdby').textContent = po.createdBy || '-';
+  document.getElementById('dpo-modal-ringkasan').textContent =
+    `${po.items.length} SKU / ${po.totalQtyOrder.toLocaleString('id-ID')} / ${po.totalQtySisa.toLocaleString('id-ID')}`;
+
+  document.getElementById('dpo-modal-items').innerHTML = po.items.map(it => `<tr>
+    <td>${escapeHtmlAttr(it.sku)}</td>
+    <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
+    <td class="text-end">${it.qtySisa.toLocaleString('id-ID')}</td>
+    <td>${escapeHtmlAttr(it.grade || '-')}</td>
+  </tr>`).join('');
+
+  const modalEl = document.getElementById('modal-detail-po');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+function tutupDetailPO() {
+  const modalEl = document.getElementById('modal-detail-po');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.hide();
 }
 
 function renderDataPOTable() {
@@ -8479,9 +8549,8 @@ function renderDataPOTable() {
 
   tbody.innerHTML = daftar.map(po => {
     const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
-    const terbuka = PO_DATA_EXPANDED.has(po.noPo);
-    const barisUtama = `<tr style="cursor:pointer;" onclick="toggleDetailDataPO('${escapeHtmlAttr(po.noPo)}')">
-      <td class="fw-bold"><i class="fa-solid fa-chevron-${terbuka ? 'down' : 'right'} me-1 text-muted" style="font-size:9px;"></i>${escapeHtmlAttr(po.noPo)}</td>
+    return `<tr style="cursor:pointer;" onclick="bukaDetailPO('${escapeHtmlAttr(po.noPo)}')" title="Klik untuk lihat Detail PO">
+      <td class="fw-bold">${escapeHtmlAttr(po.noPo)} <i class="fa-solid fa-arrow-up-right-from-square ms-1 text-muted" style="font-size:9px;"></i></td>
       <td>${escapeHtmlAttr(po.supplier || '-')}</td>
       <td>${escapeHtmlAttr(po.kategori || '-')}</td>
       <td>${po.tanggal ? new Date(po.tanggal).toLocaleDateString('id-ID') : '-'}</td>
@@ -8490,24 +8559,6 @@ function renderDataPOTable() {
       <td class="text-end">${po.totalQtySisa.toLocaleString('id-ID')}</td>
       <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span></td>
     </tr>`;
-
-    if (!terbuka) return barisUtama;
-
-    const barisDetail = `<tr><td colspan="8" class="p-0" style="background:#fbfbfb;">
-      <table class="table table-sm mb-0" style="font-size:10.5px;">
-        <thead><tr class="text-muted"><th class="ps-3">Kode SKU</th><th class="text-end">Qty Order</th><th class="text-end">Sisa Qty</th><th>Grade</th></tr></thead>
-        <tbody>
-          ${po.items.map(it => `<tr>
-            <td class="ps-3">${escapeHtmlAttr(it.sku)}</td>
-            <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
-            <td class="text-end">${it.qtySisa.toLocaleString('id-ID')}</td>
-            <td>${escapeHtmlAttr(it.grade || '-')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </td></tr>`;
-
-    return barisUtama + barisDetail;
   }).join('');
 }
 
