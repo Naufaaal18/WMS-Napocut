@@ -1075,6 +1075,20 @@ Object.assign(ENDPOINTS, {
     }
   },
 
+  // FITUR BARU: MODUL "Data QC" di dalam QC Produk -- list gabungan QC Finish Good /
+  // Re-Check QC / QC Swarovski dengan filter server-side (SKU, User, tanggal, No PO/No QC,
+  // Type QC) via RPC get_data_qc_filtered, supaya tidak perlu tarik seluruh isi data_qc
+  // ke browser lalu difilter manual (beda dengan getDataQCExportData di atas).
+  getDataQCFiltered: (filters) => _callRpc('get_data_qc_filtered', {
+    p_kode_sku: filters.kodeSku || null,
+    p_petugas_qc: filters.petugasQc || null,
+    p_tanggal_dari: filters.tanggalDari || null,
+    p_tanggal_sampai: filters.tanggalSampai || null,
+    p_search_ref: filters.searchRef || null,
+    p_status: filters.status || null
+  }),
+  getDataQCFilterOptions: () => _callRpc('get_data_qc_filter_options', {}),
+
   getDataQCExportData: async () => {
     try {
       const mapDesc = await _getMasterSkuDescMap();
@@ -2315,6 +2329,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">QC Swarovski</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-subrow-qc-datalist" onclick="bukaModulDariHome('tab-qc', 'modul-qc', 'sub-qc-datalist')">
+          <span class="sub-dot dot-qc"></span>
+          <span class="sub-module-name">Data QC</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -3183,6 +3202,87 @@ window.fetch = function (url, options) {
             <i class="fa-solid fa-paper-plane me-1"></i>Kirim Hasil QC Swarovski
           </button>
           <div id="swa-alert" class="mt-2"></div>
+        </div>
+
+        <!-- ===== SUB-MODUL: DATA QC (list + filter + export excel, gabungan Finish Good/Re-Check/Swarovski) ===== -->
+        <div id="sub-qc-datalist" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#3949AB !important;">
+          <h6 class="fw-bold mb-2" style="color:#3949AB;"><i class="fa-solid fa-table-list me-2"></i>Data QC</h6>
+          <p class="text-muted mb-3" style="font-size: 11px;">Riwayat seluruh hasil Quality Control (QC Finish Good, Re-Check QC, dan QC Swarovski) dalam satu daftar. Gunakan filter di bawah, lalu klik <strong>Tampilkan</strong>.</p>
+
+          <div class="row g-2 mb-2">
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">SKU</label>
+              <input type="text" id="dqcm-f-sku" class="form-control form-control-sm" placeholder="Cth: FPS-BRC">
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">User (Petugas QC)</label>
+              <select id="dqcm-f-user" class="form-select form-select-sm">
+                <option value="">Semua User</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">Type QC</label>
+              <select id="dqcm-f-type" class="form-select form-select-sm">
+                <option value="">Semua Type</option>
+                <option value="QC Passed">QC Finish Good</option>
+                <option value="Re-Check Passed">Re-Check QC</option>
+                <option value="Swarovski Passed">QC Swarovski</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">No PO / No QC / No Request</label>
+              <input type="text" id="dqcm-f-ref" class="form-control form-control-sm" placeholder="Cth: P11879 atau QC-...">
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">Tanggal QC Dari</label>
+              <input type="date" id="dqcm-f-date-start" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-4">
+              <label class="form-label small fw-bold mb-1">Tanggal QC Sampai</label>
+              <input type="date" id="dqcm-f-date-end" class="form-control form-control-sm">
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" class="btn btn-sm fw-bold text-white flex-grow-1" style="background:#3949AB;" onclick="loadDataQCModul()">
+              <i class="fa-solid fa-magnifying-glass me-1"></i>Tampilkan
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="resetFilterDataQCModul()" title="Reset Filter">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button type="button" class="btn btn-sm fw-bold text-white" style="background:#1D6F42;" onclick="downloadDataQCModulExcel()">
+              <i class="fa-solid fa-file-excel me-1"></i>Excel
+            </button>
+          </div>
+
+          <div id="dqcm-summary" class="d-flex flex-wrap gap-2 mb-2" style="font-size:11px;"></div>
+
+          <div id="dqcm-alert"></div>
+
+          <div style="overflow-x:auto;">
+            <table id="dqcm-tbl" class="table table-sm table-bordered align-middle" style="font-size:11px; min-width:900px;">
+              <thead class="table-light">
+                <tr>
+                  <th>No QC</th>
+                  <th>SKU</th>
+                  <th>No PO / No Request</th>
+                  <th>Type QC</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">Bagus</th>
+                  <th class="text-end">Minor</th>
+                  <th class="text-end">Reject</th>
+                  <th class="text-end">Kotor</th>
+                  <th class="text-end">Perbaikan</th>
+                  <th>Petugas QC</th>
+                  <th>Tanggal QC</th>
+                  <th>Status Validasi</th>
+                </tr>
+              </thead>
+              <tbody id="dqcm-tbody">
+                <tr><td colspan="13" class="text-center text-muted">Klik "Tampilkan" untuk memuat data</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
       </div>
@@ -6263,6 +6363,7 @@ async function eksekusiAddSkuOutbound() {
       QC_REQUESTULANG_V2:   { grup: 'home-group-outbound',     tab: 'tab-qc',           subrow: 'home-subrow-qc-requestulang-v2',subcard: 'sub-request-qc-ulang-v2' },
       QC_RECHECK:           { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-recheck',        subcard: 'sub-recheck-qc' },
       QC_SWAROVSKI:         { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-swarovski',      subcard: 'sub-qc-swarovski' },
+      QC_DATALIST:          { grup: 'home-group-qc',           tab: 'tab-qc',           subrow: 'home-subrow-qc-datalist',       subcard: 'sub-qc-datalist' },
       MASTER_PO:            { grup: 'home-group-openpo',       tab: 'tab-openpo' },
       OUTBOUND_REQUEST:     { grup: 'home-group-outbound',     tab: 'tab-outbound',     subrow: 'home-subrow-outbound-kelola' },
       OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
@@ -6303,9 +6404,9 @@ async function eksekusiAddSkuOutbound() {
       'COO':                  RBAC_AKSES_PENUH_TANPA_KELOLA_USER,
 
       'Staff Inbound':        ['INBOUND_RECEIVING'],
-      'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI'],
-      'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK'],
-      'Tim Swarovski':        ['QC_SWAROVSKI'],
+      'Admin QC':             ['INBOUND_VALIDASI', 'QC_FINISHGOOD', 'QC_REQUESTULANG_V2', 'QC_RECHECK', 'QC_SWAROVSKI', 'QC_DATALIST'],
+      'Petugas QC':           ['QC_FINISHGOOD', 'QC_RECHECK', 'QC_DATALIST'],
+      'Tim Swarovski':        ['QC_SWAROVSKI', 'QC_DATALIST'],
       'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG'],
       'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
       'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
@@ -6331,6 +6432,7 @@ async function eksekusiAddSkuOutbound() {
       QC_FINISHGOOD:            { grup: 'QC',                label: 'QC Finish Good' },
       QC_RECHECK:                { grup: 'QC',                label: 'Re-Check QC' },
       QC_SWAROVSKI:              { grup: 'QC',                label: 'QC Swarovski' },
+      QC_DATALIST:               { grup: 'QC',                label: 'Data QC (List & Export)' },
       QC_REQUESTULANG_V2:        { grup: 'Outbound',          label: 'Request QC Ulang Otomatis (V2)' },
       OUTBOUND_REQUEST:          { grup: 'Outbound',          label: 'Kelola Outbound Request' },
       OPS_VALIDATE:              { grup: 'Putaway',           label: 'Validate QC (Sebelum Putaway)' },
@@ -6423,11 +6525,13 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-subrow-qc-requestulang-v2').style.display = 'none';
       document.getElementById('home-subrow-qc-recheck').style.display = 'none';
       document.getElementById('home-subrow-qc-swarovski').style.display = 'none';
+      document.getElementById('home-subrow-qc-datalist').style.display = 'none';
       document.getElementById('sub-qc-finishgood').classList.add('d-none');
       document.getElementById('sub-request-qc-ulang').classList.add('d-none');
       document.getElementById('sub-request-qc-ulang-v2').classList.add('d-none');
       document.getElementById('sub-recheck-qc').classList.add('d-none');
       document.getElementById('sub-qc-swarovski').classList.add('d-none');
+      document.getElementById('sub-qc-datalist').classList.add('d-none');
 
       // FITUR STRUKTURAL: sejak Request QC Ulang V2 dipindah ke grup Outbound Request,
       // sub-baris "Kelola Outbound Request" perlu digating TERPISAH -- supaya role yang
@@ -6822,7 +6926,7 @@ async function eksekusiAddSkuOutbound() {
         const mapSubCards = {
           'modul-inbound': ['sub-inbound', 'sub-validasi-inbound'],
           'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
-          'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski'],
+          'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
           'modul-export': ['sub-export-suratjalan', 'sub-export-inventory', 'sub-export-dataqc', 'sub-export-movhistory'],
@@ -6941,7 +7045,7 @@ async function eksekusiAddSkuOutbound() {
     function refreshDataForModul(modulId) {
       const mapRefresh = {
         'modul-inbound': [loadOpenPOToInboundDropdown, loadValidasiInboundData],
-        'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown, loadStagingQCSwarovskiDropdown],
+        'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown, loadStagingQCSwarovskiDropdown, loadDataQCFilterUserDropdown],
         'modul-ops': [loadQCFGToPutawayDropdown, loadStockReturnToDropdown, loadQCFGToValidateDropdown],
         'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests, loadPickingQcUlangPendingRequests],
         'modul-inventory': [loadInventoryDashboard],
@@ -12222,6 +12326,149 @@ async function eksekusiCancelOutbound() {
 
       const tglFile = document.getElementById('dqc-exp-printed-at').textContent.replace('Dicetak: ', '').replace(/[\/: ]/g, '-');
       XLSX.writeFile(wb, `Laporan_Data_QC_${tglFile || Date.now()}.xlsx`);
+    }
+
+    // =========================================================================
+    // SUB-MODUL: DATA QC (di dalam QC Produk) — list + filter (SKU, User, Tanggal QC,
+    // No PO/No QC, Type QC) via RPC get_data_qc_filtered, + export Excel.
+    // Prefix elemen: dqcm- (Data QC Modul), sengaja beda dari dqc-exp- (versi lama
+    // di tab Export) supaya tidak bentrok.
+    // =========================================================================
+    let DQCM_LAST_ROWS = []; // simpan hasil query terakhir, dipakai saat export Excel
+
+    // Isi dropdown filter User dari get_data_qc_filter_options(), dipanggil saat tab QC Produk dibuka.
+    function loadDataQCFilterUserDropdown() {
+      const sel = document.getElementById('dqcm-f-user');
+      if (!sel) return;
+      google.script.run
+        .withSuccessHandler(res => {
+          const list = Array.isArray(res) ? res : [];
+          const current = sel.value;
+          sel.innerHTML = '<option value="">Semua User</option>' +
+            list.map(r => `<option value="${r.petugas_qc}">${r.petugas_qc}</option>`).join('');
+          if (current) sel.value = current;
+        })
+        .withFailureHandler(err => console.error('[Data QC] Gagal memuat daftar user:', err.message))
+        .getDataQCFilterOptions();
+    }
+
+    // Reset semua filter lalu tampilkan ulang tabel (kosong sampai user klik "Tampilkan" lagi).
+    function resetFilterDataQCModul() {
+      document.getElementById('dqcm-f-sku').value = '';
+      document.getElementById('dqcm-f-user').value = '';
+      document.getElementById('dqcm-f-type').value = '';
+      document.getElementById('dqcm-f-ref').value = '';
+      document.getElementById('dqcm-f-date-start').value = '';
+      document.getElementById('dqcm-f-date-end').value = '';
+      DQCM_LAST_ROWS = [];
+      document.getElementById('dqcm-tbody').innerHTML = '<tr><td colspan="13" class="text-center text-muted">Klik "Tampilkan" untuk memuat data</td></tr>';
+      document.getElementById('dqcm-summary').innerHTML = '';
+      document.getElementById('dqcm-alert').innerHTML = '';
+    }
+
+    // Ambil data dari get_data_qc_filtered() sesuai filter yang diisi, lalu render ke tabel.
+    function loadDataQCModul() {
+      const alertEl = document.getElementById('dqcm-alert');
+      alertEl.innerHTML = '<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data QC...</div>';
+
+      const filters = {
+        kodeSku: sanitizeFilterInput(document.getElementById('dqcm-f-sku').value) || null,
+        petugasQc: document.getElementById('dqcm-f-user').value || null,
+        status: document.getElementById('dqcm-f-type').value || null,
+        searchRef: sanitizeFilterInput(document.getElementById('dqcm-f-ref').value) || null,
+        tanggalDari: document.getElementById('dqcm-f-date-start').value || null,
+        tanggalSampai: document.getElementById('dqcm-f-date-end').value || null
+      };
+
+      google.script.run
+        .withSuccessHandler(rows => {
+          alertEl.innerHTML = '';
+          renderDataQCModulTable(Array.isArray(rows) ? rows : []);
+        })
+        .withFailureHandler(err => {
+          alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal memuat data QC: ${err.message}</div>`;
+        })
+        .getDataQCFiltered(filters);
+    }
+
+    function renderDataQCModulTable(rows) {
+      DQCM_LAST_ROWS = rows;
+      const tbody = document.getElementById('dqcm-tbody');
+
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted">Tidak ada data yang cocok dengan filter</td></tr>';
+        document.getElementById('dqcm-summary').innerHTML = '';
+        return;
+      }
+
+      let sumTotal = 0, sumBagus = 0, sumMinor = 0, sumReject = 0, sumKotor = 0, sumPerbaikan = 0;
+      tbody.innerHTML = rows.map(r => {
+        sumTotal += Number(r.total_qc || 0); sumBagus += Number(r.bagus || 0); sumMinor += Number(r.minor || 0);
+        sumReject += Number(r.reject || 0); sumKotor += Number(r.kotor || 0); sumPerbaikan += Number(r.perbaikan || 0);
+        const tglQc = r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '';
+        const statusValidasi = r.waktu_validasi ? 'Valid' : 'Belum Divalidasi';
+        const badgeColor = r.status === 'QC Passed' ? '#2E7D32' : (r.status === 'Re-Check Passed' ? '#EF6C00' : '#00838F');
+        return `<tr>
+          <td style="font-weight:700;">${r.no_qc || ''}</td>
+          <td style="font-weight:700;">${r.kode_sku || ''}</td>
+          <td>${r.ref || ''}</td>
+          <td><span class="badge" style="background:${badgeColor};">${r.type_qc || ''}</span></td>
+          <td class="text-end" style="font-weight:700;">${Number(r.total_qc || 0).toLocaleString('id-ID')}</td>
+          <td class="text-end">${Number(r.bagus || 0).toLocaleString('id-ID')}</td>
+          <td class="text-end">${Number(r.minor || 0).toLocaleString('id-ID')}</td>
+          <td class="text-end">${Number(r.reject || 0).toLocaleString('id-ID')}</td>
+          <td class="text-end">${Number(r.kotor || 0).toLocaleString('id-ID')}</td>
+          <td class="text-end">${Number(r.perbaikan || 0).toLocaleString('id-ID')}</td>
+          <td>${r.petugas_qc || ''}</td>
+          <td style="white-space:nowrap;">${tglQc}</td>
+          <td><span class="${statusValidasi === 'Valid' ? 'text-success' : 'text-danger'}" style="font-weight:700;">${statusValidasi}</span></td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('dqcm-summary').innerHTML = `
+        <span class="badge bg-secondary">${rows.length} baris</span>
+        <span class="badge" style="background:#1565C0;">Total Qty: ${sumTotal.toLocaleString('id-ID')}</span>
+        <span class="badge" style="background:#2E7D32;">Bagus: ${sumBagus.toLocaleString('id-ID')}</span>
+        <span class="badge" style="background:#F57F17;">Minor: ${sumMinor.toLocaleString('id-ID')}</span>
+        <span class="badge" style="background:#B71C1C;">Reject: ${sumReject.toLocaleString('id-ID')}</span>
+        <span class="badge" style="background:#4E342E;">Kotor: ${sumKotor.toLocaleString('id-ID')}</span>
+        <span class="badge" style="background:#6A1B9A;">Perbaikan: ${sumPerbaikan.toLocaleString('id-ID')}</span>`;
+    }
+
+    // Export hasil query terakhir (sesuai filter aktif) ke Excel. Kalau belum pernah
+    // klik "Tampilkan", jalankan dulu query-nya baru export.
+    function downloadDataQCModulExcel() {
+      if (typeof XLSX === 'undefined') {
+        document.getElementById('dqcm-alert').innerHTML = '<div class="alert alert-danger small py-2">Library Excel gagal dimuat.</div>';
+        return;
+      }
+      if (!DQCM_LAST_ROWS.length) {
+        document.getElementById('dqcm-alert').innerHTML = '<div class="alert alert-warning small py-2">Belum ada data untuk di-export. Klik "Tampilkan" dulu.</div>';
+        return;
+      }
+
+      const dataForExcel = DQCM_LAST_ROWS.map(r => ({
+        'No QC': r.no_qc || '',
+        'SKU': r.kode_sku || '',
+        'No PO / No Request': r.ref || '',
+        'Type QC': r.type_qc || '',
+        'Total QC': Number(r.total_qc || 0),
+        'Bagus': Number(r.bagus || 0),
+        'Minor': Number(r.minor || 0),
+        'Reject': Number(r.reject || 0),
+        'Kotor': Number(r.kotor || 0),
+        'Perbaikan': Number(r.perbaikan || 0),
+        'Petugas QC': r.petugas_qc || '',
+        'Tanggal QC': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '',
+        'Status Validasi': r.waktu_validasi ? 'Valid' : 'Belum Divalidasi'
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(dataForExcel);
+      XLSX.utils.book_append_sheet(wb, ws, 'Data_QC');
+
+      const tglFile = new Date().toLocaleString('id-ID').replace(/[\/: ]/g, '-');
+      XLSX.writeFile(wb, `Data_QC_${tglFile}.xlsx`);
     }
 
     // =========================================================================
