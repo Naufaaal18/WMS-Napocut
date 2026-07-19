@@ -2047,23 +2047,40 @@ window.fetch = function (url, options) {
        dalam 1 layar tanpa perlu geser ke samping (scroll horizontal).
        Tidak mengubah apa pun di layar >= 577px (desktop/tablet tetap ukuran asli).
        ========================================================================= */
+    /* Wrapper input Lokasi Rak + tombol scan barcode (khusus kategori Raw Material di
+       daftar SKU Inbound Receiving). Default (desktop/tablet): input & tombol sejajar
+       (row) mirip pola input-group yang sudah dipakai di modul Putaway. Di mobile
+       (lihat media query di bawah) diubah jadi bertumpuk (column) supaya tidak butuh
+       lebar kolom tambahan. */
+    #ib-list-tbody .ib-lokasi-wrap { display: flex; flex-direction: row; align-items: center; gap: 3px; }
+    #ib-list-tbody .ib-lokasi-wrap .ib-row-lokasi { flex: 1 1 auto; min-width: 0; }
+    #ib-list-tbody .ib-lokasi-scan-btn { flex: 0 0 auto; padding: 2px 6px; line-height: 1; }
+
     @media (max-width: 576px) {
       #sub-inbound { padding: 10px !important; }
       #sub-inbound #ib-list-container .table-responsive { overflow-x: hidden; max-height: 320px; }
-      #sub-inbound #ib-list-container table { table-layout: fixed; font-size: 9.5px; }
+      /* PENTING: elemen <table> & <th> di HTML punya inline style="width:...;font-size:..."
+         bawaan (dipakai utk tampilan desktop). Inline style SELALU menang atas selector
+         CSS biasa (termasuk selector ID) berapa pun spesifisitasnya -- HANYA declaration
+         dengan !important yang bisa menimpanya. Sebelumnya rule di bawah ini TIDAK punya
+         !important, sehingga di HP lebar kolom yang benar-benar dipakai browser adalah
+         lebar inline desktop (28+85+100+150+55 = 418px+), itu sebabnya tabel terpotong/
+         perlu di-scroll ke samping walau sudah ada table-layout:fixed. Fix: tambahkan
+         !important di semua width & font-size supaya konsisten dipakai di layar sempit. */
+      #sub-inbound #ib-list-container table { table-layout: fixed !important; font-size: 9.5px !important; }
       #sub-inbound #ib-list-container th, #sub-inbound #ib-list-container td {
         padding: 3px 2px !important; overflow: hidden; word-break: break-word;
       }
-      #sub-inbound #ib-list-container thead th { font-size: 8.5px; line-height: 1.15; white-space: normal; }
-      /* Lebar kolom dipatok fixed (total sengaja dijaga di bawah ~300px supaya pas di
+      #sub-inbound #ib-list-container thead th { font-size: 8.5px !important; line-height: 1.15; white-space: normal; }
+      /* Lebar kolom dipatok fixed (total sengaja dijaga di bawah ~280px supaya pas di
          layar HP terkecil sekalipun): checkbox 18px, SKU 78px, Sisa Order 38px,
          Qty Diterima 54px, Lokasi Rak 58px, Short 22px. */
-      #ib-list-container thead th:nth-child(1), #ib-list-tbody td:nth-child(1) { width: 18px; }
-      #ib-list-container thead th:nth-child(2), #ib-list-tbody td:nth-child(2) { width: 78px; }
-      #ib-list-container thead th:nth-child(3), #ib-list-tbody td:nth-child(3) { width: 38px; }
-      #ib-list-container thead th:nth-child(4), #ib-list-tbody td:nth-child(4) { width: 54px; }
-      #ib-th-lokasi, #ib-list-tbody td:nth-child(5) { width: 58px; }
-      #ib-list-container thead th:nth-child(6), #ib-list-tbody td:nth-child(6) { width: 22px; }
+      #ib-list-container thead th:nth-child(1), #ib-list-tbody td:nth-child(1) { width: 18px !important; }
+      #ib-list-container thead th:nth-child(2), #ib-list-tbody td:nth-child(2) { width: 78px !important; }
+      #ib-list-container thead th:nth-child(3), #ib-list-tbody td:nth-child(3) { width: 38px !important; }
+      #ib-list-container thead th:nth-child(4), #ib-list-tbody td:nth-child(4) { width: 54px !important; }
+      #ib-th-lokasi, #ib-list-tbody td:nth-child(5) { width: 58px !important; }
+      #ib-list-container thead th:nth-child(6), #ib-list-tbody td:nth-child(6) { width: 22px !important; }
       #ib-list-tbody td:nth-child(1) input, #ib-list-tbody td:nth-child(6) input {
         width: 15px; height: 15px; margin: 0;
       }
@@ -2075,6 +2092,12 @@ window.fetch = function (url, options) {
          "Staging Return") yang lebih panjang dari lebar kolom 58px -- dipotong dgn "..."
          (bukan info krusial yang wajib dibaca utuh di layar, cukup indikator saja). */
       #ib-list-tbody .ib-row-lokasi[readonly] { white-space: nowrap; text-overflow: ellipsis; }
+
+      /* FITUR BARU: tombol scan barcode di kolom Lokasi Rak (khusus Raw Material) --
+         diletakkan DI BAWAH input (bukan di samping) supaya tidak butuh lebar kolom
+         ekstra; kolom tetap 58px sesuai perhitungan total lebar di atas. */
+      #ib-list-tbody .ib-lokasi-wrap { flex-direction: column; gap: 2px; align-items: stretch; }
+      #ib-list-tbody .ib-lokasi-scan-btn { width: 100%; padding: 1px 0 !important; font-size: 8px !important; line-height: 1.3; }
 
       /* --- Validasi Inbound (Sebelum QC) --- */
       #sub-validasi-inbound #vi-table-wrap thead { display: none; }
@@ -10612,7 +10635,7 @@ function onInboundPoSelected() {
 
   const gradeMap = detailPO.gradeBySku || {};
 
-  listTbody.innerHTML = skus.map(skuCode => {
+  listTbody.innerHTML = skus.map((skuCode, idx) => {
     const maxQty = detailPO.skus[skuCode] || 0;
     let gradeAuto = gradeMap[skuCode];
     if (!gradeAuto || gradeAuto.toString().trim() === "" || gradeAuto.toString().trim() === "-") {
@@ -10621,7 +10644,18 @@ function onInboundPoSelected() {
 
     let kolomLokasi = "";
     if (kat === "raw material") {
-      kolomLokasi = `<input type="text" class="form-control form-control-sm ib-row-lokasi" data-sku="${skuCode}" placeholder="cth: RM-01">`;
+      // FITUR BARU: tombol scan barcode kamera utk isi Lokasi Rak (Raw Material wajib
+      // isi manual lokasi -- sekarang bisa juga discan, memakai infrastruktur scanner
+      // yang sama dengan modul Putaway: fungsi generik openBarcodeScannerFor(inputId,...)).
+      // id input dibuat unik per baris (berdasar index urutan tampil) supaya scanner tahu
+      // input mana yang harus diisi.
+      const lokasiInputId = `ib-lokasi-input-${idx}`;
+      kolomLokasi = `<div class="ib-lokasi-wrap">
+          <input type="text" id="${lokasiInputId}" class="form-control form-control-sm ib-row-lokasi" data-sku="${skuCode}" placeholder="cth: RM-01">
+          <button type="button" class="btn btn-outline-primary btn-sm ib-lokasi-scan-btn" onclick="openBarcodeScannerFor('${lokasiInputId}','Scan Lokasi Rak - ${skuCode}')" title="Scan Barcode Lokasi Rak dengan Kamera">
+            <i class="fa-solid fa-barcode"></i>
+          </button>
+        </div>`;
     } else if (kat === "return") {
       kolomLokasi = `<input type="text" class="form-control form-control-sm ib-row-lokasi" data-sku="${skuCode}" value="Staging Return" readonly tabindex="-1">`;
     } else {
