@@ -807,16 +807,22 @@ Object.assign(ENDPOINTS, {
   },
 
   getStockReturnDataForPutaway: async () => {
-    const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi').ilike('lokasi', 'staging return').gt('qty', 0);
+    // FITUR BARU: sertakan kolom supplier supaya dropdown "Nomor PO Return" di Putaway
+    // Return bisa menampilkan nama supplier di samping nomor PO (mis. "15072 - AWALUNA"),
+    // tanpa mengubah bentuk poMap yang sudah dipakai di banyak tempat lain (PO -> {sku: qty}).
+    // Supplier dikembalikan terpisah lewat `supplierByPo` (PO -> nama supplier).
+    const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi, supplier').ilike('lokasi', 'staging return').gt('qty', 0);
     if (error) throw new Error(error.message);
     const poMap = {};
+    const supplierByPo = {};
     (data || []).forEach(r => {
       if (!r.no_po_faktur || !r.kode_sku) return;
       if (!poMap[r.no_po_faktur]) poMap[r.no_po_faktur] = {};
       if (!poMap[r.no_po_faktur][r.kode_sku]) poMap[r.no_po_faktur][r.kode_sku] = 0;
       poMap[r.no_po_faktur][r.kode_sku] += Number(r.qty || 0);
+      if (!supplierByPo[r.no_po_faktur] && r.supplier) supplierByPo[r.no_po_faktur] = r.supplier;
     });
-    return poMap;
+    return { poMap, supplierByPo };
   },
 
   getInventoryDashboardData: async () => {
@@ -4462,9 +4468,19 @@ async function eksekusiAddSkuOutbound() {
 
         <div class="d-flex justify-content-between align-items-center mb-2">
           <small class="text-muted" id="inv-info-jumlah">Memuat data...</small>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadInventoryDashboard()" title="Muat Ulang">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <!-- FITUR BARU: tombol "+" untuk Adjustment SKU BARU yang belum pernah ada di
+                 Stock_FG sama sekali -- tidak bisa dijangkau lewat menu Aksi per-baris tabel
+                 karena baris tabel hanya berisi SKU yang SUDAH tercatat di Stock_FG. Membuka
+                 modal Adjustment Stock yang sama, tapi dalam keadaan kosong (lihat
+                 bukaAdjustmentSkuBaru()). -->
+            <button type="button" class="btn btn-outline-success btn-sm" id="inv-btn-add-new-sku" onclick="bukaAdjustmentSkuBaru()" title="Adjustment SKU Baru (belum ada di Stock_FG)" style="display:none;">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadInventoryDashboard()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
         </div>
 
         <div class="table-responsive" id="inv-dashboard-table-wrap" style="max-height: 320px; overflow-y: auto;">
@@ -8965,18 +8981,24 @@ function renderDataPOTable() {
 
 //PUTAWAY RETURN
 
-let globalPutawayReturnData = {}; 
+let globalPutawayReturnData = {};
+let globalPutawayReturnSupplierMap = {}; // FITUR BARU: PO Return -> nama supplier, dipakai utk label dropdown
 
 // Fungsi penarik data awal saat modul return dibuka atau dimuat
 function loadStockReturnToDropdown() {
   let poSelect = document.getElementById("pwr-nopo");
   poSelect.innerHTML = '<option value="">-- Memuat Data PO Return... --</option>';
+  // FITUR PERBAIKAN: sama seperti Putaway Hasil QC -- reset total field turunan begitu
+  // modul ini dibuka/di-reload, jangan menunggu operator memilih PO dulu.
+  onReturnPoSelected();
 
   fetch(WEBAPP_URL + '?action=getStockReturnDataForPutaway')
     .then(function(res) { return res.json(); })
-    .then(function(poMap) {
-      if (poMap && poMap.error) { throw new Error(poMap.error); }
+    .then(function(result) {
+      if (result && result.error) { throw new Error(result.error); }
+      const poMap = (result && result.poMap) || {};
       globalPutawayReturnData = poMap;
+      globalPutawayReturnSupplierMap = (result && result.supplierByPo) || {};
       poSelect.innerHTML = '<option value="">-- Pilih Nomor PO Return --</option>';
 
       const poKeys = Object.keys(poMap);
@@ -8988,7 +9010,9 @@ function loadStockReturnToDropdown() {
       poKeys.forEach(function(poNumber) {
         let opt = document.createElement("option");
         opt.value = poNumber;
-        opt.textContent = poNumber;
+        // FITUR BARU: tampilkan nama supplier di samping Nomor PO Return, mis. "15072 - AWALUNA".
+        const supplierPo = globalPutawayReturnSupplierMap[poNumber] || "";
+        opt.textContent = supplierPo ? `${poNumber} - ${supplierPo}` : poNumber;
         poSelect.appendChild(opt);
       });
     })
@@ -9003,7 +9027,17 @@ function onReturnPoSelected() {
   let skuSelect = document.getElementById("pwr-sku");
   
   skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
-  document.getElementById("pwr-qty").disabled = true;
+
+  // FITUR PERBAIKAN: reset TOTAL field Grade Simpan / Qty setiap kali PO Return berubah
+  // (termasuk saat dikosongkan/di-reload), sama seperti perbaikan di Putaway Hasil QC,
+  // supaya nilai lama dari PO/SKU sesi sebelumnya tidak nyangkut secara visual.
+  const pwrGradeEl = document.getElementById("pwr-grade");
+  if (pwrGradeEl) pwrGradeEl.selectedIndex = 0;
+  const pwrQtyEl = document.getElementById("pwr-qty");
+  pwrQtyEl.value = "";
+  pwrQtyEl.placeholder = "Jumlah";
+  pwrQtyEl.removeAttribute("max");
+  pwrQtyEl.disabled = true;
   document.getElementById("pwr-max-info").style.display = "none";
   resetReturnConfirmSku();
 
@@ -9123,7 +9157,12 @@ function onReturnSkuChanged() {
   let skuSelected = document.getElementById("pwr-sku").value;
 
   if (!poSelected || !skuSelected) {
-    document.getElementById("pwr-qty").disabled = true;
+    const pwrQtyElEmpty = document.getElementById("pwr-qty");
+    pwrQtyElEmpty.value = "";
+    pwrQtyElEmpty.placeholder = "Jumlah";
+    pwrQtyElEmpty.removeAttribute("max");
+    pwrQtyElEmpty.disabled = true;
+    document.getElementById("pwr-max-info").style.display = "none";
     resetReturnConfirmSku();
     return;
   }
@@ -10159,7 +10198,12 @@ let globalPutawayData = {};
 
 function loadQCFGToPutawayDropdown() {
   let poSelect = document.getElementById("pw-nopo");
+  // FITUR PERBAIKAN: reset dropdown PO ke placeholder KOSONG lebih dulu, lalu panggil
+  // onPutawayPoSelected() supaya SEMUA field turunan (SKU, Tanggal QC, Grade Asal, Grade
+  // Final, Qty, Konfirmasi SKU, Lokasi Rak) langsung ikut ter-reset total saat modul ini
+  // dibuka/di-reload (mis. setelah tombol Back) -- bukan menunggu operator memilih PO dulu.
   poSelect.innerHTML = '<option value="">-- Memuat Data PO... --</option>';
+  onPutawayPoSelected();
 
   google.script.run
     .withSuccessHandler(function(poMap) {
@@ -10189,9 +10233,24 @@ function onPutawayPoSelected() {
   let skuSelect = document.getElementById("pw-sku");
   
   skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
-  document.getElementById("pw-grade").disabled = true;
-  document.getElementById("pw-grade-final").disabled = true;
-  document.getElementById("pw-qty").disabled = true;
+
+  // FITUR PERBAIKAN: reset TOTAL field Tanggal QC / Grade Asal / Grade Final / Qty setiap
+  // kali PO berubah (termasuk saat dikosongkan/di-reload), bukan cuma di-disable. Sebelumnya
+  // field-field ini hanya di-disable sehingga nilai lama dari PO/SKU sesi sebelumnya tetap
+  // nyangkut secara visual -- misalnya dropdown PO belum dipilih tapi Tanggal Pembuatan QC,
+  // Grade Asal, Grade Final, dan Qty masih menampilkan data QC lama.
+  document.getElementById("pw-tanggal-qc").value = "";
+  const gradeEl = document.getElementById("pw-grade");
+  gradeEl.selectedIndex = 0;
+  gradeEl.disabled = true;
+  const gradeFinalEl = document.getElementById("pw-grade-final");
+  gradeFinalEl.selectedIndex = 0;
+  gradeFinalEl.disabled = true;
+  const qtyEl = document.getElementById("pw-qty");
+  qtyEl.value = "";
+  qtyEl.placeholder = "Jumlah";
+  qtyEl.removeAttribute("max");
+  qtyEl.disabled = true;
   document.getElementById("pw-max-info").style.display = "none";
   const koreksiMsgEl = document.getElementById("pw-koreksi-grade-msg");
   if (koreksiMsgEl) koreksiMsgEl.style.display = "none";
@@ -10328,9 +10387,21 @@ function onPutawaySkuOrDateChanged() {
   let gradeSelected = document.getElementById("pw-grade").value;
 
   if (!poSelected || !skuSelected) {
-    document.getElementById("pw-grade").disabled = true;
-    document.getElementById("pw-grade-final").disabled = true;
-    document.getElementById("pw-qty").disabled = true;
+    document.getElementById("pw-tanggal-qc").value = "";
+    const gradeElEmpty = document.getElementById("pw-grade");
+    gradeElEmpty.selectedIndex = 0;
+    gradeElEmpty.disabled = true;
+    const gradeFinalElEmpty = document.getElementById("pw-grade-final");
+    gradeFinalElEmpty.selectedIndex = 0;
+    gradeFinalElEmpty.disabled = true;
+    const qtyElEmpty = document.getElementById("pw-qty");
+    qtyElEmpty.value = "";
+    qtyElEmpty.placeholder = "Jumlah";
+    qtyElEmpty.removeAttribute("max");
+    qtyElEmpty.disabled = true;
+    document.getElementById("pw-max-info").style.display = "none";
+    const koreksiMsgElEmpty = document.getElementById("pw-koreksi-grade-msg");
+    if (koreksiMsgElEmpty) koreksiMsgElEmpty.style.display = "none";
     resetPutawayConfirmSku();
     return;
   }
@@ -10609,7 +10680,12 @@ function loadOpenPOToInboundDropdown() {
       poKeys.forEach(function(poNumber) {
         let opt = document.createElement("option");
         opt.value = poNumber;
-        opt.textContent = poNumber;
+        // FITUR BARU: tampilkan keterangan Kategori Inbound (Finish Good / Raw Material /
+        // Return) di samping Nomor PO, supaya operator bisa langsung tahu jenis PO tanpa
+        // perlu pilih dulu satu-satu. Data kategori sudah ada di poMap (dipakai juga oleh
+        // onInboundPoSelected setelah PO dipilih), jadi tidak perlu request tambahan ke server.
+        const kategoriPo = (poMap[poNumber] && poMap[poNumber].kategori) ? poMap[poNumber].kategori : "";
+        opt.textContent = kategoriPo ? `${poNumber} - ${kategoriPo}` : poNumber;
         poSelect.appendChild(opt);
       });
     })
@@ -11365,6 +11441,10 @@ async function eksekusiCancelOutbound() {
       const punyaAksesAksi = USER_PUNYA_AKSES_TRANSFER || USER_PUNYA_AKSES_ADJUSTMENT;
       if (thAksi) thAksi.style.display = punyaAksesAksi ? '' : 'none';
       const kolomTabel = punyaAksesAksi ? 7 : 6;
+      // FITUR BARU: tombol "+" Adjustment SKU Baru cuma untuk user yang punya akses
+      // INV_ADJUSTMENT (akses yang sama dipakai tombol "Adjustment Stock" di popup Aksi).
+      const btnAddNewSku = document.getElementById('inv-btn-add-new-sku');
+      if (btnAddNewSku) btnAddNewSku.style.display = USER_PUNYA_AKSES_ADJUSTMENT ? '' : 'none';
 
       // FITUR BARU: Klik-Baris-untuk-Transfer -- simpan baris yang sedang ditampilkan
       // (hasil filter aktif) supaya handler klik baris bisa ambil datanya lewat index.
@@ -11886,6 +11966,31 @@ async function eksekusiCancelOutbound() {
       const modalEl = document.getElementById('modal-adjustment-stock');
       bootstrap.Modal.getOrCreateInstance(modalEl).show();
       modalEl.addEventListener('shown.bs.modal', () => qtyInput.focus(), { once: true });
+    }
+
+    // FITUR BARU: dipanggil dari tombol "+" di samping tombol Muat Ulang Dashboard
+    // Inventory. Beda dengan bukaAdjustmentDariDashboard() (yang mengisi form dari baris
+    // tabel yang SUDAH ada di Stock_FG), fungsi ini membuka modal Adjustment dalam keadaan
+    // KOSONG supaya operator bisa mengetik SKU yang BELUM PERNAH tercatat di Stock_FG sama
+    // sekali (mis. SKU baru hasil temuan fisik / stock opname). Server (processAdjustmentStockFG)
+    // sudah mendukung ini: kalau kombinasi SKU+Grade+Lokasi belum ada, baris baru otomatis
+    // dibuat di Stock_FG.
+    function bukaAdjustmentSkuBaru() {
+      if (!USER_PUNYA_AKSES_ADJUSTMENT) return;
+
+      document.getElementById('adj-sku').value = '';
+      document.getElementById('adj-grade').value = 'Bagus';
+      document.getElementById('adj-lokasi').value = '';
+      document.getElementById('adj-tipe').value = 'Tambah';
+      const qtyInput = document.getElementById('adj-qty');
+      qtyInput.value = '';
+      qtyInput.placeholder = 'Qty';
+      document.getElementById('adj-keterangan').value = '';
+
+      const modalEl = document.getElementById('modal-adjustment-stock');
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      const skuInput = document.getElementById('adj-sku');
+      modalEl.addEventListener('shown.bs.modal', () => skuInput.focus(), { once: true });
     }
 
     function tutupAdjustmentDashboard() {
