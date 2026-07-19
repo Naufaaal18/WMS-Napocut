@@ -4520,120 +4520,12 @@ async function eksekusiAddSkuOutbound() {
         </div>
       </div>
 
-      <div id="sub-inventory-adjustment" class="card p-3 mb-3 border-start border-4 border-success">
-        <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-square-plus me-2"></i>Adjustment Stock_FG</h6>
-        <p class="text-muted small mb-2">Untuk koreksi stok hasil stock opname / temuan fisik. Tipe "Tambah" menambah
-          qty ke Stock_FG, tipe "Kurang" mengurangi qty Available di Stock_FG (tidak boleh memotong stok yang sedang
-          dialokasikan untuk Outbound).</p>
-        <div class="row g-2">
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Kode SKU</label>
-            <input type="text" id="adj-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Kode SKU">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Grade</label>
-            <select id="adj-grade" class="form-select form-select-sm">
-              <option value="Bagus">Bagus</option>
-              <option value="Minor">Minor</option>
-              <option value="Reject">Reject</option>
-              <option value="Kotor">Kotor</option>
-              <option value="Perbaikan">Perbaikan</option>
-            </select>
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Lokasi Rak</label>
-            <input type="text" id="adj-lokasi" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Kode Lokasi (Master_Lokasi)">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Tipe Adjustment</label>
-            <select id="adj-tipe" class="form-select form-select-sm">
-              <option value="Tambah">Tambah (+)</option>
-              <option value="Kurang">Kurang (-)</option>
-            </select>
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Qty Adjustment</label>
-            <input type="number" id="adj-qty" class="form-control form-control-sm" min="1" placeholder="Qty">
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-bold mb-0">Keterangan / Alasan</label>
-            <input type="text" id="adj-keterangan" class="form-control form-control-sm" placeholder="Cth: Hasil stock opname, selisih fisik, dll">
-          </div>
-        </div>
-        <button type="button" class="btn btn-success btn-sm w-100 fw-bold py-2 mt-3" onclick="submitAdjustmentStockFG()">
-          <i class="fa-solid fa-check me-1"></i>Submit Adjustment
-        </button>
-
-        <hr class="my-3">
-
-        <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-file-excel me-2"></i>Import Excel — Adjustment Stock_FG (Massal)</h6>
-        <p class="text-muted small mb-2">Untuk koreksi stok dalam jumlah banyak sekaligus (hasil stock opname per area/gudang). Pastikan susunan kolom file Excel Anda sesuai urutan template:
-          <br><b>Kode SKU (A) | Grade (B) | Lokasi (C) | Tipe Adjustment (D) | Qty Adjustment (E) | Keterangan (F)</b>
-          <br>Kolom <b>Tipe Adjustment</b> diisi <b>Tambah</b> atau <b>Kurang</b>. Kolom <b>Keterangan</b> wajib diisi untuk setiap baris sebagai audit trail.
-        </p>
-        <button type="button" class="btn btn-outline-success btn-sm w-100 fw-bold mb-2" onclick="downloadTemplateAdjustmentFG()">
-          <i class="fa-solid fa-download me-1"></i>Download Template Excel
-        </button>
-        <div class="input-group input-group-sm">
-          <input type="file" id="adj-import-file-excel" class="form-control" accept=".csv, .xlsx, .xls">
-          <button type="button" class="btn btn-success fw-bold" onclick="prosesImportAdjustmentFG()">
-            <i class="fa-solid fa-cloud-arrow-up"></i> Upload & Proses
-          </button>
-        </div>
-        <div id="adj-import-alert" class="mt-2"></div>
-      </div>
-
-      <div id="sub-inventory-transfer" class="card p-3 mb-3 border-start border-4 border-primary">
-        <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-arrows-left-right me-2"></i>Transfer Lokasi /
-          Downgrade Grade</h6>
-        <p class="text-muted small mb-2">Isi Lokasi Tujuan berbeda untuk transfer antar lokasi, atau Grade Tujuan
-          berbeda untuk downgrade, atau isi keduanya sekaligus untuk transfer + downgrade dalam 1 proses.</p>
-        <div class="row g-2">
-          <div class="col-12">
-            <label class="form-label small fw-bold mb-0">Kode SKU</label>
-            <input type="text" id="trf-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Kode SKU">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Grade Asal</label>
-            <select id="trf-grade-asal" class="form-select form-select-sm">
-              <option value="Bagus">Bagus</option>
-              <option value="Minor">Minor</option>
-              <option value="Reject">Reject</option>
-              <option value="Kotor">Kotor</option>
-              <option value="Perbaikan">Perbaikan</option>
-            </select>
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Lokasi Asal</label>
-            <input type="text" id="trf-lokasi-asal" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Lokasi Asal">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Grade Tujuan</label>
-            <select id="trf-grade-tujuan" class="form-select form-select-sm">
-              <option value="Bagus">Bagus</option>
-              <option value="Minor">Minor</option>
-              <option value="Reject">Reject</option>
-              <option value="Kotor">Kotor</option>
-              <option value="Perbaikan">Perbaikan</option>
-            </select>
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Lokasi Tujuan</label>
-            <input type="text" id="trf-lokasi-tujuan" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Lokasi Tujuan (Master_Lokasi)">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold mb-0">Qty Pindah</label>
-            <input type="number" id="trf-qty" class="form-control form-control-sm" min="1" placeholder="Qty">
-          </div>
-          <div class="col-12">
-            <label class="form-label small fw-bold mb-0">Keterangan</label>
-            <input type="text" id="trf-keterangan" class="form-control form-control-sm" placeholder="Cth: Pindah rak karena reorganisasi gudang">
-          </div>
-        </div>
-        <button type="button" class="btn btn-primary btn-sm w-100 fw-bold py-2 mt-3" onclick="submitTransferStockFG()">
-          <i class="fa-solid fa-right-left me-1"></i>Submit Transfer / Downgrade
-        </button>
-      </div>
+      <!-- FITUR STRUKTURAL: Adjustment Stock_FG & Transfer Lokasi/Grade TIDAK LAGI berupa
+           card inline di halaman Inventory ini. Keduanya sekarang dibuka sebagai MODAL
+           (modal-adjustment-stock / modal-transfer-stock, diletakkan di luar #konten-aplikasi,
+           tepat setelah modal-aksi-dashboard) yang dipicu dari popup "Pilih Aksi" saat operator
+           klik tombol Aksi pada baris tabel Dashboard Inventory. Lihat bukaAdjustmentDariDashboard()
+           dan bukaTransferDariDashboard(). -->
     </div>
 
     <!-- ===== MODUL DASHBOARD OUTBOUND VS INBOUND ===== -->
@@ -6139,6 +6031,151 @@ async function eksekusiAddSkuOutbound() {
     </div>
   </div>
 
+  <!-- MODAL: TRANSFER LOKASI / DOWNGRADE GRADE -->
+  <!-- Dibuka dari popup "Pilih Aksi" (lihat bukaTransferDariDashboard()). Sama seperti
+       modal-detail-po, sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home supaya
+       bisa overlay terlepas dari tab yang sedang aktif. -->
+  <div class="modal fade" id="modal-transfer-stock" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
+          <h6 class="modal-title fw-bold mb-0"><i class="fa-solid fa-arrows-left-right me-2"></i>Transfer Lokasi / Downgrade Grade</h6>
+          <button type="button" class="btn-close btn-close-white" onclick="tutupTransferDashboard()"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="text-muted small mb-2">Isi Lokasi Tujuan berbeda untuk transfer antar lokasi, atau Grade Tujuan
+            berbeda untuk downgrade, atau isi keduanya sekaligus untuk transfer + downgrade dalam 1 proses.</p>
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small fw-bold mb-0">Kode SKU</label>
+              <input type="text" id="trf-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Kode SKU">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Grade Asal</label>
+              <select id="trf-grade-asal" class="form-select form-select-sm">
+                <option value="Bagus">Bagus</option>
+                <option value="Minor">Minor</option>
+                <option value="Reject">Reject</option>
+                <option value="Kotor">Kotor</option>
+                <option value="Perbaikan">Perbaikan</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Lokasi Asal</label>
+              <input type="text" id="trf-lokasi-asal" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Lokasi Asal">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Grade Tujuan</label>
+              <select id="trf-grade-tujuan" class="form-select form-select-sm">
+                <option value="Bagus">Bagus</option>
+                <option value="Minor">Minor</option>
+                <option value="Reject">Reject</option>
+                <option value="Kotor">Kotor</option>
+                <option value="Perbaikan">Perbaikan</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Lokasi Tujuan</label>
+              <input type="text" id="trf-lokasi-tujuan" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Lokasi Tujuan (Master_Lokasi)">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Qty Pindah</label>
+              <input type="number" id="trf-qty" class="form-control form-control-sm" min="1" placeholder="Qty">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-bold mb-0">Keterangan</label>
+              <input type="text" id="trf-keterangan" class="form-control form-control-sm" placeholder="Cth: Pindah rak karena reorganisasi gudang">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupTransferDashboard()">Tutup</button>
+          <button type="button" class="btn btn-primary btn-sm fw-bold" onclick="submitTransferStockFG()">
+            <i class="fa-solid fa-right-left me-1"></i>Submit Transfer / Downgrade
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADJUSTMENT STOCK_FG (STOCK OPNAME) -->
+  <!-- Dibuka dari popup "Pilih Aksi" (lihat bukaAdjustmentDariDashboard()). Sama seperti
+       modal-detail-po, sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home. -->
+  <div class="modal fade" id="modal-adjustment-stock" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2" style="background:#198754;color:#fff;">
+          <h6 class="modal-title fw-bold mb-0"><i class="fa-solid fa-square-plus me-2"></i>Adjustment Stock_FG</h6>
+          <button type="button" class="btn-close btn-close-white" onclick="tutupAdjustmentDashboard()"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="text-muted small mb-2">Untuk koreksi stok hasil stock opname / temuan fisik. Tipe "Tambah" menambah
+            qty ke Stock_FG, tipe "Kurang" mengurangi qty Available di Stock_FG (tidak boleh memotong stok yang sedang
+            dialokasikan untuk Outbound).</p>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Kode SKU</label>
+              <input type="text" id="adj-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Kode SKU">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Grade</label>
+              <select id="adj-grade" class="form-select form-select-sm">
+                <option value="Bagus">Bagus</option>
+                <option value="Minor">Minor</option>
+                <option value="Reject">Reject</option>
+                <option value="Kotor">Kotor</option>
+                <option value="Perbaikan">Perbaikan</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Lokasi Rak</label>
+              <input type="text" id="adj-lokasi" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Kode Lokasi (Master_Lokasi)">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Tipe Adjustment</label>
+              <select id="adj-tipe" class="form-select form-select-sm">
+                <option value="Tambah">Tambah (+)</option>
+                <option value="Kurang">Kurang (-)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold mb-0">Qty Adjustment</label>
+              <input type="number" id="adj-qty" class="form-control form-control-sm" min="1" placeholder="Qty">
+            </div>
+            <div class="col-12">
+              <label class="form-label small fw-bold mb-0">Keterangan / Alasan</label>
+              <input type="text" id="adj-keterangan" class="form-control form-control-sm" placeholder="Cth: Hasil stock opname, selisih fisik, dll">
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-file-excel me-2"></i>Import Excel — Adjustment Stock_FG (Massal)</h6>
+          <p class="text-muted small mb-2">Untuk koreksi stok dalam jumlah banyak sekaligus (hasil stock opname per area/gudang). Pastikan susunan kolom file Excel Anda sesuai urutan template:
+            <br><b>Kode SKU (A) | Grade (B) | Lokasi (C) | Tipe Adjustment (D) | Qty Adjustment (E) | Keterangan (F)</b>
+            <br>Kolom <b>Tipe Adjustment</b> diisi <b>Tambah</b> atau <b>Kurang</b>. Kolom <b>Keterangan</b> wajib diisi untuk setiap baris sebagai audit trail.
+          </p>
+          <button type="button" class="btn btn-outline-success btn-sm w-100 fw-bold mb-2" onclick="downloadTemplateAdjustmentFG()">
+            <i class="fa-solid fa-download me-1"></i>Download Template Excel
+          </button>
+          <div class="input-group input-group-sm">
+            <input type="file" id="adj-import-file-excel" class="form-control" accept=".csv, .xlsx, .xls">
+            <button type="button" class="btn btn-success fw-bold" onclick="prosesImportAdjustmentFG()">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Upload & Proses
+            </button>
+          </div>
+          <div id="adj-import-alert" class="mt-2"></div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupAdjustmentDashboard()">Tutup</button>
+          <button type="button" class="btn btn-success btn-sm fw-bold" onclick="submitAdjustmentStockFG()">
+            <i class="fa-solid fa-check me-1"></i>Submit Adjustment
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: KONFIRMASI KUSTOM (PENGGANTI window.confirm() BAWAAN BROWSER) -->
   <!-- Sengaja diletakkan DI LUAR #konten-aplikasi & #halaman-home (bukan nested di dalamnya),
        supaya tetap bisa tampil walau sedang berada di halaman Home / Login sekalipun
@@ -6471,8 +6508,10 @@ async function eksekusiAddSkuOutbound() {
       CHECKING_DASHBOARD:   { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-dashchecker-row',      subcard: 'sub-dashboard-checker' },
       CHECKING_LIVEMONITOR: { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-livechecker-row',      subcard: 'sub-live-checker-monitor' },
       INV_DASHBOARD:        { grup: 'home-group-inventory',    tab: 'tab-inventory',    subrow: 'home-subrow-inv-dashboard' },
-      INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory',    subcard: 'sub-inventory-adjustment' },
-      INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory',    subcard: 'sub-inventory-transfer' },
+      // INV_ADJUSTMENT & INV_TRANSFER TIDAK LAGI punya subcard sendiri di Home (sudah jadi
+      // modal yang dipicu dari popup Aksi), hanya perlu grup/tab Inventory tetap terbuka.
+      INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory' },
+      INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory' },
       LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
       DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
       EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
@@ -6600,12 +6639,12 @@ async function eksekusiAddSkuOutbound() {
       // (Admin/Supervisor/Manager akan menampilkan semuanya kembali di bawah)
       document.getElementById('home-subrow-inv-dashboard').style.display = 'none';
       // FITUR STRUKTURAL: "Adjustment Stock" & "Transfer Lokasi/Grade" TIDAK LAGI punya baris
-      // menu tersendiri di Home (sudah dipindah -- hanya bisa diakses lewat tombol Aksi di baris
-      // tabel Dashboard Inventory, lihat bukaPilihanAksiDashboard()). Card-nya (sub-inventory-adjustment
-      // / sub-inventory-transfer) tetap disembunyikan default di sini, lalu di-unhide oleh RBAC
-      // (subcard) untuk role yang punya akses INV_ADJUSTMENT / INV_TRANSFER.
-      document.getElementById('sub-inventory-adjustment').classList.add('d-none');
-      document.getElementById('sub-inventory-transfer').classList.add('d-none');
+      // menu maupun card tersendiri di Home -- sekarang berupa MODAL (modal-adjustment-stock /
+      // modal-transfer-stock) yang hanya bisa diakses lewat tombol Aksi di baris tabel Dashboard
+      // Inventory (lihat bukaPilihanAksiDashboard()). Modal Bootstrap sudah tersembunyi secara
+      // default, jadi tidak perlu di-d-none-kan lagi di sini. Akses tetap digerbang oleh
+      // USER_PUNYA_AKSES_TRANSFER / USER_PUNYA_AKSES_ADJUSTMENT langsung di dalam fungsi
+      // buka*DariDashboard().
       document.getElementById('home-subrow-export-suratjalan').style.display = 'none';
       document.getElementById('home-subrow-export-laporan').style.display = 'none';
       document.getElementById('home-subrow-export-dataqc').style.display = 'none';
@@ -11556,13 +11595,18 @@ async function eksekusiCancelOutbound() {
       google.script.run
         .withSuccessHandler(res => {
           if (res.success) {
-            showAlert(res.message, "success");
             document.getElementById('adj-sku').value = '';
             document.getElementById('adj-lokasi').value = '';
             document.getElementById('adj-qty').value = '';
             document.getElementById('adj-keterangan').value = '';
+            // Tutup modal dulu supaya alert sukses terlihat jelas di halaman utama,
+            // baru refresh data dashboard.
+            tutupAdjustmentDashboard();
+            showAlert(res.message, "success");
             loadInventoryDashboard();
           } else {
+            // Modal TETAP TERBUKA kalau gagal, supaya operator bisa langsung
+            // memperbaiki input tanpa perlu membuka ulang popup Aksi.
             showAlert(res.message, "danger");
           }
         })
@@ -11737,22 +11781,21 @@ async function eksekusiCancelOutbound() {
       qtyInput.max = Number(r.qtyOnHand || 0);
       qtyInput.placeholder = `Qty (tersedia ${Number(r.qtyOnHand || 0).toLocaleString('id-ID')})`;
 
-      // Card Transfer sekarang TIDAK PUNYA baris menu Home sendiri lagi -- pastikan tetap
-      // ditampilkan (jaga-jaga kalau d-none) lalu scroll & beri highlight sebentar supaya
-      // operator sadar form-nya baru saja terisi otomatis dari baris yang diklik.
-      const cardTransfer = document.getElementById('sub-inventory-transfer');
-      if (cardTransfer) {
-        cardTransfer.classList.remove('d-none');
-        cardTransfer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        cardTransfer.classList.add('border-warning');
-        setTimeout(() => cardTransfer.classList.remove('border-warning'), 1500);
-      }
-      qtyInput.focus();
+      // FITUR STRUKTURAL: buka modal Transfer langsung di atas (seperti Detail PO),
+      // bukan lagi scroll ke card inline.
+      const modalEl = document.getElementById('modal-transfer-stock');
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      modalEl.addEventListener('shown.bs.modal', () => qtyInput.focus(), { once: true });
+    }
+
+    function tutupTransferDashboard() {
+      const modalEl = document.getElementById('modal-transfer-stock');
+      bootstrap.Modal.getOrCreateInstance(modalEl).hide();
     }
 
     // FITUR BARU: pasangan bukaTransferDariDashboard() di atas, tapi untuk Adjustment Stock.
     // Mengisi form Adjustment (SKU/Grade/Lokasi) dari baris yang diklik di Dashboard, lalu
-    // scroll ke card Adjustment. Qty & Tipe Adjustment sengaja TIDAK diisi otomatis karena
+    // buka modal Adjustment. Qty & Tipe Adjustment sengaja TIDAK diisi otomatis karena
     // operator wajib menghitung/menentukan sendiri hasil stock opname per baris.
     function bukaAdjustmentDariDashboard(idx) {
       // Jaga-jaga (defense in depth): renderInventoryTable() memang hanya membuat baris
@@ -11772,16 +11815,16 @@ async function eksekusiCancelOutbound() {
       qtyInput.placeholder = `Qty (saat ini ${Number(r.qtyOnHand || 0).toLocaleString('id-ID')})`;
       document.getElementById('adj-keterangan').value = '';
 
-      // Card Adjustment sekarang TIDAK PUNYA baris menu Home sendiri lagi -- pastikan tetap
-      // ditampilkan (jaga-jaga kalau d-none) lalu scroll & beri highlight sebentar.
-      const cardAdjustment = document.getElementById('sub-inventory-adjustment');
-      if (cardAdjustment) {
-        cardAdjustment.classList.remove('d-none');
-        cardAdjustment.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        cardAdjustment.classList.add('border-warning');
-        setTimeout(() => cardAdjustment.classList.remove('border-warning'), 1500);
-      }
-      qtyInput.focus();
+      // FITUR STRUKTURAL: buka modal Adjustment langsung di atas (seperti Detail PO),
+      // bukan lagi scroll ke card inline.
+      const modalEl = document.getElementById('modal-adjustment-stock');
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      modalEl.addEventListener('shown.bs.modal', () => qtyInput.focus(), { once: true });
+    }
+
+    function tutupAdjustmentDashboard() {
+      const modalEl = document.getElementById('modal-adjustment-stock');
+      bootstrap.Modal.getOrCreateInstance(modalEl).hide();
     }
 
     // =========================================================================
@@ -11892,11 +11935,16 @@ async function eksekusiCancelOutbound() {
       google.script.run
         .withSuccessHandler(res => {
           if (res.success) {
-            showAlert(res.message, "success");
             document.getElementById('trf-qty').value = '';
             document.getElementById('trf-keterangan').value = '';
+            // Tutup modal dulu supaya alert sukses terlihat jelas di halaman utama,
+            // baru refresh data dashboard.
+            tutupTransferDashboard();
+            showAlert(res.message, "success");
             loadInventoryDashboard();
           } else {
+            // Modal TETAP TERBUKA kalau gagal, supaya operator bisa langsung
+            // memperbaiki input tanpa perlu membuka ulang popup Aksi.
             showAlert(res.message, "danger");
           }
         })
