@@ -10953,6 +10953,22 @@ function showVIAlert(message, type = "success") {
   }
 }
 
+// FITUR BARU: ambil prefix (awalan) yang sama dari sekumpulan kode SKU dasar,
+// mis. ["MLT","MLT28","MLT31"] -> "MLT", ["KLSSP","KLSBB","KLSCR",...] -> "KLS".
+// Kalau cuma ada 1 kode dasar, langsung dikembalikan apa adanya. Kalau kode-kode
+// tsb ternyata tidak punya awalan sama sekali, fallback ke gabungan "/" seperti biasa.
+function _viCommonPrefix(arr) {
+  if (!arr || arr.length === 0) return '';
+  if (arr.length === 1) return arr[0];
+  let prefix = arr[0];
+  for (let i = 1; i < arr.length && prefix; i++) {
+    let j = 0;
+    while (j < prefix.length && j < arr[i].length && prefix[j] === arr[i][j]) j++;
+    prefix = prefix.slice(0, j);
+  }
+  return prefix || arr.join('/');
+}
+
 // Muat SELURUH daftar item inbound yang masih "Pending Validasi" dari server,
 // lalu isi dropdown No PO (distinct, terurut). PO yang sedang dipilih (jika
 // masih ada item pending-nya) dipertahankan supaya tidak perlu pilih ulang
@@ -10983,13 +10999,14 @@ function loadValidasiInboundData() {
         // FITUR BARU: tampilkan kode SKU dasar (SKU tanpa suffix varian setelah tanda "-"
         // pertama, mis. "PAFN2-BRW" -> "PAFN2") di samping No PO supaya operator langsung
         // tahu produk apa isi PO tsb tanpa perlu membukanya dulu. Kalau dalam 1 PO ternyata
-        // ada lebih dari 1 kode dasar yang berbeda, semua digabung dengan "/".
+        // ada lebih dari 1 kode dasar yang berbeda (mis. "MLT","MLT28","MLT31"), diringkas
+        // jadi 1 awalan yang sama-sama dimiliki semuanya (mis. "MLT") via _viCommonPrefix.
         selectPo.innerHTML = '<option value="">— Pilih No. PO —</option>' +
           daftarPo.map(po => {
             const baseSkuSet = [...new Set(
               VI_DATA_PENDING.filter(it => it.noPo === po).map(it => (it.sku || '').split('-')[0]).filter(Boolean)
             )];
-            const label = baseSkuSet.length > 0 ? `${po} - ${baseSkuSet.join('/')}` : po;
+            const label = baseSkuSet.length > 0 ? `${po} - ${_viCommonPrefix(baseSkuSet)}` : po;
             return `<option value="${po}">${label}</option>`;
           }).join('');
         // FITUR PERBAIKAN: SELALU reset ke placeholder kosong setiap kali daftar dimuat
