@@ -517,32 +517,37 @@ Object.assign(ENDPOINTS, {
       .eq('no_request', noRequest).eq('status', 'Picking Pending');
     if (error) throw new Error(error.message);
 
-    // PERBAIKAN PERFORMA: sebelumnya untuk SETIAP baris SKU, 2 request jaringan (qty yang
-    // sudah dipicking + daftar lokasi rak) dipanggil satu per satu secara BERURUTAN (await
-    // di dalam for-loop). Untuk Request dengan banyak SKU ini jadi antrian panjang request
-    // yang saling menunggu, terasa lambat buat picker (mis. 15 SKU x 2 request x ~200ms
-    // bisa >6 detik hanya menunggu jaringan). Sekarang semua request untuk SEMUA baris
-    // dijalankan PARALEL sekaligus lewat Promise.all -- hasil akhirnya identik (urutan
-    // flatList tetap mengikuti urutan baris `data` seperti semula), cuma jauh lebih cepat.
-    const rows = data || [];
+    // PERBAIKAN BUG (2026-07-19): Kalau SKU+grade yang sama muncul di LEBIH DARI 1 baris
+    // untuk request yang sama (mis. SKU ditambahkan 2x lewat "Add SKU to Existing Request"),
+    // baris-baris itu HARUS diproses sebagai SATU kebutuhan gabungan -- bukan dihitung
+    // sendiri-sendiri per baris. Sebelumnya "sisa kebutuhan" per baris dihitung dari
+    // qty_allocated baris itu SENDIRI dikurangi total picking GLOBAL (lintas semua baris
+    // SKU+grade yang sama), yang menyebabkan baris kedua salah dikira "sudah terpenuhi"
+    // kalau baris pertama sudah selesai dipicking duluan -- padahal qty_allocated baris
+    // kedua itu sendiri belum pernah disentuh. Sekarang dedup dulu per (kode_sku, grade),
+    // lalu pakai RPC get_kebutuhan_picking_sku (SATU sumber kebenaran, dipakai juga oleh
+    // process_picking_sku di database) supaya "sisa kebutuhan" selalu SUM lintas semua
+    // baris, konsisten dengan cara "sudah dipicking" juga dihitung global.
+    const rowsRaw = data || [];
+    const dedupMap = new Map();
+    rowsRaw.forEach(r => {
+      const key = r.kode_sku + '||' + (r.grade || '');
+      if (!dedupMap.has(key)) dedupMap.set(key, r); // cukup ambil salah satu, kebutuhan dihitung agregat oleh RPC
+    });
+    const rows = Array.from(dedupMap.values());
+
+    // PERBAIKAN PERFORMA: semua baris SKU diproses PARALEL (Promise.all), bukan berurutan.
     const detailPerRow = await Promise.all(rows.map(async (row) => {
-      // PERBAIKAN STRUKTURAL 2026-07-17: lokasi picking SEKARANG dibaca dari ledger resmi
-      // (getLokasiReservasiPicking / outbound_alokasi_lokasi) -- lokasi persis yang direservasi
-      // saat request ini dibuat -- bukan lagi dari getLokasiAlokasiBySkuGrade (qty_available
-      // global) yang bisa menunjuk ke lokasi yang salah / menyebabkan "Tidak ada" padahal
-      // barangnya ada & memang sudah dijanjikan ke request ini.
-      const [qtySudahDipicking, lokasiList] = await Promise.all([
-        _callRpc('get_qty_sudah_dipicking', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
+      const [kebutuhan, lokasiList] = await Promise.all([
+        _callRpc('get_kebutuhan_picking_sku', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
         ENDPOINTS.getLokasiReservasiPicking(noRequest, row.kode_sku, row.grade)
       ]);
-      return { row, qtySudahDipicking, lokasiList };
+      const k = (Array.isArray(kebutuhan) && kebutuhan[0]) ? kebutuhan[0] : { qty_wajib: 0, sisa_kebutuhan: 0 };
+      return { row, qtyWajib: Number(k.qty_wajib || 0), sisaKebutuhan: Number(k.sisa_kebutuhan || 0), lokasiList };
     }));
 
     const flatList = [];
-    for (const { row, qtySudahDipicking, lokasiList } of detailPerRow) {
-      const qtyWajib = Number(row.qty_allocated || 0);
-      const qtyOosSoFar = Number(row.qty_shortpick || 0);
-      const sisaKebutuhan = qtyWajib - Number(qtySudahDipicking || 0) - qtyOosSoFar;
+    for (const { row, qtyWajib, sisaKebutuhan, lokasiList } of detailPerRow) {
       if (sisaKebutuhan <= 0) continue;
 
       if (lokasiList.length === 0) {
