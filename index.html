@@ -2037,55 +2037,44 @@ window.fetch = function (url, options) {
     }
 
     /* =========================================================================
-       FITUR BARU: TAMPILAN MOBILE — MODUL INBOUND
-       (Inbound Receiving list SKU & Validasi Inbound sebelum QC)
+       TAMPILAN MOBILE — MODUL INBOUND RECEIVING (list SKU per PO)
        -------------------------------------------------------------------------
-       Kedua tabel ini berisi input qty/lokasi per baris, jadi tiap baris diubah
-       jadi kartu dengan tata letak flex: checkbox+SKU di baris atas, lalu
-       input-input ditumpuk penuh di bawahnya supaya mudah diisi dengan jari.
-       Tidak mengubah apa pun di layar >= 577px (desktop/tablet tetap tabel biasa).
+       Sesuai request: tampilan mobile TETAP berupa tabel yang sama persis dengan
+       versi desktop (header & urutan kolom sama: checkbox | Kode SKU | Sisa Order |
+       Qty Diterima | Lokasi Rak | Short) -- BUKAN diubah jadi kartu bertumpuk.
+       Yang disesuaikan hanya ukurannya: font & padding dipadatkan, lebar tiap
+       kolom dipatok kecil (table-layout:fixed) supaya seluruh kolom tetap muat
+       dalam 1 layar tanpa perlu geser ke samping (scroll horizontal).
+       Tidak mengubah apa pun di layar >= 577px (desktop/tablet tetap ukuran asli).
        ========================================================================= */
     @media (max-width: 576px) {
-      /* --- Inbound Receiving (Open PO): daftar SKU pada PO --- */
-      #sub-inbound #ib-list-container thead { display: none; }
-      #sub-inbound #ib-list-container .table-responsive { overflow-x: hidden; }
-      #ib-list-tbody, #ib-list-tbody tr, #ib-list-tbody td { display: block; width: 100%; max-width: 100%; }
-      #ib-list-tbody tr {
-        display: flex; flex-wrap: wrap; align-items: center;
-        background: #fff; border: 1px solid #e3e6ec; border-radius: 10px;
-        padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      #sub-inbound { padding: 10px !important; }
+      #sub-inbound #ib-list-container .table-responsive { overflow-x: hidden; max-height: 320px; }
+      #sub-inbound #ib-list-container table { table-layout: fixed; font-size: 9.5px; }
+      #sub-inbound #ib-list-container th, #sub-inbound #ib-list-container td {
+        padding: 3px 2px !important; overflow: hidden; word-break: break-word;
       }
-      #ib-list-tbody td { border: none !important; padding: 4px 0 !important; }
-      /* FITUR PERBAIKAN: kolom checkbox (Pilih & Short) sebelumnya ikut kena aturan generik
-         "width:100%" di atas, yang bentrok dengan flex:0 0 auto (flex-basis:auto memakai
-         nilai width) -- akibatnya checkbox melebar jadi 1 baris penuh sendiri dan terlihat
-         seperti ada 2 kotak centang kosong tanpa label. Sekarang di-override width:auto
-         supaya keduanya compact & sejajar di baris header kartu (seperti header tabel desktop:
-         checkbox | Kode SKU | ... | Short), tanpa memicu geser horizontal karena tetap di
-         dalam lebar kartu (flex-wrap tetap aktif). */
-      #ib-list-tbody td:nth-child(1) { order: 1; flex: 0 0 auto; width: auto !important; }
-      #ib-list-tbody td:nth-child(1) input { width: 20px; height: 20px; margin: 0; }
-      #ib-list-tbody td:nth-child(2) { order: 2; flex: 1 1 auto; width: auto !important; font-size: 14.5px; padding-left: 8px !important; }
-      #ib-list-tbody td:nth-child(6) {
-        order: 3; flex: 0 0 auto; width: auto !important;
-        display: flex; align-items: center; gap: 5px;
+      #sub-inbound #ib-list-container thead th { font-size: 8.5px; line-height: 1.15; white-space: normal; }
+      /* Lebar kolom dipatok fixed (total sengaja dijaga di bawah ~300px supaya pas di
+         layar HP terkecil sekalipun): checkbox 18px, SKU 78px, Sisa Order 38px,
+         Qty Diterima 54px, Lokasi Rak 58px, Short 22px. */
+      #ib-list-container thead th:nth-child(1), #ib-list-tbody td:nth-child(1) { width: 18px; }
+      #ib-list-container thead th:nth-child(2), #ib-list-tbody td:nth-child(2) { width: 78px; }
+      #ib-list-container thead th:nth-child(3), #ib-list-tbody td:nth-child(3) { width: 38px; }
+      #ib-list-container thead th:nth-child(4), #ib-list-tbody td:nth-child(4) { width: 54px; }
+      #ib-th-lokasi, #ib-list-tbody td:nth-child(5) { width: 58px; }
+      #ib-list-container thead th:nth-child(6), #ib-list-tbody td:nth-child(6) { width: 22px; }
+      #ib-list-tbody td:nth-child(1) input, #ib-list-tbody td:nth-child(6) input {
+        width: 15px; height: 15px; margin: 0;
       }
-      #ib-list-tbody td:nth-child(6)::before { content: attr(data-label); font-weight: 600; color: #8a92a6; font-size: 11px; }
-      #ib-list-tbody td:nth-child(6) input { width: 20px; height: 20px; margin: 0; }
-      #ib-list-tbody td:nth-child(3) {
-        order: 4; flex: 0 0 100%; display: flex; justify-content: space-between;
-        font-size: 13px; padding-top: 6px !important; margin-top: 4px; border-top: 1px solid #f0f1f4 !important;
+      #ib-list-tbody td.fw-bold { font-size: 9.5px; line-height: 1.2; }
+      #ib-list-tbody .ib-row-qty, #ib-list-tbody .ib-row-lokasi {
+        font-size: 9px !important; padding: 2px 3px !important; min-height: 24px; width: 100%;
       }
-      #ib-list-tbody td:nth-child(3)::before { content: attr(data-label); font-weight: 600; color: #8a92a6; font-size: 11.5px; }
-      #ib-list-tbody td:nth-child(4) { order: 5; flex: 0 0 100%; }
-      #ib-list-tbody td:nth-child(4)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
-      #ib-list-tbody td:nth-child(4) input { width: 100%; min-height: 38px; }
-      /* FITUR PERBAIKAN: kolom Lokasi Rak sekarang SELALU ditampilkan (Finish Good & Return
-         otomatis terisi readonly "Staging Inbound"/"Staging Return", tidak lagi input hidden
-         kosong), jadi aturan sembunyikan-jika-hidden yang lama sudah tidak diperlukan lagi. */
-      #ib-list-tbody td:nth-child(5) { order: 6; flex: 0 0 100%; }
-      #ib-list-tbody td:nth-child(5)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
-      #ib-list-tbody td:nth-child(5) input { width: 100%; min-height: 38px; }
+      /* Field Lokasi Rak utk Finish Good/Return berisi teks readonly ("Staging Inbound"/
+         "Staging Return") yang lebih panjang dari lebar kolom 58px -- dipotong dgn "..."
+         (bukan info krusial yang wajib dibaca utuh di layar, cukup indikator saja). */
+      #ib-list-tbody .ib-row-lokasi[readonly] { white-space: nowrap; text-overflow: ellipsis; }
 
       /* --- Validasi Inbound (Sebelum QC) --- */
       #sub-validasi-inbound #vi-table-wrap thead { display: none; }
