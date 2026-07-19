@@ -2099,30 +2099,38 @@ window.fetch = function (url, options) {
       #ib-list-tbody .ib-lokasi-wrap { flex-direction: column; gap: 2px; align-items: stretch; }
       #ib-list-tbody .ib-lokasi-scan-btn { width: 100%; padding: 1px 0 !important; font-size: 8px !important; line-height: 1.3; }
 
-      /* --- Validasi Inbound (Sebelum QC) --- */
-      #sub-validasi-inbound #vi-table-wrap thead { display: none; }
-      #vi-tbody, #vi-tbody tr, #vi-tbody td { display: block; width: 100%; }
-      #vi-tbody tr {
-        display: flex; flex-wrap: wrap; align-items: center;
-        background: #fff; border: 1px solid #e3e6ec; border-radius: 10px;
-        padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+      /* --- Validasi Inbound (Sebelum QC) ---
+         Sebelumnya: baris tabel diubah jadi "kartu" bertumpuk (header disembunyikan,
+         tiap <td> jadi block sendiri). Sesuai permintaan user: tampilan mobile dibuat
+         SAMA seperti desktop (tabel asli, header tetap terlihat, urutan kolom sama:
+         checkbox | SKU | Deskripsi | Qty Divalidasi | Tgl Terima) hanya dipadatkan
+         ukurannya, mengikuti pola yang sama persis dengan tabel Inbound Receiving. */
+      #sub-validasi-inbound { padding: 10px !important; }
+      #sub-validasi-inbound #vi-table-wrap .table-responsive { overflow-x: hidden !important; }
+      #sub-validasi-inbound #vi-table-wrap table {
+        table-layout: fixed !important; font-size: 9.5px !important;
       }
-      #vi-tbody tr:has(td[colspan]) { display: block; background: transparent; border: none; box-shadow: none; padding: 0; }
-      #vi-tbody td { border: none !important; padding: 4px 0 !important; }
-      #vi-tbody td[colspan] { text-align: center; }
-      #vi-tbody td:nth-child(1) { order: 1; flex: 0 0 auto; }
-      #vi-tbody td:nth-child(1) input { width: 20px; height: 20px; }
-      #vi-tbody td:nth-child(2) { order: 2; flex: 1 1 auto; font-size: 14.5px; }
-      #vi-tbody td:nth-child(3) {
-        order: 4; flex: 0 0 100%; font-size: 13px; color: #495057;
-        padding-top: 6px !important; margin-top: 4px; border-top: 1px solid #f0f1f4 !important;
+      #sub-validasi-inbound #vi-table-wrap th, #sub-validasi-inbound #vi-table-wrap td {
+        padding: 3px 2px !important; overflow: hidden; word-break: break-word; white-space: normal;
       }
-      #vi-tbody td:nth-child(3)::before { content: attr(data-label) ": "; font-weight: 600; color: #8a92a6; }
-      #vi-tbody td:nth-child(4) { order: 5; flex: 0 0 100%; text-align: left; }
-      #vi-tbody td:nth-child(4)::before { content: attr(data-label); display: block; font-weight: 600; color: #8a92a6; font-size: 11.5px; margin-bottom: 3px; }
-      #vi-tbody td:nth-child(4) input { width: 140px !important; }
-      #vi-tbody td:nth-child(5) { order: 6; flex: 0 0 100%; display: flex; justify-content: space-between; font-size: 13px; }
-      #vi-tbody td:nth-child(5)::before { content: attr(data-label); font-weight: 600; color: #8a92a6; font-size: 11.5px; }
+      #sub-validasi-inbound #vi-table-wrap thead th { font-size: 8.5px !important; line-height: 1.15; }
+      /* Lebar kolom dipatok fixed (total dijaga ~280px supaya muat di HP terkecil):
+         checkbox 24px, SKU 60px, Deskripsi 76px, Qty Divalidasi 60px, Tgl Terima 60px. */
+      #vi-table-wrap thead th:nth-child(1), #vi-tbody td:nth-child(1) { width: 24px !important; }
+      #vi-table-wrap thead th:nth-child(2), #vi-tbody td:nth-child(2) { width: 60px !important; }
+      #vi-table-wrap thead th:nth-child(3), #vi-tbody td:nth-child(3) { width: 76px !important; }
+      #vi-table-wrap thead th:nth-child(4), #vi-tbody td:nth-child(4) { width: 60px !important; }
+      #vi-table-wrap thead th:nth-child(5), #vi-tbody td:nth-child(5) { width: 60px !important; }
+      #vi-tbody td:nth-child(1) input[type="checkbox"] { width: 14px; height: 14px; margin: 0; }
+      #vi-tbody td:nth-child(2) { font-weight: 700; font-size: 9.5px; }
+      #vi-tbody td:nth-child(3) { font-size: 9px; color: #495057; }
+      #vi-tbody td:nth-child(4) input.vi-item-qty {
+        width: 100% !important; font-size: 9px !important; padding: 2px 1px !important; min-height: 22px;
+      }
+      #vi-tbody td:nth-child(4) div { font-size: 7.5px !important; }
+      #vi-tbody td:nth-child(5) { font-size: 8.5px; line-height: 1.2; }
+      #vi-tbody td[colspan] { width: auto !important; white-space: normal; }
+
 
       /* Tombol Validasi Terpilih / Cetak Bukti Terima ditumpuk penuh agar tidak sempit */
       #vi-action-btns { flex-direction: column; }
@@ -10567,6 +10575,25 @@ let globalInboundPOData = {}; // Menyimpan database PO lokal sementara di browse
 function loadOpenPOToInboundDropdown() {
   let poSelect = document.getElementById("ib-nopo");
   poSelect.innerHTML = '<option value="">-- Memuat Data Open PO... --</option>';
+
+  // FIX: sebelumnya fungsi ini HANYA mengisi ulang opsi dropdown ke kondisi kosong
+  // ("-- Pilih Nomor PO --") tanpa membersihkan sisa tampilan dari PO yang tadi dipilih
+  // (Kategori Inbound & daftar SKU tetap terlihat berisi data lama). Ini terjadi karena
+  // reset select lewat innerHTML TIDAK memicu event "change", jadi onInboundPoSelected()
+  // (yang biasanya membersihkan tampilan) tidak ikut terpanggil. Akibatnya, tiap kali modul
+  // ini dibuka ulang (mis. klik tombol back lalu masuk lagi dari menu Home), dropdown PO
+  // terlihat kosong tapi tabel & kategori di bawahnya masih menampilkan sisa PO sebelumnya.
+  // Fix: bersihkan langsung di sini juga, bukan cuma mengandalkan onchange.
+  const kategoriInputReset = document.getElementById("ib-kategori");
+  const listContainerReset = document.getElementById("ib-list-container");
+  const listTbodyReset = document.getElementById("ib-list-tbody");
+  const checkAllReset = document.getElementById("ib-check-all");
+  const filterInputReset = document.getElementById("ib-filter-input");
+  if (kategoriInputReset) kategoriInputReset.value = "";
+  if (listTbodyReset) listTbodyReset.innerHTML = "";
+  if (listContainerReset) listContainerReset.style.display = "none";
+  if (checkAllReset) checkAllReset.checked = false;
+  if (filterInputReset) filterInputReset.value = "";
 
   google.script.run
     .withSuccessHandler(function(poMap) {
