@@ -2096,7 +2096,7 @@ window.fetch = function (url, options) {
       #ib-list-tbody .ib-lokasi-wrap { flex-direction: column; gap: 2px; align-items: stretch; }
       #ib-list-tbody .ib-lokasi-scan-btn { width: 100%; padding: 1px 0 !important; font-size: 8px !important; line-height: 1.3; }
 
-      /* --- Validasi Inbound (Sebelum QC) ---
+      /* --- Validasi Inbound Sebelum QC ---
          Sebelumnya: baris tabel diubah jadi "kartu" bertumpuk (header disembunyikan,
          tiap <td> jadi block sendiri). Sesuai permintaan user: tampilan mobile dibuat
          SAMA seperti desktop (tabel asli, header tetap terlihat, urutan kolom sama:
@@ -2390,12 +2390,12 @@ window.fetch = function (url, options) {
       <div class="sub-module-list" id="home-sub-inbound">
         <div class="sub-module-row" onclick="bukaModulDariHome('tab-inbound', 'modul-inbound', 'sub-inbound')">
           <span class="sub-dot dot-inbound"></span>
-          <span class="sub-module-name">Inbound Receiving (Open PO)</span>
+          <span class="sub-module-name">Inbound Receiving</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
         <div class="sub-module-row" id="home-subrow-inbound-validasi" onclick="bukaModulDariHome('tab-inbound', 'modul-inbound', 'sub-validasi-inbound'); setTimeout(loadValidasiInboundData, 300);">
           <span class="sub-dot dot-inbound"></span>
-          <span class="sub-module-name">Validasi Inbound (Sebelum QC)</span>
+          <span class="sub-module-name">Validasi Inbound Sebelum QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -2453,7 +2453,7 @@ window.fetch = function (url, options) {
       <div class="sub-module-list" id="home-sub-ops">
         <div class="sub-module-row" id="home-subrow-ops-validate" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-validate-qc')">
           <span class="sub-dot dot-putaway"></span>
-          <span class="sub-module-name">Validate QC (Sebelum Putaway)</span>
+          <span class="sub-module-name">Validasi Hasil QC Sebelum Putaway</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
         <div class="sub-module-row" id="home-subrow-ops-putaway" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-putaway')">
@@ -2506,7 +2506,7 @@ window.fetch = function (url, options) {
         </div>
         <div class="sub-module-row" id="home-subrow-qc-requestulang-v2" onclick="bukaModulDariHome('tab-qc', 'modul-qc', 'sub-request-qc-ulang-v2')">
           <span class="sub-dot dot-recheckqc"></span>
-          <span class="sub-module-name">Request QC Ulang (Alokasi Otomatis + Picking)</span>
+          <span class="sub-module-name">Request QC Ulang</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -2528,6 +2528,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Picking Outbound</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-sub-picking-qculang-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-picking-qc-ulang')" style="display:none;">
+          <span class="sub-dot dot-checking"></span>
+          <span class="sub-module-name">Picking QC Ulang</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
         <div class="sub-module-row" id="home-sub-dashchecker-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-dashboard-checker')" style="display:none;">
           <span class="sub-dot dot-checking"></span>
           <span class="sub-module-name">Dashboard Checker</span>
@@ -2536,11 +2541,6 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-sub-livechecker-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-live-checker-monitor')" style="display:none;">
           <span class="sub-dot dot-checking"></span>
           <span class="sub-module-name">Live Monitor Checker</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-sub-picking-qculang-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-picking-qc-ulang')" style="display:none;">
-          <span class="sub-dot dot-checking"></span>
-          <span class="sub-module-name">Picking QC Ulang</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -2699,7 +2699,7 @@ window.fetch = function (url, options) {
 
       <div id="modul-inbound" class="form-section active-section">
         <div id="sub-inbound" class="card p-3 mb-3 border-start border-4 border-primary">
-          <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-download me-2"></i>Inbound Receiving (Open PO)
+          <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-download me-2"></i>Inbound Receiving
           </h6>
           <p class="text-muted small mb-2">Pilih Nomor PO, lalu isi <strong>Qty Diterima untuk setiap SKU</strong> pada
             daftar di bawah dan kirim sekaligus dalam 1 kali submit.</p>
@@ -2769,7 +2769,7 @@ window.fetch = function (url, options) {
 
         <!-- ===== SUB-MODUL BARU: VALIDASI INBOUND (SEBELUM MASUK QC) ===== -->
         <div id="sub-validasi-inbound" class="card p-3 mb-3 border-start border-4 border-success d-none">
-          <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-user-check me-2"></i>Validasi Inbound (Sebelum QC)</h6>
+          <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-user-check me-2"></i>Validasi Inbound Sebelum QC</h6>
           <p class="text-muted small mb-2">Barang Finish Good hasil receiving berstatus <strong>Pending Validasi</strong> dan
             <strong>TIDAK akan muncul di modul QC</strong> sampai divalidasi oleh Admin / SPV di sini. <strong>Pilih No PO
             terlebih dahulu</strong> untuk menampilkan SKU-SKU yang menunggu validasi pada PO tersebut. Centang item yang
@@ -3082,7 +3082,7 @@ window.fetch = function (url, options) {
         </div>
 
         <div id="sub-request-qc-ulang-v2" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#8E24AA !important;">
-          <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Request QC Ulang (Alokasi Otomatis + Picking)</h6>
+          <h6 class="fw-bold mb-2" style="color:#8E24AA;"><i class="fa-solid fa-dolly me-2"></i>Request QC Ulang</h6>
           <p class="text-muted mb-3" style="font-size: 11px;">Cukup isi SKU, Grade &amp; Qty — sistem otomatis mengalokasikan stok dari Stock_FG (tidak perlu tahu lokasi persisnya). Setelah Request dibuat, Picker akan mengambil barangnya lewat modul <strong>Picking QC Ulang</strong> (Picking &amp; Checking), baru masuk Staging QC.</p>
 
           <div class="mb-2">
@@ -3384,7 +3384,7 @@ window.fetch = function (url, options) {
 
       <div id="modul-ops" class="form-section">
         <div id="sub-validate-qc" class="card p-3 mb-3 border-start border-4 border-success d-none">
-          <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-clipboard-check me-2"></i>Validate QC (Sebelum Putaway)</h6>
+          <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-clipboard-check me-2"></i>Validasi Hasil QC Sebelum Putaway</h6>
           <p class="text-muted mb-3" style="font-size: 11px;">Validasi <strong>Total Qty QC per SKU</strong> (tidak memandang breakdown grade) untuk No PO &amp; tanggal QC tertentu. Hitung ulang fisik barang, lalu bandingkan dengan Total Qty QC sistem. Jika cocok, SKU baru bisa muncul di modul <strong>Putaway Hasil QC</strong>.</p>
 
           <div class="mb-3">
@@ -6615,7 +6615,7 @@ async function eksekusiAddSkuOutbound() {
       QC_DATALIST:               { grup: 'QC',                label: 'Data QC (List & Export)' },
       QC_REQUESTULANG_V2:        { grup: 'Outbound',          label: 'Request QC Ulang Otomatis (V2)' },
       OUTBOUND_REQUEST:          { grup: 'Outbound',          label: 'Kelola Outbound Request' },
-      OPS_VALIDATE:              { grup: 'Putaway',           label: 'Validate QC (Sebelum Putaway)' },
+      OPS_VALIDATE:              { grup: 'Putaway',           label: 'Validasi Hasil QC Sebelum Putaway' },
       OPS_PUTAWAY:               { grup: 'Putaway',           label: 'Putaway' },
       OPS_PUTAWAYRETURN:         { grup: 'Putaway',           label: 'Putaway Barang Return' },
       CHECKING_PICKING:          { grup: 'Checking',          label: 'Picking Outbound' },
@@ -6724,7 +6724,7 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-subrow-outbound-kelola').style.display = 'none';
 
       // Sembunyikan dulu sub-baris & sub-card Putaway (Validate QC / Hasil QC / Barang Return)
-      // yang bisa dibatasi per-role. Validate QC (Sebelum Putaway) sekarang bagian dari modul
+      // yang bisa dibatasi per-role. Validasi Hasil QC Sebelum Putaway sekarang bagian dari modul
       // Putaway dan aksesnya HANYA untuk Petugas Putaway, Admin, Supervisor Gudang & Manajer Gudang.
       document.getElementById('home-subrow-ops-validate').style.display = 'none';
       document.getElementById('home-subrow-ops-putaway').style.display = 'none';
