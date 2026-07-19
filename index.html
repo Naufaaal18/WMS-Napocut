@@ -2985,6 +2985,19 @@ window.fetch = function (url, options) {
     </select>
           </div>
 
+          <!-- FITUR BARU: Konfirmasi SKU via Scan/Ketik (sama seperti Putaway Hasil QC / Putaway
+               Barang Return) -- breakdown grade & tombol kirim baru aktif setelah SKU dikonfirmasi cocok. -->
+          <div class="mb-3">
+            <label class="form-label small fw-bold mb-0 text-success"><i class="fa-solid fa-barcode me-1"></i>Konfirmasi SKU (Scan/Ketik)</label>
+            <div class="input-group">
+              <input type="text" id="qc-confirm-sku" class="form-control" placeholder="Scan barcode atau ketik ulang SKU untuk konfirmasi" oninput="onQcConfirmSkuChanged()" disabled>
+              <button type="button" class="btn btn-outline-success" onclick="openBarcodeScannerFor('qc-confirm-sku','Scan Barcode Konfirmasi SKU', onQcConfirmSkuChanged)" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
+            <div id="qc-confirm-sku-msg" class="small fw-bold mt-1" style="display:none;"></div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Total QTY QC</label>
             <input type="number" id="qc-total" class="form-control" placeholder="Maksimal Qty terisi otomatis" readonly>
@@ -2996,26 +3009,26 @@ window.fetch = function (url, options) {
             <div class="row">
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Bagus</label>
-                <input type="number" id="g-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)">
+                <input type="number" id="g-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Minor</label>
-                <input type="number" id="g-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)">
+                <input type="number" id="g-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Reject</label>
-                <input type="number" id="g-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)">
+                <input type="number" id="g-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Kotor</label>
-                <input type="number" id="g-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)">
+                <input type="number" id="g-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-12 mb-2">
                 <label class="form-label">Grade Perbaikan</label>
-                <input type="number" id="g-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)">
+                <input type="number" id="g-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
             </div>
-            <button type="button" class="btn btn-success btn-sm w-100 fw-bold" onclick="submitFormQC(event)">
+            <button type="button" id="qc-submit-btn" class="btn btn-success btn-sm w-100 fw-bold" onclick="submitFormQC(event)" disabled>
   <i class="fa-solid fa-paper-plane me-1"></i>Kirim Data Hasil QC
 </button>
           </div>
@@ -3206,6 +3219,19 @@ window.fetch = function (url, options) {
             </select>
           </div>
 
+          <!-- FITUR BARU: Konfirmasi SKU via Scan/Ketik (sama seperti Putaway Hasil QC / Putaway
+               Barang Return) -- breakdown grade & tombol kirim baru aktif setelah SKU dikonfirmasi cocok. -->
+          <div class="mb-3">
+            <label class="form-label small fw-bold mb-0" style="color:#EF6C00;"><i class="fa-solid fa-barcode me-1"></i>Konfirmasi SKU (Scan/Ketik)</label>
+            <div class="input-group">
+              <input type="text" id="rqc-confirm-sku" class="form-control" placeholder="Scan barcode atau ketik ulang SKU untuk konfirmasi" oninput="onRqcConfirmSkuChanged()" disabled>
+              <button type="button" class="btn btn-outline-warning" onclick="openBarcodeScannerFor('rqc-confirm-sku','Scan Barcode Konfirmasi SKU', onRqcConfirmSkuChanged)" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
+            <div id="rqc-confirm-sku-msg" class="small fw-bold mt-1" style="display:none;"></div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Total QTY Re-Check</label>
             <input type="number" id="rqc-total" class="form-control" placeholder="Maksimal Qty terisi otomatis" readonly>
@@ -3217,30 +3243,30 @@ window.fetch = function (url, options) {
             <div class="row">
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Bagus</label>
-                <input type="number" id="rg-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)">
+                <input type="number" id="rg-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Minor</label>
-                <input type="number" id="rg-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)">
+                <input type="number" id="rg-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Reject</label>
-                <input type="number" id="rg-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)">
+                <input type="number" id="rg-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Kotor</label>
-                <input type="number" id="rg-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)">
+                <input type="number" id="rg-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-12 mb-2">
                 <label class="form-label">Grade Perbaikan</label>
-                <input type="number" id="rg-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)">
+                <input type="number" id="rg-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
             </div>
             <div class="mb-2">
               <label class="form-label small fw-bold mb-0">Keterangan (opsional)</label>
               <input type="text" id="rqc-keterangan" class="form-control form-control-sm" placeholder="Contoh: Re-Check hasil komplain customer">
             </div>
-            <button type="button" class="btn btn-sm w-100 fw-bold text-white" style="background:#EF6C00;" onclick="submitFormRecheckQC(event)">
+            <button type="button" id="rqc-submit-btn" class="btn btn-sm w-100 fw-bold text-white" style="background:#EF6C00;" onclick="submitFormRecheckQC(event)" disabled>
               <i class="fa-solid fa-paper-plane me-1"></i>Kirim Hasil Re-Check QC
             </button>
           </div>
@@ -3406,6 +3432,20 @@ window.fetch = function (url, options) {
             </select>
           </div>
 
+          <!-- FITUR BARU: Konfirmasi SKU via Scan/Ketik (sama seperti Putaway Hasil QC / Putaway
+               Barang Return) -- dropdown Tanggal QC & tombol Validasi baru aktif setelah SKU
+               dikonfirmasi cocok. -->
+          <div class="mb-3">
+            <label class="form-label small fw-bold mb-0 text-success"><i class="fa-solid fa-barcode me-1"></i>Konfirmasi SKU (Scan/Ketik)</label>
+            <div class="input-group">
+              <input type="text" id="vq-confirm-sku" class="form-control" placeholder="Scan barcode atau ketik ulang SKU untuk konfirmasi" oninput="onVqConfirmSkuChanged()" disabled>
+              <button type="button" class="btn btn-outline-success" onclick="openBarcodeScannerFor('vq-confirm-sku','Scan Barcode Konfirmasi SKU', onVqConfirmSkuChanged)" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
+            <div id="vq-confirm-sku-msg" class="small fw-bold mt-1" style="display:none;"></div>
+          </div>
+
           <div class="mb-3">
             <label class="form-label">Tanggal QC (Belum Divalidasi)</label>
             <select id="vq-tanggal" class="form-select" onchange="onValidateTanggalSelected()" disabled>
@@ -3423,7 +3463,7 @@ window.fetch = function (url, options) {
               <input type="number" id="vq-total-fisik" class="form-control" placeholder="Input hasil hitung fisik SKU ini" min="0" disabled>
               <small class="text-muted d-block mt-1" style="font-size: 10px;">Hitung fisik total barang SKU ini (semua grade digabung) hasil QC pada tanggal tsb, lalu masukkan di sini.</small>
             </div>
-            <button type="button" class="btn btn-success btn-sm w-100 fw-bold" onclick="submitFormValidateQC(event)">
+            <button type="button" id="vq-submit-btn" class="btn btn-success btn-sm w-100 fw-bold" onclick="submitFormValidateQC(event)" disabled>
               <i class="fa-solid fa-check-double me-1"></i>Validasi Sekarang
             </button>
           </div>
@@ -4438,16 +4478,29 @@ async function eksekusiAddSkuOutbound() {
           </div>
         </div>
 
+        <!-- FITUR BARU: tombol scan barcode kamera di Filter SKU & Filter Lokasi, supaya operator
+             bisa langsung scan barang/label rak alih-alih mengetik manual. Disusun 2 baris (SKU+Lokasi
+             dahulu, lalu Grade) supaya tombol kamera tidak terlalu sempit di layar HP. -->
         <div class="row g-2 mb-2 inv-filter-row">
-          <div class="col-4">
-            <input type="text" id="inv-filter-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Filter SKU" oninput="renderInventoryTable(); renderInventorySupplementary();">
+          <div class="col-6">
+            <div class="input-group input-group-sm">
+              <input type="text" id="inv-filter-sku" list="inv-list-sku" class="form-control form-control-sm" placeholder="Filter SKU" oninput="renderInventoryTable(); renderInventorySupplementary();">
+              <button type="button" class="btn btn-outline-secondary" onclick="openBarcodeScannerFor('inv-filter-sku','Scan Barcode SKU', function(){ renderInventoryTable(); renderInventorySupplementary(); })" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
             <datalist id="inv-list-sku"></datalist>
           </div>
-          <div class="col-4">
-            <input type="text" id="inv-filter-lokasi" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Filter Lokasi" oninput="renderInventoryTable(); renderInventorySupplementary();">
+          <div class="col-6">
+            <div class="input-group input-group-sm">
+              <input type="text" id="inv-filter-lokasi" list="inv-list-lokasi" class="form-control form-control-sm" placeholder="Filter Lokasi" oninput="renderInventoryTable(); renderInventorySupplementary();">
+              <button type="button" class="btn btn-outline-secondary" onclick="openBarcodeScannerFor('inv-filter-lokasi','Scan Barcode Lokasi Rak', function(){ renderInventoryTable(); renderInventorySupplementary(); })" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
             <datalist id="inv-list-lokasi"></datalist>
           </div>
-          <div class="col-4">
+          <div class="col-12">
             <select id="inv-filter-grade" class="form-select form-select-sm" onchange="renderInventoryTable()">
               <option value="">Semua Grade</option>
               <option value="Bagus">Bagus</option>
@@ -9401,6 +9454,9 @@ function onPoSelected() {
   
   let maxInfo = document.getElementById("qc-max-info");
   if(maxInfo) maxInfo.style.display = "none";
+
+  // FITUR BARU: kunci ulang Konfirmasi SKU & breakdown grade setiap kali PO berubah
+  resetQcConfirmSku();
   
   // Jika PO kosong, stop di sini
   if (!poSelected) return;
@@ -9432,6 +9488,10 @@ function onSkuSelected() {
   let totalInput = document.getElementById("qc-total");
   let maxInfo = document.getElementById("qc-max-info");
   
+  // FITUR BARU: kunci ulang langkah Konfirmasi SKU & breakdown grade setiap kali SKU
+  // berubah, supaya operator wajib scan/ketik ulang konfirmasi untuk SKU yang baru dipilih.
+  resetQcConfirmSku();
+
   if (!poSelected || !skuSelected) return;
 
   if (stagingDataMaster[poSelected]) {
@@ -9443,16 +9503,71 @@ function onSkuSelected() {
       if(totalInput) {
         totalInput.value = match.maxQty; // Isi otomatis angka Qty maksimal
         totalInput.max = match.maxQty;   // Kunci batas atas input HTML
-        totalInput.removeAttribute("readonly"); // Izinkan user mengubah jika ingin QC parsial
+        // Catatan: readonly baru dilepas di onQcConfirmSkuChanged() setelah SKU dikonfirmasi cocok
       }
       
       if(maxInfo) {
         maxInfo.innerText = `*Batas sisa stok di Staging: ${match.maxQty} PCS.`;
         maxInfo.style.display = "block";
       }
+
+      // Aktifkan field Konfirmasi SKU (Scan/Ketik) begitu SKU valid dipilih di dropdown
+      const confirmInput = document.getElementById("qc-confirm-sku");
+      if (confirmInput) confirmInput.disabled = false;
     } else {
       console.error("Gagal mencocokkan SKU dengan data lokal master.");
     }
+  }
+}
+
+// FITUR BARU: reset Konfirmasi SKU (Scan/Ketik) & kunci kembali breakdown grade + tombol
+// kirim ke kondisi awal. Dipanggil setiap kali PO/SKU berubah atau setelah submit sukses.
+function resetQcConfirmSku() {
+  const confirmInput = document.getElementById("qc-confirm-sku");
+  const msgEl = document.getElementById("qc-confirm-sku-msg");
+  const totalInput = document.getElementById("qc-total");
+  const submitBtn = document.getElementById("qc-submit-btn");
+
+  if (confirmInput) { confirmInput.value = ""; confirmInput.disabled = true; }
+  if (msgEl) msgEl.style.display = "none";
+  if (totalInput) totalInput.setAttribute("readonly", "readonly");
+  if (submitBtn) submitBtn.disabled = true;
+  ["g-bagus", "g-minor", "g-reject", "g-kotor", "g-perbaikan"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+}
+
+// FITUR BARU: validasi real-time SKU hasil scan/ketik ulang harus sama dengan SKU yang
+// dipilih di dropdown. Breakdown grade & tombol kirim baru boleh diisi setelah cocok.
+function onQcConfirmSkuChanged() {
+  const skuTarget = (document.getElementById("qc-sku").value || "").trim().toUpperCase();
+  const skuInput = (document.getElementById("qc-confirm-sku").value || "").trim().toUpperCase();
+  const msgEl = document.getElementById("qc-confirm-sku-msg");
+  const totalInput = document.getElementById("qc-total");
+  const submitBtn = document.getElementById("qc-submit-btn");
+  const gradeIds = ["g-bagus", "g-minor", "g-reject", "g-kotor", "g-perbaikan"];
+
+  if (!skuTarget || !skuInput) {
+    if (msgEl) msgEl.style.display = "none";
+    if (totalInput) totalInput.setAttribute("readonly", "readonly");
+    if (submitBtn) submitBtn.disabled = true;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = true; });
+    return;
+  }
+
+  if (skuInput === skuTarget) {
+    msgEl.innerHTML = '<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>SKU cocok! Silakan isi breakdown grade hasil pemeriksaan.</span>';
+    msgEl.style.display = "block";
+    if (totalInput) totalInput.removeAttribute("readonly");
+    if (submitBtn) submitBtn.disabled = false;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = false; });
+  } else {
+    msgEl.innerHTML = '<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i>SKU tidak cocok dengan yang dipilih di dropdown!</span>';
+    msgEl.style.display = "block";
+    if (totalInput) totalInput.setAttribute("readonly", "readonly");
+    if (submitBtn) submitBtn.disabled = true;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = true; });
   }
 }
 
@@ -9466,6 +9581,14 @@ function submitFormQC(e) {
   // Mencegah form melakukan reload halaman bawaan browser
   if (e) e.preventDefault(); 
   
+  // FITUR BARU: pastikan SKU sudah dikonfirmasi via Scan/Ketik dan cocok dengan dropdown
+  let skuSelectedGuard = document.getElementById("qc-sku").value;
+  let skuScannedGuard = document.getElementById("qc-confirm-sku") ? document.getElementById("qc-confirm-sku").value : "";
+  if (!skuScannedGuard || skuScannedGuard.trim().toUpperCase() !== skuSelectedGuard.trim().toUpperCase()) {
+    customAlert("Mohon konfirmasi SKU dengan scan/ketik ulang terlebih dahulu, dan pastikan SKU-nya cocok dengan yang dipilih!");
+    return;
+  }
+
   // Ambil data grade
   let bagus = parseInt(document.getElementById("g-bagus").value) || 0;
   let minor = parseInt(document.getElementById("g-minor").value) || 0;
@@ -9537,6 +9660,9 @@ function submitFormQC(e) {
   if (document.getElementById("qc-max-info")) {
     document.getElementById("qc-max-info").style.display = "none";
   }
+
+  // FITUR BARU: kunci ulang Konfirmasi SKU & breakdown grade setelah submit sukses
+  resetQcConfirmSku();
         // 5. Jalankan ulang penarikan data untuk memperbarui list PO terbaru dari spreadsheet
         loadStagingInboundToDropdown();
         
@@ -9597,6 +9723,7 @@ function loadQCFGToValidateDropdown() {
         skuSelect.disabled = true;
       }
       resetValidateQCForm(true);
+      resetVqConfirmSku(); // FITUR BARU: kunci ulang Konfirmasi SKU setiap kali daftar PO dimuat ulang
 
       const poKeys = Object.keys(poMap);
       if (poKeys.length === 0) {
@@ -9620,6 +9747,7 @@ function onValidatePoSelected() {
 
   skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
   resetValidateQCForm(true);
+  resetVqConfirmSku(); // FITUR BARU: kunci ulang Konfirmasi SKU setiap kali PO berubah
 
   if (!poSelected || !globalValidateQCData[poSelected]) {
     skuSelect.disabled = true;
@@ -9644,6 +9772,8 @@ function onValidateSkuSelected() {
 
   tglSelect.innerHTML = '<option value="">-- Pilih Tanggal QC --</option>';
   resetValidateQCTotal();
+  // FITUR BARU: kunci ulang Konfirmasi SKU setiap kali SKU berubah, sampai dikonfirmasi lagi
+  resetVqConfirmSku();
 
   if (!poSelected || !skuSelected || !globalValidateQCData[poSelected] || !globalValidateQCData[poSelected][skuSelected]) {
     tglSelect.disabled = true;
@@ -9658,7 +9788,56 @@ function onValidateSkuSelected() {
     tglSelect.appendChild(opt);
   });
 
-  tglSelect.disabled = false;
+  // Catatan: dropdown Tanggal QC baru dilepas (enabled) di onVqConfirmSkuChanged() setelah
+  // SKU dikonfirmasi cocok. Aktifkan dulu field Konfirmasi SKU begitu SKU valid dipilih.
+  const confirmInput = document.getElementById("vq-confirm-sku");
+  if (confirmInput) confirmInput.disabled = false;
+}
+
+// FITUR BARU: reset Konfirmasi SKU (Scan/Ketik) & kunci kembali dropdown Tanggal QC + tombol
+// Validasi ke kondisi awal. Dipanggil setiap kali PO/SKU berubah atau setelah submit sukses.
+function resetVqConfirmSku() {
+  const confirmInput = document.getElementById("vq-confirm-sku");
+  const msgEl = document.getElementById("vq-confirm-sku-msg");
+  const tglSelect = document.getElementById("vq-tanggal");
+  const submitBtn = document.getElementById("vq-submit-btn");
+
+  if (confirmInput) { confirmInput.value = ""; confirmInput.disabled = true; }
+  if (msgEl) msgEl.style.display = "none";
+  if (tglSelect) tglSelect.disabled = true;
+  if (submitBtn) submitBtn.disabled = true;
+  resetValidateQCTotal();
+}
+
+// FITUR BARU: validasi real-time SKU hasil scan/ketik ulang harus sama dengan SKU yang
+// dipilih di dropdown. Dropdown Tanggal QC & tombol Validasi baru boleh dipakai setelah cocok.
+function onVqConfirmSkuChanged() {
+  const skuTarget = (document.getElementById("vq-sku").value || "").trim().toUpperCase();
+  const skuInput = (document.getElementById("vq-confirm-sku").value || "").trim().toUpperCase();
+  const msgEl = document.getElementById("vq-confirm-sku-msg");
+  const tglSelect = document.getElementById("vq-tanggal");
+  const submitBtn = document.getElementById("vq-submit-btn");
+
+  if (!skuTarget || !skuInput) {
+    if (msgEl) msgEl.style.display = "none";
+    if (tglSelect) tglSelect.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    resetValidateQCTotal();
+    return;
+  }
+
+  if (skuInput === skuTarget) {
+    msgEl.innerHTML = '<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>SKU cocok! Silakan pilih Tanggal QC.</span>';
+    msgEl.style.display = "block";
+    if (tglSelect) tglSelect.disabled = false;
+    if (submitBtn) submitBtn.disabled = false;
+  } else {
+    msgEl.innerHTML = '<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i>SKU tidak cocok dengan yang dipilih di dropdown!</span>';
+    msgEl.style.display = "block";
+    if (tglSelect) tglSelect.disabled = true;
+    if (submitBtn) submitBtn.disabled = true;
+    resetValidateQCTotal();
+  }
 }
 
 function onValidateTanggalSelected() {
@@ -9721,6 +9900,13 @@ function submitFormValidateQC(event) {
     return;
   }
 
+  // FITUR BARU: pastikan SKU sudah dikonfirmasi via Scan/Ketik dan cocok dengan dropdown
+  let skuScannedGuard = document.getElementById("vq-confirm-sku") ? document.getElementById("vq-confirm-sku").value : "";
+  if (!skuScannedGuard || skuScannedGuard.trim().toUpperCase() !== skuSelected.trim().toUpperCase()) {
+    customAlert("Mohon konfirmasi SKU dengan scan/ketik ulang terlebih dahulu, dan pastikan SKU-nya cocok dengan yang dipilih!");
+    return;
+  }
+
   if (totalFisik === "" || totalFisik === null || isNaN(parseInt(totalFisik))) {
     customAlert("Mohon isi Total Hasil Hitung Ulang (Fisik) terlebih dahulu!");
     return;
@@ -9739,6 +9925,7 @@ function submitFormValidateQC(event) {
     .withSuccessHandler(function(response) {
       if (response.success) {
         customAlert(response.message);
+        resetVqConfirmSku(); // FITUR BARU: kunci ulang Konfirmasi SKU setelah submit sukses
         loadQCFGToValidateDropdown();
       }
     })
@@ -10041,6 +10228,9 @@ function onRecheckNoReqSelected() {
   let maxInfo = document.getElementById("rqc-max-info");
   if (maxInfo) maxInfo.style.display = "none";
 
+  // FITUR BARU: kunci ulang Konfirmasi SKU & breakdown grade setiap kali No Request QC berubah
+  resetRqcConfirmSku();
+
   if (!noReqSelected) return;
 
   let listItems = globalStagingQCData[noReqSelected];
@@ -10064,6 +10254,9 @@ function onRecheckSkuSelected() {
   let totalInput = document.getElementById("rqc-total");
   let maxInfo = document.getElementById("rqc-max-info");
 
+  // FITUR BARU: kunci ulang Konfirmasi SKU & breakdown grade setiap kali SKU berubah
+  resetRqcConfirmSku();
+
   if (!noReqSelected || !skuSelected) return;
 
   if (globalStagingQCData[noReqSelected]) {
@@ -10072,13 +10265,67 @@ function onRecheckSkuSelected() {
       if (totalInput) {
         totalInput.value = match.maxQty;
         totalInput.max = match.maxQty;
-        totalInput.removeAttribute("readonly"); // Izinkan Re-Check parsial
+        // Catatan: readonly baru dilepas di onRqcConfirmSkuChanged() setelah SKU dikonfirmasi cocok
       }
       if (maxInfo) {
         maxInfo.innerText = `*Batas sisa stok di Staging QC: ${match.maxQty} PCS.`;
         maxInfo.style.display = "block";
       }
+      // Aktifkan field Konfirmasi SKU (Scan/Ketik) begitu SKU valid dipilih di dropdown
+      const confirmInput = document.getElementById("rqc-confirm-sku");
+      if (confirmInput) confirmInput.disabled = false;
     }
+  }
+}
+
+// FITUR BARU: reset Konfirmasi SKU (Scan/Ketik) & kunci kembali breakdown grade + tombol
+// kirim ke kondisi awal. Dipanggil setiap kali No Request/SKU berubah atau setelah submit sukses.
+function resetRqcConfirmSku() {
+  const confirmInput = document.getElementById("rqc-confirm-sku");
+  const msgEl = document.getElementById("rqc-confirm-sku-msg");
+  const totalInput = document.getElementById("rqc-total");
+  const submitBtn = document.getElementById("rqc-submit-btn");
+
+  if (confirmInput) { confirmInput.value = ""; confirmInput.disabled = true; }
+  if (msgEl) msgEl.style.display = "none";
+  if (totalInput) totalInput.setAttribute("readonly", "readonly");
+  if (submitBtn) submitBtn.disabled = true;
+  ["rg-bagus", "rg-minor", "rg-reject", "rg-kotor", "rg-perbaikan"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+}
+
+// FITUR BARU: validasi real-time SKU hasil scan/ketik ulang harus sama dengan SKU yang
+// dipilih di dropdown. Breakdown grade & tombol kirim baru boleh diisi setelah cocok.
+function onRqcConfirmSkuChanged() {
+  const skuTarget = (document.getElementById("rqc-sku").value || "").trim().toUpperCase();
+  const skuInput = (document.getElementById("rqc-confirm-sku").value || "").trim().toUpperCase();
+  const msgEl = document.getElementById("rqc-confirm-sku-msg");
+  const totalInput = document.getElementById("rqc-total");
+  const submitBtn = document.getElementById("rqc-submit-btn");
+  const gradeIds = ["rg-bagus", "rg-minor", "rg-reject", "rg-kotor", "rg-perbaikan"];
+
+  if (!skuTarget || !skuInput) {
+    if (msgEl) msgEl.style.display = "none";
+    if (totalInput) totalInput.setAttribute("readonly", "readonly");
+    if (submitBtn) submitBtn.disabled = true;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = true; });
+    return;
+  }
+
+  if (skuInput === skuTarget) {
+    msgEl.innerHTML = '<span class="text-success"><i class="fa-solid fa-circle-check me-1"></i>SKU cocok! Silakan isi breakdown grade hasil pemeriksaan ulang.</span>';
+    msgEl.style.display = "block";
+    if (totalInput) totalInput.removeAttribute("readonly");
+    if (submitBtn) submitBtn.disabled = false;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = false; });
+  } else {
+    msgEl.innerHTML = '<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i>SKU tidak cocok dengan yang dipilih di dropdown!</span>';
+    msgEl.style.display = "block";
+    if (totalInput) totalInput.setAttribute("readonly", "readonly");
+    if (submitBtn) submitBtn.disabled = true;
+    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = true; });
   }
 }
 
@@ -10112,6 +10359,13 @@ function submitFormRecheckQC(e) {
 
   if (!noReqSelected || !skuSelected) {
     customAlert("Mohon pilih No Request QC dan Kode SKU terlebih dahulu!");
+    return;
+  }
+
+  // FITUR BARU: pastikan SKU sudah dikonfirmasi via Scan/Ketik dan cocok dengan dropdown
+  let skuScannedGuard = document.getElementById("rqc-confirm-sku") ? document.getElementById("rqc-confirm-sku").value : "";
+  if (!skuScannedGuard || skuScannedGuard.trim().toUpperCase() !== skuSelected.trim().toUpperCase()) {
+    customAlert("Mohon konfirmasi SKU dengan scan/ketik ulang terlebih dahulu, dan pastikan SKU-nya cocok dengan yang dipilih!");
     return;
   }
 
@@ -10172,6 +10426,9 @@ function submitFormRecheckQC(e) {
         document.getElementById("rqc-sku").innerHTML = '<option value="">-- Pilih SKU --</option>';
         let maxInfo = document.getElementById("rqc-max-info");
         if (maxInfo) maxInfo.style.display = "none";
+
+        // FITUR BARU: kunci ulang Konfirmasi SKU & breakdown grade setelah submit sukses
+        resetRqcConfirmSku();
 
         loadStagingQCToRecheckDropdown(); // Refresh daftar Staging QC terbaru
       } else {
@@ -10762,7 +11019,7 @@ function onInboundPoSelected() {
         <td class="text-center"><input type="checkbox" class="ib-row-check" data-sku="${skuCode}"></td>
         <td class="fw-bold">${skuCode}<input type="hidden" class="ib-row-grade" data-sku="${skuCode}" value="${gradeAuto}"></td>
         <td class="text-center text-muted" data-label="Sisa Order">${maxQty}</td>
-        <td data-label="Qty Diterima"><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0"></td>
+        <td data-label="Qty Diterima"><input type="number" class="form-control form-control-sm ib-row-qty" data-sku="${skuCode}" data-max="${maxQty}" min="0" max="${maxQty}" placeholder="0" oninput="onIbRowQtyChanged(this)"></td>
         <td data-label="Lokasi Rak">${kolomLokasi}</td>
         <td class="text-center"><input type="checkbox" class="ib-row-short" data-sku="${skuCode}" title="Short Putaway SKU ini. Bisa dicentang dengan Qty tetap 0/kosong jika barang SAMA SEKALI tidak diterima dari Supplier."></td>
       </tr>`;
@@ -10774,6 +11031,39 @@ function onInboundPoSelected() {
 // Centang/hilangkan centang semua baris SKU sekaligus (checkbox header "Pilih Semua")
 function toggleAllInboundList(checkboxHeader) {
   document.querySelectorAll('#ib-list-tbody .ib-row-check').forEach(cb => { cb.checked = checkboxHeader.checked; });
+}
+
+// FITUR BARU: begitu operator mengisi Qty Diterima > 0 pada suatu baris SKU, baris tsb
+// otomatis tercentang (tidak perlu klik checkbox manual lagi). Kalau qty dikosongkan/0 lagi,
+// centang ikut lepas otomatis. Setelah itu, cek juga apakah SEMUA baris sudah terisi untuk
+// memutuskan status checkbox header "Pilih Semua".
+function onIbRowQtyChanged(inputEl) {
+  const tr = inputEl.closest('tr[data-sku-row]');
+  if (tr) {
+    const cb = tr.querySelector('.ib-row-check');
+    const qty = parseInt(inputEl.value) || 0;
+    if (cb) cb.checked = qty > 0;
+  }
+  updateIbSelectAllState();
+}
+
+// FITUR BARU: sinkronkan checkbox header "Pilih Semua" -- tercentang otomatis HANYA jika
+// SEMUA baris SKU pada tabel sudah diisi Qty Diterima (>0), walau qty-nya diisi partial
+// (tidak harus sama dengan Sisa Order/Qty Order).
+function updateIbSelectAllState() {
+  const selectAllCb = document.getElementById('ib-check-all');
+  if (!selectAllCb) return;
+  const qtyInputs = document.querySelectorAll('#ib-list-tbody .ib-row-qty');
+  if (qtyInputs.length === 0) {
+    selectAllCb.checked = false;
+    return;
+  }
+  let semuaTerisi = true;
+  qtyInputs.forEach(inp => {
+    const qty = parseInt(inp.value) || 0;
+    if (qty <= 0) semuaTerisi = false;
+  });
+  selectAllCb.checked = semuaTerisi;
 }
 
 // FITUR BARU (poin 1): filter baris SKU pada tabel Receiving Inbound berdasarkan teks yang
