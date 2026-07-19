@@ -1792,6 +1792,12 @@ window.fetch = function (url, options) {
     .icon-kelolauser { background: #FCE4EC; color: #880E4F; }
     .dot-kelolauser  { background: #880E4F; }
 
+    /* ===== Dashboard Inventory: kotak ringkasan (SKU Aktif / Qty Available / Qty On Hand / Qty Open PO) =====
+       PENTING: sengaja pakai nama class BEDA (inv-stat-box) dari .inv-summary-box yang dipakai di bagian
+       Export Laporan Inventory (print, display:flex baris horizontal) di bawah, supaya tidak bentrok. */
+    .inv-stat-box { min-width: 0; }
+    .inv-stat-box > div { overflow-wrap: break-word; word-break: break-word; }
+
     /* ===== INVENTORY EXPORT PRINT STYLES ===== */
     .inv-export-doc { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
     .inv-export-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }
@@ -2094,6 +2100,67 @@ window.fetch = function (url, options) {
 
       /* Tombol Validasi Terpilih / Cetak Bukti Terima ditumpuk penuh agar tidak sempit */
       #vi-action-btns { flex-direction: column; }
+
+      /* --- Dashboard Inventory (Stock_FG): tetap tampil sebagai TABEL seperti desktop,
+         tapi dikompres (table-layout:fixed + lebar kolom %) supaya semua kolom (SKU s/d
+         Aksi) pas di lebar layar mobile TANPA perlu geser ke kiri/kanan. --- */
+      #inv-dashboard-table-wrap,
+      #inv-openpo-table-wrap,
+      #inv-inbound-table-wrap,
+      #inv-return-table-wrap {
+        overflow-x: hidden !important;
+      }
+      #inv-dashboard-table-wrap table,
+      #inv-openpo-table-wrap table,
+      #inv-inbound-table-wrap table,
+      #inv-return-table-wrap table {
+        table-layout: fixed;
+        width: 100% !important;
+        font-size: 9.5px !important;
+      }
+      #inv-dashboard-table-wrap th, #inv-dashboard-table-wrap td,
+      #inv-openpo-table-wrap th, #inv-openpo-table-wrap td,
+      #inv-inbound-table-wrap th, #inv-inbound-table-wrap td,
+      #inv-return-table-wrap th, #inv-return-table-wrap td {
+        padding: 3px 2px !important;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        vertical-align: middle !important;
+      }
+      #inv-dashboard-table-wrap th { font-size: 8.5px !important; line-height: 1.15; }
+
+      /* Dashboard utama: SKU, Deskripsi, Lokasi, Grade, Qty Available, Qty On Hand, Aksi */
+      #inv-dashboard-table-wrap th:nth-child(1), #inv-dashboard-table-wrap td:nth-child(1) { width: 15%; }
+      #inv-dashboard-table-wrap th:nth-child(2), #inv-dashboard-table-wrap td:nth-child(2) { width: 20%; }
+      #inv-dashboard-table-wrap th:nth-child(3), #inv-dashboard-table-wrap td:nth-child(3) { width: 14%; }
+      #inv-dashboard-table-wrap th:nth-child(4), #inv-dashboard-table-wrap td:nth-child(4) { width: 12%; }
+      #inv-dashboard-table-wrap th:nth-child(5), #inv-dashboard-table-wrap td:nth-child(5) { width: 13%; }
+      #inv-dashboard-table-wrap th:nth-child(6), #inv-dashboard-table-wrap td:nth-child(6) { width: 13%; }
+      #inv-dashboard-table-wrap th:nth-child(7), #inv-dashboard-table-wrap td:nth-child(7) { width: 8%; }
+
+      /* Stok Open PO: No PO, SKU, Supplier, Qty Sisa PO */
+      #inv-openpo-table-wrap th:nth-child(1), #inv-openpo-table-wrap td:nth-child(1) { width: 26%; }
+      #inv-openpo-table-wrap th:nth-child(2), #inv-openpo-table-wrap td:nth-child(2) { width: 26%; }
+      #inv-openpo-table-wrap th:nth-child(3), #inv-openpo-table-wrap td:nth-child(3) { width: 26%; }
+      #inv-openpo-table-wrap th:nth-child(4), #inv-openpo-table-wrap td:nth-child(4) { width: 22%; }
+
+      /* Stok Belum Di-QC: SKU, Lokasi, Qty Belum QC */
+      #inv-inbound-table-wrap th:nth-child(1), #inv-inbound-table-wrap td:nth-child(1) { width: 34%; }
+      #inv-inbound-table-wrap th:nth-child(2), #inv-inbound-table-wrap td:nth-child(2) { width: 34%; }
+      #inv-inbound-table-wrap th:nth-child(3), #inv-inbound-table-wrap td:nth-child(3) { width: 32%; }
+
+      /* Stok Pending Putaway Return: SKU, Lokasi, Grade, Qty */
+      #inv-return-table-wrap th:nth-child(1), #inv-return-table-wrap td:nth-child(1) { width: 28%; }
+      #inv-return-table-wrap th:nth-child(2), #inv-return-table-wrap td:nth-child(2) { width: 28%; }
+      #inv-return-table-wrap th:nth-child(3), #inv-return-table-wrap td:nth-child(3) { width: 22%; }
+      #inv-return-table-wrap th:nth-child(4), #inv-return-table-wrap td:nth-child(4) { width: 22%; }
+
+      /* --- Kotak ringkasan Dashboard Inventory: perkecil font & jarak supaya pasti muat --- */
+      .inv-summary-row .col-4 { padding-left: 4px; padding-right: 4px; }
+      .inv-stat-box.p-2 { padding: 6px 4px !important; }
+      .inv-stat-box .small { font-size: 9.5px !important; }
+      .inv-stat-box .fs-5 { font-size: 0.95rem !important; }
     }
   </style>
 </head>
@@ -4320,19 +4387,19 @@ async function eksekusiAddSkuOutbound() {
 
         <div class="row g-2 mb-3 text-center inv-summary-row">
           <div class="col-4">
-            <div class="border rounded p-2 inv-summary-box">
+            <div class="border rounded p-2 inv-stat-box">
               <div class="small text-muted">SKU Aktif</div>
               <div class="fw-bold fs-5" id="inv-sum-sku">0</div>
             </div>
           </div>
           <div class="col-4">
-            <div class="border rounded p-2 inv-summary-box">
+            <div class="border rounded p-2 inv-stat-box">
               <div class="small text-muted">Qty Available</div>
               <div class="fw-bold fs-5 text-success" id="inv-sum-available">0</div>
             </div>
           </div>
           <div class="col-4">
-            <div class="border rounded p-2 inv-summary-box">
+            <div class="border rounded p-2 inv-stat-box">
               <div class="small text-muted">Qty On Hand</div>
               <div class="fw-bold fs-5" id="inv-sum-onhand">0</div>
             </div>
@@ -4341,7 +4408,7 @@ async function eksekusiAddSkuOutbound() {
 
         <div class="row g-2 mb-3 text-center inv-summary-row">
           <div class="col-12">
-            <div class="border rounded p-2 inv-summary-box">
+            <div class="border rounded p-2 inv-stat-box">
               <div class="small text-muted">Qty Open PO (Status Active)</div>
               <div class="fw-bold fs-5 text-warning" id="inv-sum-openpo">0</div>
             </div>
@@ -4400,7 +4467,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-file-invoice me-2"></i>Stok Open PO
             (Status Active — Belum Diterima Penuh dari Supplier)</h6>
-          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
+          <div class="table-responsive" id="inv-openpo-table-wrap" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
@@ -4422,7 +4489,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-truck-fast me-2"></i>Stok Belum Di-QC
             (Stock_Inbound)</h6>
-          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
+          <div class="table-responsive" id="inv-inbound-table-wrap" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
@@ -4443,7 +4510,7 @@ async function eksekusiAddSkuOutbound() {
         <div class="mt-3">
           <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-rotate-left me-2"></i>Stok Pending
             Putaway Return (Stock_Return)</h6>
-          <div class="table-responsive" style="max-height: 160px; overflow-y: auto;">
+          <div class="table-responsive" id="inv-return-table-wrap" style="max-height: 160px; overflow-y: auto;">
             <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
               <thead class="table-light">
                 <tr>
