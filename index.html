@@ -80,7 +80,8 @@ const ENDPOINTS = {
   processInboundReceiving: (data) => _callRpc('process_inbound_receiving', {
     p_no_po: data.noPo, p_kode_sku: data.kodeSku, p_kategori: data.kategori,
     p_qty: Number(data.qty), p_lokasi_rak: data.lokasiRak || null, p_grade: data.grade || null,
-    p_short_putaway: !!data.shortPutaway, p_user_login: data.userLogin
+    p_short_putaway: !!data.shortPutaway, p_user_login: data.userLogin,
+    p_nomor_odoo_receiving: data.nomorOdooReceiving || null
   }),
 
   submitQCFG: (data) => _callRpc('submit_qc_fg', {
@@ -193,7 +194,8 @@ const ENDPOINTS = {
   processInboundReceivingMulti: (payload) => _callRpc('process_inbound_receiving_multi', {
     p_no_po: payload.noPo, p_kategori: payload.kategori,
     p_items: payload.items.map(it => ({ kodeSku: it.kodeSku, qty: Number(it.qty || 0), lokasiRak: it.lokasiRak || null, grade: it.grade || null })),
-    p_user_login: payload.userLogin
+    p_user_login: payload.userLogin,
+    p_nomor_odoo_receiving: payload.nomorOdooReceiving || null
   }),
 
   submitValidasiInbound: (payload) => _callRpc('submit_validasi_inbound', {
@@ -2724,6 +2726,16 @@ window.fetch = function (url, options) {
               </div>
             </div>
 
+            <!-- FITUR BARU: Nomor Odoo WAJIB diisi khusus untuk kategori Finish Good sebelum
+                 tombol "Kirim Semua SKU Terpilih" bisa dipakai. Field ini terpisah dari Nomor
+                 Odoo yang diisi belakangan oleh Admin/SPV di modul Validasi Inbound Sebelum QC
+                 (2 input independen sesuai keputusan). -->
+            <div class="mb-1" id="ib-nomor-odoo-wrap" style="display:none;">
+              <label class="form-label small fw-bold mb-0 text-primary"><i class="fa-solid fa-hashtag me-1"></i>Nomor Odoo</label>
+              <input type="text" id="ib-nomor-odoo" class="form-control form-control-sm" placeholder="Contoh: WH/IN/00123" oninput="updateIbSubmitButtonState()">
+              <div class="text-muted" style="font-size: 10px;">Wajib diisi untuk kategori Finish Good sebelum bisa mengirim data receiving.</div>
+            </div>
+
             <!-- ===== FITUR BARU (poin 6): LIST SEMUA SKU PADA PO INI, QTY BISA DIISI SEKALIGUS ===== -->
             <div id="ib-list-container" class="mt-2" style="display:none;">
               <div class="d-flex justify-content-between align-items-center mb-1">
@@ -2761,7 +2773,7 @@ window.fetch = function (url, options) {
               </p>
             </div>
 
-            <button type="button" class="btn btn-primary text-white btn-sm w-100 fw-bold mt-3" onclick="submitInboundReceivingList()">
+            <button type="button" id="ib-submit-btn" class="btn btn-primary text-white btn-sm w-100 fw-bold mt-3" onclick="submitInboundReceivingList()">
       <i class="fa-solid fa-arrow-down-1-9 me-1"></i>Kirim Semua SKU Terpilih
     </button>
           </form>
@@ -10960,7 +10972,14 @@ function onInboundPoSelected() {
   listContainer.style.display = "none";
   document.getElementById("ib-check-all").checked = false;
 
+  // FITUR BARU: reset field Nomor Odoo (Receiving) setiap kali PO berubah
+  const nomorOdooWrap = document.getElementById("ib-nomor-odoo-wrap");
+  const nomorOdooInput = document.getElementById("ib-nomor-odoo");
+  if (nomorOdooWrap) nomorOdooWrap.style.display = "none";
+  if (nomorOdooInput) nomorOdooInput.value = "";
+
   if (!poSelected || !globalInboundPOData[poSelected]) {
+    updateIbSubmitButtonState();
     return;
   }
 
@@ -10968,6 +10987,10 @@ function onInboundPoSelected() {
   let detailPO = globalInboundPOData[poSelected];
   kategoriInput.value = detailPO.kategori;
   const kat = detailPO.kategori.toLowerCase();
+
+  // FITUR BARU: tampilkan field Nomor Odoo (WAJIB) khusus untuk kategori Finish Good
+  if (nomorOdooWrap) nomorOdooWrap.style.display = (kat === "finish good") ? "block" : "none";
+  updateIbSubmitButtonState();
 
   // FITUR PERBAIKAN: kolom "Lokasi Rak" sekarang SELALU ditampilkan untuk ketiga kategori
   // (sebelumnya disembunyikan khusus utk Finish Good, membuat tabel jadi tidak sejajar
@@ -11026,6 +11049,21 @@ function onInboundPoSelected() {
   }).join('');
 
   listContainer.style.display = "block";
+}
+
+// FITUR BARU: kunci tombol "Kirim Semua SKU Terpilih" kalau kategori PO ini Finish Good
+// dan Nomor Odoo belum diisi. Kategori lain (Raw Material/Return) tidak butuh Nomor Odoo
+// di tahap Receiving ini, jadi tombol tetap aktif seperti biasa.
+function updateIbSubmitButtonState() {
+  const submitBtn = document.getElementById("ib-submit-btn");
+  if (!submitBtn) return;
+  const kat = (document.getElementById("ib-kategori").value || "").trim().toLowerCase();
+  if (kat === "finish good") {
+    const nomorOdoo = (document.getElementById("ib-nomor-odoo").value || "").trim();
+    submitBtn.disabled = !nomorOdoo;
+  } else {
+    submitBtn.disabled = false;
+  }
 }
 
 // Centang/hilangkan centang semua baris SKU sekaligus (checkbox header "Pilih Semua")
@@ -11089,6 +11127,17 @@ async function submitInboundReceivingList() {
   if (!poSelected || !kategoriVal) {
     customAlert("Mohon pilih Nomor PO terlebih dahulu.");
     return;
+  }
+
+  // FITUR BARU: Nomor Odoo wajib diisi untuk kategori Finish Good sebelum bisa mengirim
+  // (pengaman ganda selain tombol yang sudah dikunci lewat updateIbSubmitButtonState()).
+  let nomorOdooReceiving = "";
+  if (kategoriVal.trim().toLowerCase() === "finish good") {
+    nomorOdooReceiving = (document.getElementById("ib-nomor-odoo").value || "").trim();
+    if (!nomorOdooReceiving) {
+      customAlert("Mohon isi Nomor Odoo terlebih dahulu untuk kategori Finish Good.");
+      return;
+    }
   }
 
   const rows = document.querySelectorAll('#ib-list-tbody tr[data-sku-row]');
@@ -11168,7 +11217,7 @@ async function submitInboundReceivingList() {
         google.script.run
           .withSuccessHandler(resolve)
           .withFailureHandler(reject)
-          .processInboundReceivingMulti({ noPo: poSelected, kategori: kategoriVal, userLogin: userLogin, items: itemsNormal });
+          .processInboundReceivingMulti({ noPo: poSelected, kategori: kategoriVal, userLogin: userLogin, items: itemsNormal, nomorOdooReceiving: nomorOdooReceiving });
       });
       pesanGabungan.push(resMulti.message);
       adaSukses = true;
@@ -11184,7 +11233,7 @@ async function submitInboundReceivingList() {
         google.script.run
           .withSuccessHandler(resolve)
           .withFailureHandler(reject)
-          .processInboundReceiving({ noPo: poSelected, kodeSku: item.kodeSku, kategori: kategoriVal, qty: item.qty, grade: item.grade, lokasiRak: item.lokasiRak, shortPutaway: true, userLogin: userLogin });
+          .processInboundReceiving({ noPo: poSelected, kodeSku: item.kodeSku, kategori: kategoriVal, qty: item.qty, grade: item.grade, lokasiRak: item.lokasiRak, shortPutaway: true, userLogin: userLogin, nomorOdooReceiving: nomorOdooReceiving });
       });
       pesanGabungan.push(resSatu.message);
       adaSukses = true;
@@ -11197,6 +11246,10 @@ async function submitInboundReceivingList() {
   if (adaSukses) {
     document.getElementById("ib-list-container").style.display = "none";
     document.getElementById("ib-list-tbody").innerHTML = "";
+    const nomorOdooWrapDone = document.getElementById("ib-nomor-odoo-wrap");
+    const nomorOdooInputDone = document.getElementById("ib-nomor-odoo");
+    if (nomorOdooWrapDone) nomorOdooWrapDone.style.display = "none";
+    if (nomorOdooInputDone) nomorOdooInputDone.value = "";
     loadOpenPOToInboundDropdown(); // Muat ulang data PO fresh dari spreadsheet agar sinkron antar user
   }
 }
