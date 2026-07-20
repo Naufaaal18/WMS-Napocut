@@ -11355,7 +11355,7 @@ function renderValidasiInboundTable() {
       <td data-label="Deskripsi">${item.deskripsi || '-'}</td>
       <td class="text-center" data-label="Qty Divalidasi">
         <input type="number" class="form-control form-control-sm vi-item-qty text-center fw-bold"
-               data-idx="${idx}" value="${item.qtyBelumQC || 0}" min="1" max="${item.qtyBelumQC || 0}" style="width:80px; display:inline-block;">
+               data-idx="${idx}" value="0" min="0" max="${item.qtyBelumQC || 0}" style="width:80px; display:inline-block;" oninput="onViRowQtyChanged(this)">
         <div class="text-muted" style="font-size:10px;">dari ${item.qtyBelumQC || 0}</div>
       </td>
       <td data-label="Tgl Terima">${item.tglTerima || '-'}</td>
@@ -11365,6 +11365,18 @@ function renderValidasiInboundTable() {
 // Centang / lepas semua checkbox item
 function toggleAllValidasiInbound(sourceCheckbox) {
   document.querySelectorAll('.vi-item-check').forEach(cb => { cb.checked = sourceCheckbox.checked; });
+}
+
+// FITUR BARU: begitu operator mengisi Qty Divalidasi > 0 pada suatu baris, baris tsb
+// otomatis tercentang (tidak perlu klik checkbox manual lagi). Kalau qty dikosongkan/0
+// lagi, centang ikut lepas otomatis (baris kembali dianggap belum mau divalidasi).
+// Setelah itu, status checkbox "Centang Semua" ikut disinkronkan lewat updateViCheckAllState().
+function onViRowQtyChanged(inputEl) {
+  const idx = inputEl.getAttribute('data-idx');
+  const cb = document.querySelector(`.vi-item-check[data-idx="${idx}"]`);
+  const qty = parseInt(inputEl.value) || 0;
+  if (cb) cb.checked = qty > 0;
+  updateViCheckAllState();
 }
 
 // FITUR BARU: dipanggil setiap kali salah satu checkbox baris di-centang/lepas manual.
