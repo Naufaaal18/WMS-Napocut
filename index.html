@@ -11355,7 +11355,7 @@ function renderValidasiInboundTable() {
       <td data-label="Deskripsi">${item.deskripsi || '-'}</td>
       <td class="text-center" data-label="Qty Divalidasi">
         <input type="number" class="form-control form-control-sm vi-item-qty text-center fw-bold"
-               data-idx="${idx}" value="0" min="0" max="${item.qtyBelumQC || 0}" style="width:80px; display:inline-block;" oninput="onViRowQtyChanged(this)">
+               data-idx="${idx}" value="0" min="0" max="${item.qtyBelumQC || 0}" style="width:80px; display:inline-block;" oninput="onViRowQtyChanged(this)" onfocus="this.select()" onblur="onViRowQtyBlur(this)">
         <div class="text-muted" style="font-size:10px;">dari ${item.qtyBelumQC || 0}</div>
       </td>
       <td data-label="Tgl Terima">${item.tglTerima || '-'}</td>
@@ -11372,11 +11372,30 @@ function toggleAllValidasiInbound(sourceCheckbox) {
 // lagi, centang ikut lepas otomatis (baris kembali dianggap belum mau divalidasi).
 // Setelah itu, status checkbox "Centang Semua" ikut disinkronkan lewat updateViCheckAllState().
 function onViRowQtyChanged(inputEl) {
+  // FITUR BARU: hilangkan angka 0 di depan kalau operator mengetik angka baru tanpa sempat
+  // menghapus dulu placeholder "0" bawaan (mis. jadi "0100" di HP yang browsernya tidak
+  // mendukung auto-select saat fokus). Field ini memang integer >= 0, jadi aman dipangkas.
+  let rawVal = inputEl.value;
+  if (rawVal.length > 1 && rawVal.charAt(0) === '0') {
+    rawVal = rawVal.replace(/^0+/, '') || '0';
+    inputEl.value = rawVal;
+  }
+
   const idx = inputEl.getAttribute('data-idx');
   const cb = document.querySelector(`.vi-item-check[data-idx="${idx}"]`);
   const qty = parseInt(inputEl.value) || 0;
   if (cb) cb.checked = qty > 0;
   updateViCheckAllState();
+}
+
+// FITUR BARU: kalau field Qty Divalidasi dikosongkan total (operator hapus semua angka),
+// otomatis isi ulang jadi "0" begitu field kehilangan fokus -- supaya field tidak pernah
+// tampil kosong dan tetap konsisten dengan status checkbox (kosong/0 = belum tercentang).
+function onViRowQtyBlur(inputEl) {
+  if (inputEl.value === "" || inputEl.value === null) {
+    inputEl.value = "0";
+    onViRowQtyChanged(inputEl);
+  }
 }
 
 // FITUR BARU: dipanggil setiap kali salah satu checkbox baris di-centang/lepas manual.
