@@ -2679,16 +2679,6 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Surat Jalan (dari Checking)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" id="home-subrow-export-laporan" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-inventory')">
-          <span class="sub-dot dot-export"></span>
-          <span class="sub-module-name">Laporan Inventory (Stock FG / Inbound / Return)</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-subrow-export-dataqc" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-dataqc')">
-          <span class="sub-dot dot-export"></span>
-          <span class="sub-module-name">Data QC (Hasil Quality Control)</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
         <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-movhistory')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Movement History (Audit Trail)</span>
@@ -5324,268 +5314,6 @@ async function eksekusiAddSkuOutbound() {
       <div id="sj-alert-container" class="mt-2"></div>
       </div><!-- end sub-export-suratjalan -->
 
-      <!-- ===== SUB: EXPORT INVENTORY ===== -->
-      <div id="sub-export-inventory">
-        <div class="card p-3 mb-3 border-start border-4 border-success">
-          <h6 class="fw-bold text-success mb-1"><i class="fa-solid fa-boxes-stacked me-2"></i>Export Laporan Inventory</h6>
-          <p class="small text-muted mb-2">Ekspor data stok terkini dari <strong>Stock_FG</strong>, <strong>Stock_Inbound</strong>, dan <strong>Stock_Return</strong> ke dalam satu dokumen.</p>
-
-          <div class="row g-2 mb-2">
-            <div class="col-4">
-              <label class="form-label small fw-bold mb-1">Filter Grade</label>
-              <select id="inv-exp-grade" class="form-select form-select-sm">
-                <option value="">Semua Grade</option>
-                <option value="Bagus">Bagus</option>
-                <option value="Minor">Minor</option>
-                <option value="Reject">Reject</option>
-                <option value="Kotor">Kotor</option>
-                <option value="Perbaikan">Perbaikan</option>
-              </select>
-            </div>
-            <div class="col-4">
-              <label class="form-label small fw-bold mb-1">Filter SKU</label>
-              <input type="text" id="inv-exp-sku" class="form-control form-control-sm" placeholder="Cth: FPS-BRC">
-            </div>
-            <div class="col-4">
-              <label class="form-label small fw-bold mb-1">Filter Lokasi</label>
-              <input type="text" id="inv-exp-lokasi" class="form-control form-control-sm" placeholder="Cth: A-01-05">
-            </div>
-            <div class="col-12">
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="inv-exp-chk-fg" checked>
-                <label class="form-check-label small" for="inv-exp-chk-fg">Stock FG</label>
-              </div>
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="inv-exp-chk-ib" checked>
-                <label class="form-check-label small" for="inv-exp-chk-ib">Stock Inbound</label>
-              </div>
-              <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="inv-exp-chk-rt" checked>
-                <label class="form-check-label small" for="inv-exp-chk-rt">Stock Return</label>
-              </div>
-            </div>
-          </div>
-
-          <p class="text-muted mb-2" style="font-size:10px;">
-            <i class="fa-solid fa-circle-info me-1"></i>Filter Lokasi mencocokkan sebagian teks (tidak perlu ketik kode lokasi lengkap), berlaku untuk Stock FG, Stock Inbound (Lokasi Staging), dan Stock Return.
-          </p>
-
-          <button type="button" class="btn btn-success btn-sm fw-bold w-100 py-2" onclick="loadInventoryExport()">
-            <i class="fa-solid fa-file-export me-1"></i>Generate Laporan
-          </button>
-        </div>
-
-        <!-- Area Preview Laporan Inventory -->
-        <div id="inv-exp-preview" style="display:none;">
-          <div class="inv-export-controls d-flex gap-2 mb-3">
-            <button type="button" class="btn btn-success btn-sm fw-bold flex-grow-1" onclick="window.print()">
-              <i class="fa-solid fa-print me-1"></i>Download PDF
-            </button>
-            <button type="button" class="btn btn-primary btn-sm fw-bold flex-grow-1" style="background:#1D6F42;border-color:#1D6F42;" onclick="downloadInventoryExportExcel()">
-              <i class="fa-solid fa-file-excel me-1"></i>Download Excel
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('inv-exp-preview').style.display='none'">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-
-          <!-- DOKUMEN LAPORAN -->
-          <div id="inv-exp-dokumen" class="inv-export-doc">
-
-            <div class="inv-export-header">
-              <div>
-                <div class="inv-export-title">CV. KAMOE SUKSES BERSAMA</div>
-                <div class="inv-export-subtitle">Ruko Green Garden, Blok A14 No.36, Kedoya Utara, Kebon Jeruk, JK 11520</div>
-              </div>
-              <div style="text-align:right;">
-                <div class="inv-export-title">LAPORAN INVENTORY</div>
-                <div class="inv-export-subtitle" id="inv-exp-printed-at"></div>
-              </div>
-            </div>
-
-            <!-- Summary Cards -->
-            <div class="inv-summary-box" id="inv-exp-summary-box"></div>
-
-            <!-- SECTION: Stock FG -->
-            <div id="inv-exp-section-fg">
-              <div class="inv-section-title">
-                <span><i class="fa-solid fa-boxes-stacked me-1"></i>STOCK FINISH GOOD (Stock_FG)</span>
-                <span id="inv-exp-fg-count" style="font-size:10px;font-weight:400;"></span>
-              </div>
-              <table id="inv-exp-tbl-fg" class="inv-tbl">
-                <thead>
-                  <tr>
-                    <th>No</th>
-                    <th>SKU</th>
-                    <th>Deskripsi</th>
-                    <th>Grade</th>
-                    <th>Lokasi</th>
-                    <th style="text-align:right;">Qty On Hand</th>
-                    <th style="text-align:right;">Qty Available</th>
-                    <th>Status</th>
-                    <th>Last Update</th>
-                  </tr>
-                </thead>
-                <tbody id="inv-exp-tbody-fg"></tbody>
-                <tfoot id="inv-exp-tfoot-fg"></tfoot>
-              </table>
-            </div>
-
-            <!-- SECTION: Stock Inbound -->
-            <div id="inv-exp-section-ib">
-              <div class="inv-section-title green">
-                <span><i class="fa-solid fa-truck-loading me-1"></i>STOCK MENUNGGU QC (Stock_Inbound)</span>
-                <span id="inv-exp-ib-count" style="font-size:10px;font-weight:400;"></span>
-              </div>
-              <table id="inv-exp-tbl-ib" class="inv-tbl">
-                <thead>
-                  <tr>
-                    <th>No</th>
-                    <th>SKU</th>
-                    <th>Deskripsi</th>
-                    <th>Lokasi Staging</th>
-                    <th style="text-align:right;">Qty Belum QC</th>
-                  </tr>
-                </thead>
-                <tbody id="inv-exp-tbody-ib"></tbody>
-                <tfoot id="inv-exp-tfoot-ib"></tfoot>
-              </table>
-            </div>
-
-            <!-- SECTION: Stock Return -->
-            <div id="inv-exp-section-rt">
-              <div class="inv-section-title orange">
-                <span><i class="fa-solid fa-arrow-rotate-left me-1"></i>STOCK RETURN PENDING PUTAWAY (Stock_Return)</span>
-                <span id="inv-exp-rt-count" style="font-size:10px;font-weight:400;"></span>
-              </div>
-              <table id="inv-exp-tbl-rt" class="inv-tbl">
-                <thead>
-                  <tr>
-                    <th>No</th>
-                    <th>SKU</th>
-                    <th>Deskripsi</th>
-                    <th>Grade</th>
-                    <th>Lokasi</th>
-                    <th style="text-align:right;">Qty</th>
-                  </tr>
-                </thead>
-                <tbody id="inv-exp-tbody-rt"></tbody>
-                <tfoot id="inv-exp-tfoot-rt"></tfoot>
-              </table>
-            </div>
-
-            <div class="inv-page-footer" id="inv-exp-footer"></div>
-          </div>
-        </div>
-
-        <div id="inv-exp-alert" class="mt-2"></div>
-      </div>
-      <!-- ===== AKHIR SUB EXPORT INVENTORY ===== -->
-
-      <!-- ===== SUB: EXPORT DATA QC ===== -->
-      <div id="sub-export-dataqc">
-        <div class="card p-3 mb-3 border-start border-4 border-warning">
-          <h6 class="fw-bold text-warning-emphasis mb-1"><i class="fa-solid fa-clipboard-check me-2"></i>Export Data QC</h6>
-          <p class="small text-muted mb-2">Ekspor seluruh riwayat hasil Quality Control dari sheet <strong>Data_QC</strong> (termasuk hasil Re-QC) ke dalam satu dokumen.</p>
-
-          <div class="row g-2 mb-2">
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Filter Status</label>
-              <select id="dqc-exp-status" class="form-select form-select-sm">
-                <option value="">Semua Status</option>
-                <option value="QC Passed">QC Passed</option>
-                <option value="Re-QC Passed">Re-QC Passed</option>
-              </select>
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Filter SKU / No PO</label>
-              <input type="text" id="dqc-exp-sku" class="form-control form-control-sm" placeholder="Cth: FPS-BRC atau No PO">
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Tanggal Dari</label>
-              <input type="date" id="dqc-exp-date-start" class="form-control form-control-sm">
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Tanggal Sampai</label>
-              <input type="date" id="dqc-exp-date-end" class="form-control form-control-sm">
-            </div>
-          </div>
-
-          <button type="button" class="btn btn-warning btn-sm fw-bold w-100 py-2" onclick="loadDataQCExport()">
-            <i class="fa-solid fa-file-export me-1"></i>Generate Laporan
-          </button>
-        </div>
-
-        <!-- Area Preview Laporan Data QC -->
-        <div id="dqc-exp-preview" style="display:none;">
-          <div class="inv-export-controls d-flex gap-2 mb-3">
-            <button type="button" class="btn btn-success btn-sm fw-bold flex-grow-1" onclick="window.print()">
-              <i class="fa-solid fa-print me-1"></i>Download PDF
-            </button>
-            <button type="button" class="btn btn-primary btn-sm fw-bold flex-grow-1" style="background:#1D6F42;border-color:#1D6F42;" onclick="downloadDataQCExportExcel()">
-              <i class="fa-solid fa-file-excel me-1"></i>Download Excel
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('dqc-exp-preview').style.display='none'">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-
-          <!-- DOKUMEN LAPORAN -->
-          <div id="dqc-exp-dokumen" class="inv-export-doc">
-
-            <div class="inv-export-header">
-              <div>
-                <div class="inv-export-title">CV. KAMOE SUKSES BERSAMA</div>
-                <div class="inv-export-subtitle">Ruko Green Garden, Blok A14 No.36, Kedoya Utara, Kebon Jeruk, JK 11520</div>
-              </div>
-              <div style="text-align:right;">
-                <div class="inv-export-title">LAPORAN DATA QC</div>
-                <div class="inv-export-subtitle" id="dqc-exp-printed-at"></div>
-              </div>
-            </div>
-
-            <!-- Summary Cards -->
-            <div class="inv-summary-box" id="dqc-exp-summary-box"></div>
-
-            <!-- SECTION: Data QC -->
-            <div id="dqc-exp-section">
-              <div class="inv-section-title orange">
-                <span><i class="fa-solid fa-clipboard-check me-1"></i>RIWAYAT HASIL QC (Data_QC)</span>
-                <span id="dqc-exp-count" style="font-size:10px;font-weight:400;"></span>
-              </div>
-              <table id="dqc-exp-tbl" class="inv-tbl">
-                <thead>
-                  <tr>
-                    <th>No</th>
-                    <th>No QC</th>
-                    <th>SKU</th>
-                    <th>Deskripsi</th>
-                    <th>No PO</th>
-                    <th style="text-align:right;">Total QC</th>
-                    <th style="text-align:right;">Bagus</th>
-                    <th style="text-align:right;">Minor</th>
-                    <th style="text-align:right;">Reject</th>
-                    <th style="text-align:right;">Kotor</th>
-                    <th style="text-align:right;">Perbaikan</th>
-                    <th>Petugas QC</th>
-                    <th>Status</th>
-                    <th>Status Validasi</th>
-                    <th>Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody id="dqc-exp-tbody"></tbody>
-                <tfoot id="dqc-exp-tfoot"></tfoot>
-              </table>
-            </div>
-
-            <div class="inv-page-footer" id="dqc-exp-footer"></div>
-          </div>
-        </div>
-
-        <div id="dqc-exp-alert" class="mt-2"></div>
-      </div>
-      <!-- ===== AKHIR SUB EXPORT DATA QC ===== -->
-
       <!-- ===== SUB: EXPORT MOVEMENT HISTORY (menggantikan modul Movement History standalone) =====
            Filter (No SKU, No Referensi, Tipe Transaksi, User) diisi dulu, lalu klik "Generate
            Laporan" untuk mengambil data terbaru dari sheet Movement_History. Preview & tombol
@@ -6741,8 +6469,6 @@ async function eksekusiAddSkuOutbound() {
       LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
       DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
       EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
-      EXPORT_LAPORAN:       { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-laporan' },
-      EXPORT_DATAQC:        { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-dataqc',     subcard: 'sub-export-dataqc' },
       EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
       ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
       KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
@@ -6772,9 +6498,9 @@ async function eksekusiAddSkuOutbound() {
       'Tim Swarovski':        ['QC_SWAROVSKI', 'QC_DATALIST'],
       'Petugas Putaway':      ['INBOUND_RECEIVING', 'OPS_VALIDATE', 'OPS_PUTAWAY', 'OPS_PUTAWAYRETURN', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG'],
       'Picker':               ['OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG', 'INV_DASHBOARD', 'INV_TRANSFER', 'LIVE_MOVEMENT'],
-      'Demand Planner':       ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST'],
-      'RnD':                  ['INV_DASHBOARD', 'EXPORT_LAPORAN', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
-      'Marketing':            ['INV_DASHBOARD', 'EXPORT_LAPORAN'],
+      'Demand Planner':       ['INV_DASHBOARD', 'OUTBOUND_REQUEST'],
+      'RnD':                  ['INV_DASHBOARD', 'OUTBOUND_REQUEST', 'QC_REQUESTULANG_V2'],
+      'Marketing':            ['INV_DASHBOARD'],
       'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                 'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT',
                                 'CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR']
@@ -6811,8 +6537,6 @@ async function eksekusiAddSkuOutbound() {
       LIVE_MOVEMENT:             { grup: 'Live Movement',     label: 'Live Movement History' },
       DASHBOARD_OBIB:            { grup: 'Dashboard OB/IB',   label: 'Dashboard Outbound/Inbound' },
       EXPORT_SURATJALAN:         { grup: 'Export',            label: 'Export Surat Jalan' },
-      EXPORT_LAPORAN:            { grup: 'Export',            label: 'Export Laporan' },
-      EXPORT_DATAQC:             { grup: 'Export',            label: 'Export Data QC' },
       EXPORT_MOVHISTORY:         { grup: 'Export',            label: 'Export Movement History' },
       ADMIN_VALIDATE:            { grup: 'Admin Validate',    label: 'Admin Validate (Inbound & QC)' },
       KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
@@ -6872,11 +6596,8 @@ async function eksekusiAddSkuOutbound() {
       // USER_PUNYA_AKSES_TRANSFER / USER_PUNYA_AKSES_ADJUSTMENT langsung di dalam fungsi
       // buka*DariDashboard().
       document.getElementById('home-subrow-export-suratjalan').style.display = 'none';
-      document.getElementById('home-subrow-export-laporan').style.display = 'none';
-      document.getElementById('home-subrow-export-dataqc').style.display = 'none';
       document.getElementById('home-subrow-export-movhistory').style.display = 'none';
       document.getElementById('sub-export-suratjalan').classList.add('d-none');
-      document.getElementById('sub-export-dataqc').classList.add('d-none');
       document.getElementById('sub-export-movhistory').classList.add('d-none');
 
       // Sembunyikan dulu sub-baris & sub-card Inbound baru (Validasi Inbound)
@@ -7300,7 +7021,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
-          'modul-export': ['sub-export-suratjalan', 'sub-export-inventory', 'sub-export-dataqc', 'sub-export-movhistory'],
+          'modul-export': ['sub-export-suratjalan', 'sub-export-movhistory'],
           'modul-openpo': ['sub-po-buat', 'sub-po-data']
         };
         const daftarSub = mapSubCards[modulId];
@@ -12579,7 +12300,7 @@ async function eksekusiCancelOutbound() {
     }
 
     // Download Excel (.xlsx) dari Laporan Movement History yang SEDANG di-preview
-    // (hasil generate terakhir), sama seperti downloadDataQCExportExcel().
+    // (hasil generate terakhir).
     function downloadMovementHistoryExportExcel() {
       if (typeof XLSX === 'undefined') {
         document.getElementById('mhexp-alert').innerHTML = '<div class="alert alert-danger small py-2">Library Excel gagal dimuat.</div>';
@@ -13286,323 +13007,6 @@ async function eksekusiCancelOutbound() {
           }
         }, autoHideMs);
       }
-    }
-
-    // =========================================================
-    // MODUL EXPORT — LAPORAN INVENTORY
-    // =========================================================
-
-    // Buka sub-section export tertentu (dipakai dari home shortcut)
-    function bukaSubExport(subId) {
-      document.getElementById(subId).scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // Muat & generate laporan inventory dari server
-    function loadInventoryExport() {
-      const alertEl = document.getElementById('inv-exp-alert');
-      alertEl.innerHTML = '<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data inventory...</div>';
-      document.getElementById('inv-exp-preview').style.display = 'none';
-
-      google.script.run
-        .withSuccessHandler(res => {
-          alertEl.innerHTML = '';
-          if (!res.success) {
-            alertEl.innerHTML = `<div class="alert alert-danger small py-2">${res.message}</div>`;
-            return;
-          }
-          renderInventoryExport(res);
-          document.getElementById('inv-exp-preview').style.display = 'block';
-          document.getElementById('inv-exp-preview').scrollIntoView({ behavior: 'smooth' });
-        })
-        .withFailureHandler(err => {
-          alertEl.innerHTML = `<div class="alert alert-danger small py-2">${err.message}</div>`;
-        })
-        .getInventoryExportData();
-    }
-
-    function renderInventoryExport(data) {
-      const filterGrade  = document.getElementById('inv-exp-grade').value.toLowerCase();
-      const filterSku    = sanitizeFilterInput(document.getElementById('inv-exp-sku').value);
-      const filterLokasi = sanitizeFilterInput(document.getElementById('inv-exp-lokasi').value);
-      const showFG      = document.getElementById('inv-exp-chk-fg').checked;
-      const showIB      = document.getElementById('inv-exp-chk-ib').checked;
-      const showRT      = document.getElementById('inv-exp-chk-rt').checked;
-
-      document.getElementById('inv-exp-printed-at').textContent = 'Dicetak: ' + data.printedAt;
-      document.getElementById('inv-exp-footer').textContent = 'CV. Kamoe Sukses Bersama — Laporan Inventory — Dicetak: ' + data.printedAt;
-
-      // ---- STOCK FG ----
-      const secFG = document.getElementById('inv-exp-section-fg');
-      secFG.style.display = showFG ? 'block' : 'none';
-      if (showFG) {
-        let rows = data.stockFG.filter(r =>
-          (!filterGrade  || r.grade.toLowerCase() === filterGrade) &&
-          (!filterSku    || r.sku.toLowerCase().includes(filterSku) || r.deskripsi.toLowerCase().includes(filterSku)) &&
-          (!filterLokasi || r.lokasi.toLowerCase().includes(filterLokasi))
-        );
-        let html = '', sumOH = 0, sumAV = 0;
-        rows.forEach((r, i) => {
-          sumOH += r.qtyOnHand; sumAV += r.qtyAvailable;
-          html += `<tr>
-            <td style="text-align:center;">${i+1}</td>
-            <td style="font-weight:700;">${r.sku}</td>
-            <td>${r.deskripsi}</td>
-            <td><span class="badge" style="background:${gradeColor(r.grade)};font-size:9px;">${r.grade}</span></td>
-            <td>${r.lokasi}</td>
-            <td style="text-align:right;">${r.qtyOnHand.toLocaleString('id-ID')}</td>
-            <td style="text-align:right;color:${r.qtyAvailable<r.qtyOnHand?'#c62828':'inherit'};font-weight:700;">${r.qtyAvailable.toLocaleString('id-ID')}</td>
-            <td><span style="font-size:9px;">${r.status}</span></td>
-            <td style="font-size:9px;">${r.lastUpdate}</td>
-          </tr>`;
-        });
-        document.getElementById('inv-exp-tbody-fg').innerHTML = html || '<tr><td colspan="9" class="text-center text-muted">Tidak ada data</td></tr>';
-        document.getElementById('inv-exp-tfoot-fg').innerHTML = `<tr>
-          <td colspan="5" style="text-align:right;">TOTAL (${rows.length} baris)</td>
-          <td style="text-align:right;">${sumOH.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${sumAV.toLocaleString('id-ID')}</td>
-          <td colspan="2"></td>
-        </tr>`;
-        document.getElementById('inv-exp-fg-count').textContent = rows.length + ' baris';
-      }
-
-      // ---- STOCK INBOUND ----
-      const secIB = document.getElementById('inv-exp-section-ib');
-      secIB.style.display = showIB ? 'block' : 'none';
-      if (showIB) {
-        let rows = data.stockInbound.filter(r =>
-          (!filterSku    || r.sku.toLowerCase().includes(filterSku) || r.deskripsi.toLowerCase().includes(filterSku)) &&
-          (!filterLokasi || r.lokasi.toLowerCase().includes(filterLokasi))
-        );
-        let html = '', sumQty = 0;
-        rows.forEach((r, i) => {
-          sumQty += r.qtyBelumQC;
-          html += `<tr>
-            <td style="text-align:center;">${i+1}</td>
-            <td style="font-weight:700;">${r.sku}</td>
-            <td>${r.deskripsi}</td>
-            <td>${r.lokasi}</td>
-            <td style="text-align:right;font-weight:700;">${r.qtyBelumQC.toLocaleString('id-ID')}</td>
-          </tr>`;
-        });
-        document.getElementById('inv-exp-tbody-ib').innerHTML = html || '<tr><td colspan="5" class="text-center text-muted">Tidak ada data</td></tr>';
-        document.getElementById('inv-exp-tfoot-ib').innerHTML = `<tr>
-          <td colspan="4" style="text-align:right;">TOTAL (${rows.length} baris)</td>
-          <td style="text-align:right;">${sumQty.toLocaleString('id-ID')}</td>
-        </tr>`;
-        document.getElementById('inv-exp-ib-count').textContent = rows.length + ' baris';
-      }
-
-      // ---- STOCK RETURN ----
-      const secRT = document.getElementById('inv-exp-section-rt');
-      secRT.style.display = showRT ? 'block' : 'none';
-      if (showRT) {
-        let rows = data.stockReturn.filter(r =>
-          (!filterGrade  || r.grade.toLowerCase() === filterGrade) &&
-          (!filterSku    || r.sku.toLowerCase().includes(filterSku) || r.deskripsi.toLowerCase().includes(filterSku)) &&
-          (!filterLokasi || r.lokasi.toLowerCase().includes(filterLokasi))
-        );
-        let html = '', sumQty = 0;
-        rows.forEach((r, i) => {
-          sumQty += r.qty;
-          html += `<tr>
-            <td style="text-align:center;">${i+1}</td>
-            <td style="font-weight:700;">${r.sku}</td>
-            <td>${r.deskripsi}</td>
-            <td><span class="badge" style="background:${gradeColor(r.grade)};font-size:9px;">${r.grade}</span></td>
-            <td>${r.lokasi}</td>
-            <td style="text-align:right;font-weight:700;">${r.qty.toLocaleString('id-ID')}</td>
-          </tr>`;
-        });
-        document.getElementById('inv-exp-tbody-rt').innerHTML = html || '<tr><td colspan="6" class="text-center text-muted">Tidak ada data</td></tr>';
-        document.getElementById('inv-exp-tfoot-rt').innerHTML = `<tr>
-          <td colspan="5" style="text-align:right;">TOTAL (${rows.length} baris)</td>
-          <td style="text-align:right;">${sumQty.toLocaleString('id-ID')}</td>
-        </tr>`;
-        document.getElementById('inv-exp-rt-count').textContent = rows.length + ' baris';
-      }
-
-      // ---- SUMMARY CARDS ----
-      const s = data.summary;
-      document.getElementById('inv-exp-summary-box').innerHTML = `
-        <div class="inv-sum-card" style="border-color:#1565C0;">
-          <div class="val" style="color:#1565C0;">${s.fg.totalSku}</div>
-          <div class="lbl">SKU Aktif (FG)</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#1565C0;">
-          <div class="val" style="color:#1565C0;">${s.fg.totalOnHand.toLocaleString('id-ID')}</div>
-          <div class="lbl">Qty On Hand (FG)</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#388E3C;">
-          <div class="val" style="color:#388E3C;">${s.fg.totalAvailable.toLocaleString('id-ID')}</div>
-          <div class="lbl">Qty Available (FG)</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#2E7D32;">
-          <div class="val" style="color:#2E7D32;">${s.ib.totalQty.toLocaleString('id-ID')}</div>
-          <div class="lbl">Qty Belum QC (Inbound)</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#E65100;">
-          <div class="val" style="color:#E65100;">${s.rt.totalQty.toLocaleString('id-ID')}</div>
-          <div class="lbl">Qty Return Pending</div>
-        </div>`;
-    }
-
-    // Download Excel (.xlsx) dari Laporan Inventory yang sedang di-preview.
-    // Tiap section (Stock_FG, Stock_Inbound, Stock_Return) diambil langsung dari tabel
-    // yang sedang tampil di layar (sesuai filter Grade/SKU & checkbox yang aktif),
-    // supaya datanya selalu sama persis dengan yang terlihat di preview/PDF.
-    function downloadInventoryExportExcel() {
-      if (typeof XLSX === 'undefined') {
-        document.getElementById('inv-exp-alert').innerHTML = '<div class="alert alert-danger small py-2">Library Excel gagal dimuat.</div>';
-        return;
-      }
-      const wb = XLSX.utils.book_new();
-
-      const sections = [
-        { sectionId: 'inv-exp-section-fg', tableId: 'inv-exp-tbl-fg', sheetName: 'Stock_FG' },
-        { sectionId: 'inv-exp-section-ib', tableId: 'inv-exp-tbl-ib', sheetName: 'Stock_Inbound' },
-        { sectionId: 'inv-exp-section-rt', tableId: 'inv-exp-tbl-rt', sheetName: 'Stock_Return' }
-      ];
-
-      let adaSheet = false;
-      sections.forEach(s => {
-        const sectionEl = document.getElementById(s.sectionId);
-        const tableEl   = document.getElementById(s.tableId);
-        // Hanya ikutkan section yang sedang ditampilkan (checkbox-nya aktif)
-        if (sectionEl && tableEl && sectionEl.style.display !== 'none') {
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(tableEl), s.sheetName);
-          adaSheet = true;
-        }
-      });
-
-      if (!adaSheet) {
-        document.getElementById('inv-exp-alert').innerHTML = '<div class="alert alert-warning small py-2">Tidak ada data untuk diekspor — centang minimal 1 section terlebih dahulu.</div>';
-        return;
-      }
-
-      const tglFile = document.getElementById('inv-exp-printed-at').textContent.replace('Dicetak: ', '').replace(/[\/: ]/g, '-');
-      XLSX.writeFile(wb, `Laporan_Inventory_${tglFile || Date.now()}.xlsx`);
-    }
-
-    // Helper warna grade badge
-    function gradeColor(grade) {
-      const map = { 'Bagus':'#2E7D32','Minor':'#F57F17','Reject':'#B71C1C','Kotor':'#4E342E','Perbaikan':'#6A1B9A' };
-      return map[grade] || '#555';
-    }
-
-    // =========================================================================
-    // MODUL EXPORT — DATA QC (RIWAYAT HASIL QUALITY CONTROL)
-    // =========================================================================
-
-    // Muat & generate laporan Data QC dari server
-    function loadDataQCExport() {
-      const alertEl = document.getElementById('dqc-exp-alert');
-      alertEl.innerHTML = '<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data QC...</div>';
-      document.getElementById('dqc-exp-preview').style.display = 'none';
-
-      google.script.run
-        .withSuccessHandler(res => {
-          alertEl.innerHTML = '';
-          if (!res.success) {
-            alertEl.innerHTML = `<div class="alert alert-danger small py-2">${res.message}</div>`;
-            return;
-          }
-          renderDataQCExport(res);
-          document.getElementById('dqc-exp-preview').style.display = 'block';
-          document.getElementById('dqc-exp-preview').scrollIntoView({ behavior: 'smooth' });
-        })
-        .withFailureHandler(err => {
-          alertEl.innerHTML = `<div class="alert alert-danger small py-2">${err.message}</div>`;
-        })
-        .getDataQCExportData();
-    }
-
-    function renderDataQCExport(data) {
-      const filterStatus = document.getElementById('dqc-exp-status').value.toLowerCase();
-      const filterKw      = sanitizeFilterInput(document.getElementById('dqc-exp-sku').value);
-      const filterDateStart = document.getElementById('dqc-exp-date-start').value; // format yyyy-MM-dd atau ""
-      const filterDateEnd   = document.getElementById('dqc-exp-date-end').value;   // format yyyy-MM-dd atau ""
-
-      document.getElementById('dqc-exp-printed-at').textContent = 'Dicetak: ' + data.printedAt;
-      document.getElementById('dqc-exp-footer').textContent = 'CV. Kamoe Sukses Bersama — Laporan Data QC — Dicetak: ' + data.printedAt;
-
-      let rows = data.dataQC.filter(r =>
-        (!filterStatus || r.status.toLowerCase() === filterStatus) &&
-        (!filterKw || r.sku.toLowerCase().includes(filterKw) || r.deskripsi.toLowerCase().includes(filterKw) || r.noPo.toLowerCase().includes(filterKw)) &&
-        (!filterDateStart || (r.tglRaw && r.tglRaw >= filterDateStart)) &&
-        (!filterDateEnd || (r.tglRaw && r.tglRaw <= filterDateEnd))
-      );
-
-      let html = '', sumTotal = 0, sumBagus = 0, sumMinor = 0, sumReject = 0, sumKotor = 0, sumPerbaikan = 0;
-      rows.forEach((r, i) => {
-        sumTotal += r.totalQC; sumBagus += r.bagus; sumMinor += r.minor; sumReject += r.reject; sumKotor += r.kotor; sumPerbaikan += r.perbaikan;
-        html += `<tr>
-          <td style="text-align:center;">${i+1}</td>
-          <td style="font-weight:700;">${r.noQC}</td>
-          <td style="font-weight:700;">${r.sku}</td>
-          <td>${r.deskripsi}</td>
-          <td>${r.noPo}</td>
-          <td style="text-align:right;font-weight:700;">${r.totalQC.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${r.bagus.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${r.minor.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${r.reject.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${r.kotor.toLocaleString('id-ID')}</td>
-          <td style="text-align:right;">${r.perbaikan.toLocaleString('id-ID')}</td>
-          <td>${r.petugas}</td>
-          <td><span style="font-size:9px;">${r.status}</span></td>
-          <td><span class="${r.statusValidasi.toLowerCase().startsWith('valid') ? 'text-success' : 'text-danger'}" style="font-size:9px;font-weight:700;">${r.statusValidasi}</span></td>
-          <td style="font-size:9px;">${r.timestamp}</td>
-        </tr>`;
-      });
-      document.getElementById('dqc-exp-tbody').innerHTML = html || '<tr><td colspan="15" class="text-center text-muted">Tidak ada data</td></tr>';
-      document.getElementById('dqc-exp-tfoot').innerHTML = `<tr>
-        <td colspan="5" style="text-align:right;">TOTAL (${rows.length} baris)</td>
-        <td style="text-align:right;">${sumTotal.toLocaleString('id-ID')}</td>
-        <td style="text-align:right;">${sumBagus.toLocaleString('id-ID')}</td>
-        <td style="text-align:right;">${sumMinor.toLocaleString('id-ID')}</td>
-        <td style="text-align:right;">${sumReject.toLocaleString('id-ID')}</td>
-        <td style="text-align:right;">${sumKotor.toLocaleString('id-ID')}</td>
-        <td style="text-align:right;">${sumPerbaikan.toLocaleString('id-ID')}</td>
-        <td colspan="4"></td>
-      </tr>`;
-      document.getElementById('dqc-exp-count').textContent = rows.length + ' baris';
-
-      document.getElementById('dqc-exp-summary-box').innerHTML = `
-        <div class="inv-sum-card" style="border-color:#E65100;">
-          <div class="val" style="color:#E65100;">${rows.length}</div>
-          <div class="lbl">Total Record QC</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#1565C0;">
-          <div class="val" style="color:#1565C0;">${sumTotal.toLocaleString('id-ID')}</div>
-          <div class="lbl">Total Qty di-QC</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#2E7D32;">
-          <div class="val" style="color:#2E7D32;">${sumBagus.toLocaleString('id-ID')}</div>
-          <div class="lbl">Total Bagus</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#F57F17;">
-          <div class="val" style="color:#F57F17;">${sumMinor.toLocaleString('id-ID')}</div>
-          <div class="lbl">Total Minor</div>
-        </div>
-        <div class="inv-sum-card" style="border-color:#B71C1C;">
-          <div class="val" style="color:#B71C1C;">${sumReject.toLocaleString('id-ID')}</div>
-          <div class="lbl">Total Reject</div>
-        </div>`;
-    }
-
-    // Download Excel (.xlsx) dari Laporan Data QC yang sedang di-preview, mengikuti filter yang aktif.
-    function downloadDataQCExportExcel() {
-      if (typeof XLSX === 'undefined') {
-        document.getElementById('dqc-exp-alert').innerHTML = '<div class="alert alert-danger small py-2">Library Excel gagal dimuat.</div>';
-        return;
-      }
-      const tableEl = document.getElementById('dqc-exp-tbl');
-      if (!tableEl) return;
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(tableEl), 'Data_QC');
-
-      const tglFile = document.getElementById('dqc-exp-printed-at').textContent.replace('Dicetak: ', '').replace(/[\/: ]/g, '-');
-      XLSX.writeFile(wb, `Laporan_Data_QC_${tglFile || Date.now()}.xlsx`);
     }
 
     // =========================================================================
