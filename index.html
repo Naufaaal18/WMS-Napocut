@@ -4545,6 +4545,9 @@ async function eksekusiAddSkuOutbound() {
             <button type="button" class="btn btn-outline-success btn-sm" id="inv-btn-add-new-sku" onclick="bukaAdjustmentSkuBaru()" title="Adjustment SKU Baru (belum ada di Stock_FG)" style="display:none;">
               <i class="fa-solid fa-plus"></i>
             </button>
+            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportInventoryDashboardExcel()" title="Export ke Excel (Ctrl+E)">
+              <i class="fa-solid fa-file-excel"></i>
+            </button>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadInventoryDashboard()" title="Muat Ulang">
               <i class="fa-solid fa-rotate"></i>
             </button>
@@ -9208,12 +9211,24 @@ function bukaDetailPO(noPo) {
     boxFG.classList.add('d-none');
     const info = document.getElementById('dpo-return-validasi-info');
     const btn = document.getElementById('dpo-btn-validate-return');
+    // FITUR BARU: Validate SO hanya boleh dilakukan kalau PO sudah CLOSED (barang sudah
+    // diterima penuh, tidak ada lagi Pending Qty PO). Selama masih Active, tombol
+    // dinonaktifkan supaya tidak ada PO yang divalidasi padahal belum diterima penuh.
+    const sudahClosed = String(po.statusPo || '').toUpperCase() === 'CLOSED';
     if (po.noSoValidasi) {
       info.innerHTML = `<span class="badge bg-success me-1">Valid</span> No SO: ${escapeHtmlAttr(po.noSoValidasi)}${po.validatedBy ? ' · oleh ' + escapeHtmlAttr(po.validatedBy) : ''}`;
       btn.textContent = 'Re-Validate';
     } else {
       info.innerHTML = `<span class="badge bg-secondary me-1">Pending</span> Belum divalidasi`;
       btn.innerHTML = '<i class="fa-solid fa-check-double me-1"></i>Validate';
+    }
+    if (!sudahClosed) {
+      btn.disabled = true;
+      btn.title = 'PO masih berstatus Active (belum diterima penuh). Validate SO hanya bisa dilakukan setelah PO berstatus CLOSED.';
+      info.innerHTML += `<br><span class="text-danger small"><i class="fa-solid fa-circle-info me-1"></i>PO masih Active — validasi baru bisa dilakukan setelah PO CLOSED.</span>`;
+    } else {
+      btn.disabled = false;
+      btn.title = '';
     }
   } else if ((po.kategori || '').toLowerCase() === 'finish good') {
     boxReturn.classList.add('d-none');
@@ -9252,6 +9267,11 @@ function validatePOReturnPrompt() {
   if (!PO_DETAIL_TERBUKA) return;
   const po = PO_DATA_LIST.find(p => p.noPo === PO_DETAIL_TERBUKA);
   if (!po) return;
+  // FITUR BARU: cegah validate selama PO masih Active (belum diterima penuh).
+  if (String(po.statusPo || '').toUpperCase() !== 'CLOSED') {
+    customAlert('PO ini masih berstatus Active. Validate SO hanya bisa dilakukan setelah PO berstatus CLOSED (barang sudah diterima penuh).');
+    return;
+  }
   const noSo = prompt(`Masukkan Nomor SO untuk validasi PO Return "${po.noPo}":`, po.noSoValidasi || '');
   if (noSo === null) return; // dibatalkan
   if (!noSo.trim()) { customAlert('Nomor SO wajib diisi.'); return; }
@@ -9364,15 +9384,20 @@ function exportDetailPOExcel() {
 }
 
 // FITUR BARU (poin 8): shortcut Ctrl+E -- export tabel Data PO kalau sub-modul ini yang
-// sedang aktif/terlihat, atau export Detail PO kalau modalnya sedang terbuka.
+// sedang aktif/terlihat, export Detail PO kalau modalnya sedang terbuka, atau export
+// Dashboard Inventory kalau modul itu yang sedang aktif/terbuka.
 document.addEventListener('keydown', function (e) {
   if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'e') return;
   const modalEl = document.getElementById('modal-detail-po');
   const modalTerbuka = modalEl && modalEl.classList.contains('show');
   const subPoTerlihat = document.getElementById('sub-po-data') && !document.getElementById('sub-po-data').classList.contains('d-none');
-  if (!modalTerbuka && !subPoTerlihat) return; // biarkan Ctrl+E default kalau tidak relevan di sini
+  const modulInventoryEl = document.getElementById('modul-inventory');
+  const invAktif = modulInventoryEl && modulInventoryEl.classList.contains('active');
+  if (!modalTerbuka && !subPoTerlihat && !invAktif) return; // biarkan Ctrl+E default kalau tidak relevan di sini
   e.preventDefault();
-  if (modalTerbuka) exportDetailPOExcel(); else exportDataPOExcel();
+  if (modalTerbuka) exportDetailPOExcel();
+  else if (subPoTerlihat) exportDataPOExcel();
+  else exportInventoryDashboardExcel();
 });
 
 // (Listener DOMContentLoaded duplikat di sini sudah dihapus — sudah ditangani oleh listener session-check di awal script)
@@ -12314,6 +12339,23 @@ async function eksekusiCancelOutbound() {
         }
       }
       document.getElementById('inv-info-jumlah').innerText = `Menampilkan ${filtered.length} baris data.${infoTambahan}`;
+    }
+
+    // FITUR BARU: Export Excel untuk tabel Dashboard Inventory (Stock_FG) -- mengikuti
+    // data yang SEDANG TAMPIL sesuai filter SKU/Lokasi/Grade yang aktif (INV_TABLE_FILTERED_ROWS
+    // sudah diisi oleh renderInventoryTable()), supaya export selalu konsisten dgn apa yang
+    // dilihat user di layar saat itu. Bisa dipicu lewat tombol manual atau shortcut Ctrl+E.
+    function exportInventoryDashboardExcel() {
+      const daftar = INV_TABLE_FILTERED_ROWS || [];
+      if (!daftar.length) { customAlert('Tidak ada data untuk di-export.'); return; }
+      const rows = daftar.map(r => ({
+        'SKU': r.sku, 'Deskripsi': r.deskripsi || '-', 'Lokasi': r.lokasi,
+        'Grade': r.grade, 'Qty Available': Number(r.qtyAvailable || 0), 'Qty On Hand': Number(r.qtyOnHand || 0)
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Dashboard Inventory');
+      XLSX.writeFile(wb, `Dashboard_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     // Render tabel monitoring tambahan: Stok Open PO Active, Stok Belum QC (Stock_Inbound) & Pending Putaway
