@@ -7636,6 +7636,11 @@ async function eksekusiAddSkuOutbound() {
         loadHomeDashboard();
       }
       resetWhDashToPage1(); // FITUR BARU: selalu mulai dari halaman 1 & hentikan polling halaman 2 saat kembali ke Home
+
+      // FITUR BARU: tombol back dari dalam modul langsung membuka kembali sidebar
+      // Menu Utama (bukan cuma menampilkan dashboard kosong), supaya user bisa
+      // langsung pilih modul lain tanpa perlu klik hamburger lagi.
+      openHomeSidebar();
     }
 
     // Navigasi Antar Halaman Tab
