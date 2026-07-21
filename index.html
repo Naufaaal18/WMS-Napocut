@@ -9647,19 +9647,9 @@ function renderDataPOTable() {
     daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
   }
 
-  // FITUR BARU: Ringkasan KPI dihitung dari `daftar` di titik ini -- SUDAH lolos filter
-  // Bulan/Tahun + Cari No PO/Supplier + Kategori, TAPI SEBELUM checkbox Closed/Cancel
-  // menyembunyikan baris dari tabel. Supaya KPI "PO Closed"/"PO Active" tetap
-  // menghitung SEMUA PO pada periode itu walau baris Closed/Cancel-nya sedang
-  // disembunyikan di bawah.
-  hitungRingkasanDataPO(daftar);
-
-  // FITUR BARU: simpan jumlah SEBELUM checkbox Closed/Cancel diterapkan, supaya kalau
-  // hasil akhir tabel kosong, pesannya bisa membedakan 2 kondisi berbeda:
-  // (a) memang tidak ada PO sama sekali di periode/filter ini (KPI juga 0), vs
-  // (b) ada PO di periode ini (KPI menunjukkan angka) tapi semuanya sedang disembunyikan
-  //     oleh checkbox Closed/Cancel yang belum dicentang -- supaya user tidak bingung
-  //     kenapa Ringkasan KPI menunjukkan angka tapi tabel di bawahnya kosong.
+  // FITUR BARU: simpan jumlah SEBELUM checkbox Closed/Cancel diterapkan, dipakai HANYA
+  // untuk pesan "tabel kosong" di bawah (membedakan "memang tidak ada data" vs "ada data
+  // tapi disembunyikan checkbox") -- BUKAN lagi dipakai untuk Ringkasan KPI.
   const jumlahSebelumCheckbox = daftar.length;
 
   if (!tampilkanClosed) {
@@ -9668,6 +9658,12 @@ function renderDataPOTable() {
   if (!tampilkanCancel) {
     daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
   }
+
+  // FITUR BARU: Ringkasan KPI sekarang dihitung SETELAH checkbox Closed/Cancel diterapkan,
+  // supaya kartu ringkasan (Total PO, PO Closed, PO Active, Total Qty PO, dst) SELALU
+  // mengikuti persis PO yang benar-benar tampil di tabel di bawahnya -- kalau checkbox
+  // Closed/Cancel tidak dicentang, PO berstatus itu tidak lagi dihitung di KPI juga.
+  hitungRingkasanDataPO(daftar);
 
   if (!daftar.length) {
     if (jumlahSebelumCheckbox > 0) {
