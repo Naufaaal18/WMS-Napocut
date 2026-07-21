@@ -2949,7 +2949,16 @@ window.fetch = function (url, options) {
               </button>
             </div>
             <p class="small text-muted mb-2">Semua PO yang sudah tercatat di Master PO (input manual maupun upload Excel), dikelompokkan per No PO. Klik salah satu baris untuk lihat rincian SKU-nya.</p>
-            <input type="text" id="pod-filter" class="form-control form-control-sm mb-2" placeholder="Cari No PO / Supplier..." oninput="renderDataPOTable()">
+            <div class="row g-2 mb-2">
+              <div class="col-8">
+                <input type="text" id="pod-filter" class="form-control form-control-sm" placeholder="Cari No PO / Supplier..." oninput="renderDataPOTable()">
+              </div>
+              <div class="col-4">
+                <select id="pod-filter-kategori" class="form-select form-select-sm" onchange="renderDataPOTable()">
+                  <option value="">-- Semua Kategori --</option>
+                </select>
+              </div>
+            </div>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
               <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
                 <thead class="table-light" style="position:sticky;top:0;">
@@ -2959,13 +2968,14 @@ window.fetch = function (url, options) {
                     <th>Kategori</th>
                     <th>Tanggal</th>
                     <th class="text-center">Jml SKU</th>
-                    <th class="text-end">Total Qty Order</th>
-                    <th class="text-end">Sisa Qty</th>
+                    <th class="text-end">Qty PO</th>
+                    <th class="text-end">Pending Qty PO</th>
+                    <th class="text-end">Qty Receiving PO</th>
                     <th class="text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody id="pod-tbody">
-                  <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+                  <tr><td colspan="9" class="text-center text-muted py-3">Memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -5986,7 +5996,7 @@ async function eksekusiAddSkuOutbound() {
             <div class="col-6"><span class="text-muted">Tanggal Dokumen</span><br><span class="fw-bold" id="dpo-modal-tanggal">-</span></div>
             <div class="col-6"><span class="text-muted">Status</span><br><span id="dpo-modal-status">-</span></div>
             <div class="col-6"><span class="text-muted">Dibuat oleh</span><br><span class="fw-bold" id="dpo-modal-createdby">-</span></div>
-            <div class="col-6"><span class="text-muted">Jumlah SKU / Total Qty Order / Sisa Qty</span><br><span class="fw-bold" id="dpo-modal-ringkasan">-</span></div>
+            <div class="col-6"><span class="text-muted">Jumlah SKU / Qty PO / Pending Qty PO / Qty Receiving PO</span><br><span class="fw-bold" id="dpo-modal-ringkasan">-</span></div>
           </div>
           <p class="small fw-bold text-secondary mb-1">Rincian Item:</p>
           <div class="table-responsive">
@@ -5994,8 +6004,9 @@ async function eksekusiAddSkuOutbound() {
               <thead class="table-light">
                 <tr>
                   <th>Kode SKU</th>
-                  <th class="text-end">Qty Order</th>
-                  <th class="text-end">Sisa Qty</th>
+                  <th class="text-end">Qty PO</th>
+                  <th class="text-end">Pending Qty PO</th>
+                  <th class="text-end">Qty Receiving PO</th>
                   <th>Grade</th>
                 </tr>
               </thead>
@@ -8967,14 +8978,29 @@ const PO_STATUS_WARNA = {
 
 function loadDataPOList() {
   const tbody = document.getElementById('pod-tbody');
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
   ENDPOINTS.getDataPOList()
     .then(res => {
-      if (!res.success) { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
+      if (!res.success) { tbody.innerHTML = `<tr><td colspan="9" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
       PO_DATA_LIST = res.data || [];
+      isiFilterKategoriDataPO();
       renderDataPOTable();
     })
-    .catch(err => { tbody.innerHTML = `<tr><td colspan="8" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
+    .catch(err => { tbody.innerHTML = `<tr><td colspan="9" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
+}
+
+// FITUR BARU: isi dropdown filter Kategori dari daftar kategori unik yang benar-benar
+// ada di data PO saat ini (bukan hardcode), supaya otomatis ikut kalau ada kategori baru.
+// Nilai yang sedang dipilih user dipertahankan kalau masih ada di daftar baru.
+function isiFilterKategoriDataPO() {
+  const sel = document.getElementById('pod-filter-kategori');
+  if (!sel) return;
+  const nilaiTerpilih = sel.value;
+  const daftarKategori = [...new Set(PO_DATA_LIST.map(po => po.kategori).filter(k => k && k.trim() !== ''))]
+    .sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">-- Semua Kategori --</option>' +
+    daftarKategori.map(k => `<option value="${escapeHtmlAttr(k)}">${escapeHtmlAttr(k)}</option>`).join('');
+  if (daftarKategori.includes(nilaiTerpilih)) sel.value = nilaiTerpilih;
 }
 
 // FITUR BARU: klik baris No PO membuka modal "Detail PO" (bukan expand baris inline
@@ -8992,12 +9018,13 @@ function bukaDetailPO(noPo) {
   document.getElementById('dpo-modal-status').innerHTML = `<span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span>`;
   document.getElementById('dpo-modal-createdby').textContent = po.createdBy || '-';
   document.getElementById('dpo-modal-ringkasan').textContent =
-    `${po.items.length} SKU / ${po.totalQtyOrder.toLocaleString('id-ID')} / ${po.totalQtySisa.toLocaleString('id-ID')}`;
+    `${po.items.length} SKU / ${po.totalQtySisa.toLocaleString('id-ID')} / ${po.totalQtyOrder.toLocaleString('id-ID')} / ${(po.totalQtySisa - po.totalQtyOrder).toLocaleString('id-ID')}`;
 
   document.getElementById('dpo-modal-items').innerHTML = po.items.map(it => `<tr>
     <td>${escapeHtmlAttr(it.sku)}</td>
-    <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
     <td class="text-end">${it.qtySisa.toLocaleString('id-ID')}</td>
+    <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
+    <td class="text-end">${(it.qtySisa - it.qtyOrder).toLocaleString('id-ID')}</td>
     <td>${escapeHtmlAttr(it.grade || '-')}</td>
   </tr>`).join('');
 
@@ -9015,22 +9042,32 @@ function tutupDetailPO() {
 function renderDataPOTable() {
   const tbody = document.getElementById('pod-tbody');
   const keyword = (document.getElementById('pod-filter').value || '').trim().toLowerCase();
-  const daftar = keyword
-    ? PO_DATA_LIST.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword))
-    : PO_DATA_LIST;
+  const kategoriTerpilih = (document.getElementById('pod-filter-kategori')?.value || '').trim();
 
-  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
+  let daftar = PO_DATA_LIST;
+  if (keyword) {
+    daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
+  }
+  if (kategoriTerpilih) {
+    daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
+  }
+
+  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
 
   tbody.innerHTML = daftar.map(po => {
     const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
+    const qtyPO = po.totalQtySisa;
+    const pendingQtyPO = po.totalQtyOrder;
+    const qtyReceivingPO = qtyPO - pendingQtyPO;
     return `<tr style="cursor:pointer;" onclick="bukaDetailPO('${escapeHtmlAttr(po.noPo)}')" title="Klik untuk lihat Detail PO">
       <td class="fw-bold">${escapeHtmlAttr(po.noPo)} <i class="fa-solid fa-arrow-up-right-from-square ms-1 text-muted" style="font-size:9px;"></i></td>
       <td>${escapeHtmlAttr(po.supplier || '-')}</td>
       <td>${escapeHtmlAttr(po.kategori || '-')}</td>
       <td>${po.tanggal ? new Date(po.tanggal).toLocaleDateString('id-ID') : '-'}</td>
       <td class="text-center">${po.items.length}</td>
-      <td class="text-end">${po.totalQtyOrder.toLocaleString('id-ID')}</td>
-      <td class="text-end">${po.totalQtySisa.toLocaleString('id-ID')}</td>
+      <td class="text-end">${qtyPO.toLocaleString('id-ID')}</td>
+      <td class="text-end">${pendingQtyPO.toLocaleString('id-ID')}</td>
+      <td class="text-end">${qtyReceivingPO.toLocaleString('id-ID')}</td>
       <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span></td>
     </tr>`;
   }).join('');
