@@ -3202,8 +3202,12 @@ window.fetch = function (url, options) {
                  Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO. Dihitung dari PO
                  yang lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori + checkbox
                  Tampilkan Closed/Cancel di bawah (KPI selalu mengikuti apa yang benar-benar
-                 tampil di tabel). -->
-            <div class="row g-2 mb-3 text-center" id="pod-summary-cards">
+                 tampil di tabel).
+                 FITUR BARU: dipecah jadi 2 baris terpisah -- baris 1 kartu jumlah PO (Total/
+                 Closed/Active/Cancel), baris 2 kartu Qty (Total Qty PO/Pending/Receiving) --
+                 dan keduanya di-center (justify-content-center) supaya baris kedua yang cuma
+                 3 kartu tetap seimbang di tengah, bukan menggantung rata kiri sendirian. -->
+            <div class="row g-2 mb-2 text-center justify-content-center" id="pod-summary-cards">
               <div class="col-6 col-md-2">
                 <div class="border rounded p-2">
                   <div class="small text-muted">Total PO</div>
@@ -3232,6 +3236,8 @@ window.fetch = function (url, options) {
                   <div class="fw-bold fs-5 text-danger" id="pod-sum-cancel">-</div>
                 </div>
               </div>
+            </div>
+            <div class="row g-2 mb-3 text-center justify-content-center">
               <div class="col-6 col-md-2">
                 <div class="border rounded p-2">
                   <div class="small text-muted">Total Qty PO</div>
