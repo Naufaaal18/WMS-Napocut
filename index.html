@@ -2970,12 +2970,11 @@ window.fetch = function (url, options) {
                     <th class="text-end">Pending Qty PO</th>
                     <th class="text-end">Qty Receiving PO</th>
                     <th class="text-center">Status</th>
-                    <th class="text-center">Rekonsiliasi</th>
                     <th class="text-center">Validasi</th>
                   </tr>
                 </thead>
                 <tbody id="pod-tbody">
-                  <tr><td colspan="11" class="text-center text-muted py-3">Memuat data...</td></tr>
+                  <tr><td colspan="10" class="text-center text-muted py-3">Memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -6109,8 +6108,8 @@ async function eksekusiAddSkuOutbound() {
                   <th class="text-end">Pending Qty PO</th>
                   <th class="text-end">Qty Receiving PO</th>
                   <th>Grade</th>
-                  <th class="text-center">Rekonsiliasi</th>
-                  <th class="text-center">Validasi</th>
+                  <th class="text-center" id="dpo-th-rekon">Rekonsiliasi</th>
+                  <th class="text-center" id="dpo-th-validasi">Validasi</th>
                 </tr>
               </thead>
               <tbody id="dpo-modal-items"></tbody>
@@ -9083,15 +9082,15 @@ const PO_STATUS_WARNA = {
 
 function loadDataPOList() {
   const tbody = document.getElementById('pod-tbody');
-  tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
   ENDPOINTS.getDataPOList()
     .then(res => {
-      if (!res.success) { tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
+      if (!res.success) { tbody.innerHTML = `<tr><td colspan="10" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
       PO_DATA_LIST = res.data || [];
       isiFilterKategoriDataPO();
       renderDataPOTable();
     })
-    .catch(err => { tbody.innerHTML = `<tr><td colspan="11" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
+    .catch(err => { tbody.innerHTML = `<tr><td colspan="10" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`; });
 }
 
 // FITUR BARU: isi dropdown filter Kategori dari daftar kategori unik yang benar-benar
@@ -9129,6 +9128,9 @@ function badgeRekonsiliasi(kategori, qtyPO, qtyReceivingPO) {
 // FITUR BARU (poin 6 & 7): kolom "Validasi" -- beda logika per Kategori:
 // - Return: manual, tergantung apakah sudah di-Validate dgn No SO ('Valid' / 'Pending').
 // - Finish Good: otomatis, tergantung Pending Qty PO sisa ('Partial' selama > 0, 'Valid' kalau habis/<=0).
+// - Raw Material: otomatis -- 'Valid' kalau Pending Qty PO sudah 0/habis, 'Partial' kalau
+//   sudah ada sebagian yang di-Receive tapi Pending Qty PO masih ada sisa, selainnya '-'
+//   (belum ada yang di-Receive sama sekali / masih full pending).
 // - Kategori lain: '-' (belum ada aturan spesifik).
 function hitungValidasiPO(po) {
   const kategori = (po.kategori || '').toLowerCase();
@@ -9138,6 +9140,13 @@ function hitungValidasiPO(po) {
   if (kategori === 'finish good') {
     const pending = po.totalQtyOrder;
     return pending > 0 ? { label: 'Partial', warna: 'warning' } : { label: 'Valid', warna: 'success' };
+  }
+  if (kategori === 'raw material') {
+    const pending = po.totalQtyOrder;
+    const diterima = po.totalQtyDiterima;
+    if (pending <= 0) return { label: 'Valid', warna: 'success' };
+    if (diterima > 0) return { label: 'Partial', warna: 'warning' };
+    return { label: '-', warna: 'secondary' };
   }
   return { label: '-', warna: 'secondary' };
 }
@@ -9161,15 +9170,24 @@ function bukaDetailPO(noPo) {
     `${po.items.length} SKU / ${po.totalQtySisa.toLocaleString('id-ID')} / ${po.totalQtyOrder.toLocaleString('id-ID')} / ${po.totalQtyDiterima.toLocaleString('id-ID')}`;
 
   const validasiPO = hitungValidasiPO(po);
+  const kategoriLower = (po.kategori || '').toLowerCase();
+  // FITUR BARU: kolom Rekonsiliasi HANYA tampil khusus Kategori Return (disembunyikan
+  // total, bukan sekadar '-', untuk Finish Good & Raw Material). Kolom Validasi
+  // disembunyikan total khusus Kategori Raw Material (tidak relevan utk kategori ini).
+  const tampilkanKolomRekon = kategoriLower === 'return';
+  const tampilkanKolomValidasi = kategoriLower !== 'raw material';
+  document.getElementById('dpo-th-rekon').classList.toggle('d-none', !tampilkanKolomRekon);
+  document.getElementById('dpo-th-validasi').classList.toggle('d-none', !tampilkanKolomValidasi);
+
   document.getElementById('dpo-modal-items').innerHTML = po.items.map(it => {
     // FIX: Qty Receiving PO per-item sekarang dari kolom qty_diterima (independen),
     // bukan lagi qtySisa - qtyOrder.
     const receivingIt = it.qtyDiterima;
-    const validasiBadge = (po.kategori || '').toLowerCase() === 'return'
+    const validasiBadge = kategoriLower === 'return'
       ? (po.noSoValidasi ? `<span class="badge bg-success">Valid</span>` : `<span class="badge bg-secondary">Pending</span>`)
       : `<span class="badge bg-${validasiPO.warna}">${escapeHtmlAttr(validasiPO.label)}</span>`;
     // FITUR BARU: Rekonsiliasi per-item, HANYA khusus Kategori Return (bandingkan
-    // Qty PO item vs Qty Receiving item). Kategori lain tampil '-'.
+    // Qty PO item vs Qty Receiving item). Kolom disembunyikan total utk kategori lain.
     const rekonBadgeIt = badgeRekonsiliasi(po.kategori, it.qtySisa, receivingIt);
     return `<tr>
     <td>${escapeHtmlAttr(it.sku)}</td>
@@ -9177,8 +9195,8 @@ function bukaDetailPO(noPo) {
     <td class="text-end">${it.qtyOrder.toLocaleString('id-ID')}</td>
     <td class="text-end">${receivingIt.toLocaleString('id-ID')}</td>
     <td>${escapeHtmlAttr(it.grade || '-')}</td>
-    <td class="text-center">${rekonBadgeIt}</td>
-    <td class="text-center">${validasiBadge}</td>
+    ${tampilkanKolomRekon ? `<td class="text-center">${rekonBadgeIt}</td>` : ''}
+    ${tampilkanKolomValidasi ? `<td class="text-center">${validasiBadge}</td>` : ''}
   </tr>`;
   }).join('');
 
@@ -9264,7 +9282,7 @@ function renderDataPOTable() {
     daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
   }
 
-  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
+  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
 
   tbody.innerHTML = daftar.map(po => {
     const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
@@ -9284,7 +9302,6 @@ function renderDataPOTable() {
       <td class="text-end">${pendingQtyPO.toLocaleString('id-ID')}</td>
       <td class="text-end">${qtyReceivingPO.toLocaleString('id-ID')}</td>
       <td class="text-center"><span class="badge bg-${warnaStatus}">${escapeHtmlAttr(po.statusPo || '-')}</span></td>
-      <td class="text-center">${badgeRekonsiliasi(po.kategori, qtyPO, qtyReceivingPO)}</td>
       <td class="text-center"><span class="badge bg-${validasi.warna}">${escapeHtmlAttr(validasi.label)}</span></td>
     </tr>`;
   }).join('');
@@ -9309,7 +9326,6 @@ function exportDataPOExcel() {
       'Tanggal': po.tanggal ? new Date(po.tanggal).toLocaleDateString('id-ID') : '-',
       'Jml SKU': po.items.length, 'Qty PO': qtyPO, 'Pending Qty PO': pendingQtyPO, 'Qty Receiving PO': qtyReceivingPO,
       'Status': po.statusPo || '-',
-      'Rekonsiliasi': kategoriPunyaRekonsiliasi(po.kategori) ? hitungRekonsiliasi(qtyPO, qtyReceivingPO).label : '-',
       'Validasi': validasi.label, 'Dibuat Oleh': po.createdBy || '-'
     };
   });
@@ -9325,12 +9341,22 @@ function exportDetailPOExcel() {
   const po = PO_DATA_LIST.find(p => p.noPo === PO_DETAIL_TERBUKA);
   if (!po) return;
   const validasiPO = hitungValidasiPO(po);
-  const rows = po.items.map(it => ({
-    'Kode SKU': it.sku, 'Qty PO': it.qtySisa, 'Pending Qty PO': it.qtyOrder,
-    'Qty Receiving PO': it.qtyDiterima, 'Grade': it.grade || '-',
-    'Rekonsiliasi': kategoriPunyaRekonsiliasi(po.kategori) ? hitungRekonsiliasi(it.qtySisa, it.qtyDiterima).label : '-',
-    'Validasi': (po.kategori || '').toLowerCase() === 'return' ? (po.noSoValidasi ? 'Valid' : 'Pending') : validasiPO.label
-  }));
+  const kategoriLower = (po.kategori || '').toLowerCase();
+  // FITUR BARU: samakan dengan tampilan modal -- Rekonsiliasi hanya utk Return,
+  // Validasi disembunyikan (tidak ikut di-export) khusus Raw Material.
+  const tampilkanKolomRekon = kategoriLower === 'return';
+  const tampilkanKolomValidasi = kategoriLower !== 'raw material';
+  const rows = po.items.map(it => {
+    const row = {
+      'Kode SKU': it.sku, 'Qty PO': it.qtySisa, 'Pending Qty PO': it.qtyOrder,
+      'Qty Receiving PO': it.qtyDiterima, 'Grade': it.grade || '-'
+    };
+    if (tampilkanKolomRekon) row['Rekonsiliasi'] = hitungRekonsiliasi(it.qtySisa, it.qtyDiterima).label;
+    if (tampilkanKolomValidasi) {
+      row['Validasi'] = kategoriLower === 'return' ? (po.noSoValidasi ? 'Valid' : 'Pending') : validasiPO.label;
+    }
+    return row;
+  });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, po.noPo.substring(0, 28));
