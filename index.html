@@ -656,11 +656,23 @@ Object.assign(ENDPOINTS, {
       // Dashboard jadi lebih sedikit dari jumlah No Request yang sebenarnya ada
       // di database. Sekarang pakai _fetchAllRows supaya SEMUA baris terambil,
       // berapa pun jumlahnya.
+      // FITUR BARU: ikut ambil kolom no_so dari tabel `checking` -- No SO Outbound
+      // diisi lewat proses "Validasi Awal Surat Jalan" (lihat ENDPOINTS.validasiAwalSuratJalan
+      // di atas), disimpan per baris Checking, bukan kolom baru di outbound_request.
       const [obData, ckData, pkData] = await Promise.all([
         _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status, catatan'),
-        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker'),
+        _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker, no_so'),
         _fetchAllRows('picking', 'no_request, kode_sku, qty_diambil')
       ]);
+
+      // FITUR BARU: No SO per No Request -- ambil No SO PERTAMA yang tidak kosong
+      // yang ditemukan di antara baris Checking milik No Request tsb (1 No Request
+      // hanya akan punya 1 No SO, diisi serentak saat Validasi Awal Surat Jalan).
+      const noSoMap = {};
+      (ckData || []).forEach(r => {
+        if (!r.no_request) return;
+        if (!noSoMap[r.no_request] && r.no_so && r.no_so.trim() !== '') noSoMap[r.no_request] = r.no_so.trim();
+      });
 
       // FITUR BARU: Qty Checker (Klop) = total qty_checker dari tabel `checking` untuk
       // baris yang qty_checker-nya SAMA dengan qty_picker (artinya sudah "klop"/cocok,
@@ -705,7 +717,8 @@ Object.assign(ENDPOINTS, {
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
           qtyStockout: r.qty_oos, qtyShortpick: r.qty_shortpick || 0, status: r.status, catatan: r.catatan || '',
           qtyPicker: pickerMap[r.no_request + '||' + r.kode_sku] || 0,
-          qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0
+          qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0,
+          noSo: noSoMap[r.no_request] || ''
         }))
         .sort((a, b) => {
           const c = String(a.noRequest).localeCompare(String(b.noRequest), 'id', { numeric: true, sensitivity: 'base' });
@@ -817,18 +830,25 @@ Object.assign(ENDPOINTS, {
     // Return bisa menampilkan nama supplier di samping nomor PO (mis. "15072 - AWALUNA"),
     // tanpa mengubah bentuk poMap yang sudah dipakai di banyak tempat lain (PO -> {sku: qty}).
     // Supplier dikembalikan terpisah lewat `supplierByPo` (PO -> nama supplier).
-    const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi, supplier').ilike('lokasi', 'staging return').gt('qty', 0);
+    // FITUR BARU: ikut ambil kolom `grade` -- Grade AWAL barang return ini saat pertama
+    // masuk Staging Return (mis. hasil temuan Return dari Toko), dipakai supaya dropdown
+    // "Grade Simpan" di form Putaway Return bisa otomatis ter-pilih sesuai Grade Awal-nya
+    // (operator tetap bebas mengganti manual kalau memang perlu dikoreksi).
+    const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi, supplier, grade').ilike('lokasi', 'staging return').gt('qty', 0);
     if (error) throw new Error(error.message);
     const poMap = {};
     const supplierByPo = {};
+    const gradeByPo = {};
     (data || []).forEach(r => {
       if (!r.no_po_faktur || !r.kode_sku) return;
       if (!poMap[r.no_po_faktur]) poMap[r.no_po_faktur] = {};
       if (!poMap[r.no_po_faktur][r.kode_sku]) poMap[r.no_po_faktur][r.kode_sku] = 0;
       poMap[r.no_po_faktur][r.kode_sku] += Number(r.qty || 0);
       if (!supplierByPo[r.no_po_faktur] && r.supplier) supplierByPo[r.no_po_faktur] = r.supplier;
+      if (!gradeByPo[r.no_po_faktur]) gradeByPo[r.no_po_faktur] = {};
+      if (!gradeByPo[r.no_po_faktur][r.kode_sku] && r.grade && r.grade.trim() !== '') gradeByPo[r.no_po_faktur][r.kode_sku] = r.grade.trim();
     });
-    return { poMap, supplierByPo };
+    return { poMap, supplierByPo, gradeByPo };
   },
 
   getInventoryDashboardData: async () => {
@@ -4282,19 +4302,48 @@ function submitOutboundRequestAplikasi() {
         const worksheet = workbook.Sheets[sheetName];
         
         const rowsJson = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        
+
+        // FITUR BARU: validasi Grade dari Excel -- HANYA 5 grade yang valid di sistem
+        // (Bagus, Minor, Reject, Kotor, Perbaikan), sama seperti pilihan dropdown Grade
+        // pada Input Manual Dinamis. Kalau ada baris dengan Grade di luar daftar ini
+        // (typo, beda kapitalisasi jauh, kolom tertukar, dsb), SELURUH upload ditolak
+        // (tidak ada yang diproses sebagian) dan user diberi tahu persis baris mana &
+        // Grade apa yang salah, supaya bisa diperbaiki di file Excel-nya sebelum upload ulang.
+        const GRADE_VALID = ['Bagus', 'Minor', 'Reject', 'Kotor', 'Perbaikan'];
+        const gradeErrors = [];
+
         for (let i = 1; i < rowsJson.length; i++) {
           let sku = rowsJson[i][0];   
           let grade = rowsJson[i][1]; 
           let qty = rowsJson[i][2];   
           
           if (sku && grade && qty) {
+            const skuTrim = sku.toString().trim();
+            const gradeTrim = grade.toString().trim();
+            // Pencocokan case-insensitive (mis. "bagus"/"BAGUS" tetap diterima), tapi
+            // nilai yang disimpan/dikirim ke server selalu memakai penulisan baku
+            // (Title Case) dari GRADE_VALID, supaya konsisten dengan data yang dihasilkan
+            // Input Manual Dinamis.
+            const gradeMatch = GRADE_VALID.find(g => g.toLowerCase() === gradeTrim.toLowerCase());
+            if (!gradeMatch) {
+              gradeErrors.push(`Baris ${i + 1} (SKU ${skuTrim}): Grade "${gradeTrim}" tidak valid`);
+              continue;
+            }
             payload.items.push({
-              sku: sku.toString().trim(),
-              grade: grade.toString().trim(),
+              sku: skuTrim,
+              grade: gradeMatch,
               qty: parseInt(qty, 10)
             });
           }
+        }
+
+        if (gradeErrors.length > 0) {
+          customAlert(
+            `Upload ditolak, ada ${gradeErrors.length} baris dengan Grade tidak sesuai format:\n\n` +
+            gradeErrors.join('\n') +
+            `\n\nGrade yang valid hanya: ${GRADE_VALID.join(', ')}. Silakan perbaiki file Excel lalu upload ulang.`
+          );
+          return;
         }
         
         if (payload.items.length === 0) {
@@ -4932,9 +4981,20 @@ async function eksekusiAddSkuOutbound() {
 
         <!-- ===== VIEW 1 (DEFAULT): FORM REQUEST -- 1 baris per No Request ===== -->
         <div id="ob-dash-view-summary">
-          <div class="d-flex justify-content-between align-items-center mb-1">
+          <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
             <small class="fw-bold text-secondary">Form Request <span class="text-muted fw-normal">(klik salah satu baris untuk lihat detail per SKU)</span></small>
-            <input type="text" id="ob-dash-filter-summary" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter No Request/Store" oninput="renderDashboardOutboundSummaryTable()">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <!-- FITUR BARU: checkbox untuk include/exclude No Request yang Trailing Status-nya
+                   sudah Closed ATAU Cancelled. Default TIDAK dicentang (keduanya disembunyikan)
+                   supaya tabel fokus ke Request yang masih berjalan. -->
+              <div class="form-check form-check-sm mb-0">
+                <input class="form-check-input" type="checkbox" id="ob-dash-include-closed-cancel" onchange="renderDashboardOutboundTable(); renderDashboardOutboundSummaryTable();">
+                <label class="form-check-label small" for="ob-dash-include-closed-cancel">
+                  Tampilkan status <strong>Closed</strong> &amp; <strong>Cancelled</strong>
+                </label>
+              </div>
+              <input type="text" id="ob-dash-filter-summary" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter No Request/Store" oninput="renderDashboardOutboundSummaryTable()">
+            </div>
           </div>
           <div class="table-responsive ob-desktop-table" style="max-height:420px;">
             <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
@@ -4943,6 +5003,7 @@ async function eksekusiAddSkuOutbound() {
                   <th>No Request</th>
                   <th>Tgl</th>
                   <th>Store</th>
+                  <th>No SO</th>
                   <th class="text-center" title="Jumlah SKU berbeda dalam 1 No Request">SKU</th>
                   <th>Grade</th>
                   <th class="text-center">Qty Req</th>
@@ -4956,7 +5017,7 @@ async function eksekusiAddSkuOutbound() {
                 </tr>
               </thead>
               <tbody id="ob-dash-summary-tbody">
-                <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
+                <tr><td colspan="14" class="text-center text-muted py-3">Memuat data...</td></tr>
               </tbody>
             </table>
           </div>
@@ -4982,6 +5043,7 @@ async function eksekusiAddSkuOutbound() {
                   <th>No Request</th>
                   <th>Tgl</th>
                   <th>Store</th>
+                  <th>No SO</th>
                   <th>SKU</th>
                   <th>Grade</th>
                   <th class="text-center">Qty Req</th>
@@ -4995,7 +5057,7 @@ async function eksekusiAddSkuOutbound() {
                 </tr>
               </thead>
               <tbody id="ob-dash-tbody">
-                <tr><td colspan="13" class="text-center text-muted py-3">Memuat data...</td></tr>
+                <tr><td colspan="14" class="text-center text-muted py-3">Memuat data...</td></tr>
               </tbody>
             </table>
           </div>
@@ -9535,6 +9597,7 @@ document.addEventListener('keydown', function (e) {
 
 let globalPutawayReturnData = {};
 let globalPutawayReturnSupplierMap = {}; // FITUR BARU: PO Return -> nama supplier, dipakai utk label dropdown
+let globalPutawayReturnGradeMap = {}; // FITUR BARU: PO Return -> {sku: gradeAwal}, dipakai utk auto-select Grade Simpan
 
 // Fungsi penarik data awal saat modul return dibuka atau dimuat
 function loadStockReturnToDropdown() {
@@ -9551,6 +9614,9 @@ function loadStockReturnToDropdown() {
       const poMap = (result && result.poMap) || {};
       globalPutawayReturnData = poMap;
       globalPutawayReturnSupplierMap = (result && result.supplierByPo) || {};
+      // FITUR BARU: Grade Awal per PO+SKU (dari Staging Return) -- dipakai untuk
+      // auto-select dropdown "Grade Simpan" begitu SKU dipilih (lihat onReturnSkuChanged()).
+      globalPutawayReturnGradeMap = (result && result.gradeByPo) || {};
       poSelect.innerHTML = '<option value="">-- Pilih Nomor PO Return --</option>';
 
       const poKeys = Object.keys(poMap);
@@ -9720,6 +9786,18 @@ function onReturnSkuChanged() {
   }
 
   document.getElementById("pwr-qty").disabled = false;
+
+  // FITUR BARU: auto-pilih dropdown "Grade Simpan" mengikuti Grade Awal SKU ini di PO
+  // Return (dari Staging Return) -- operator tetap bisa mengganti manual kalau memang
+  // perlu dikoreksi (mis. ternyata kondisi fisiknya berbeda dari catatan Grade Awal).
+  // Kalau Grade Awal-nya tidak dikenali (kosong / bukan salah satu dari 4 opsi dropdown
+  // ini, mis. "Perbaikan"), dropdown dibiarkan pada pilihan default tanpa error.
+  const gradeAwal = (globalPutawayReturnGradeMap[poSelected] && globalPutawayReturnGradeMap[poSelected][skuSelected]) || '';
+  const pwrGradeSelectEl = document.getElementById("pwr-grade");
+  if (pwrGradeSelectEl && gradeAwal) {
+    const opsiCocok = Array.from(pwrGradeSelectEl.options).find(o => o.value.toLowerCase() === gradeAwal.toLowerCase());
+    if (opsiCocok) pwrGradeSelectEl.value = opsiCocok.value;
+  }
 
   // Aktifkan langkah konfirmasi scan/ketik SKU (langkah baru sebelum boleh isi Lokasi Rak)
   document.getElementById("pwr-confirm-sku").disabled = false;
@@ -13607,7 +13685,7 @@ async function eksekusiCancelOutbound() {
       const bulan = bulanEl ? parseInt(bulanEl.value) : (new Date().getMonth() + 1);
       const tahun = tahunEl ? parseInt(tahunEl.value) : new Date().getFullYear();
       const tbody = document.getElementById('ob-dash-tbody');
-      if (tbody) tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
       // PERBAIKAN BUG: sebelumnya baris-baris di bawah ini manggil document.getElementById(...)
       // lalu LANGSUNG akses propertinya (.textContent / .style) tanpa cek null dulu. Kalau salah
       // satu elemen ini (mis. 'ob-dash-stockout-box') karena suatu sebab belum/tidak ada di DOM
@@ -13901,13 +13979,21 @@ async function eksekusiCancelOutbound() {
     function renderDashboardOutboundTable() {
       const filterEl = document.getElementById('ob-dash-filter');
       const filter = (filterEl ? filterEl.value : '' || '').trim().toLowerCase();
-      const rows = DASHOB_DATA_OB.filter(r =>
+      // FITUR BARU: samakan dengan Form Request -- checkbox "Tampilkan status Closed &
+      // Cancelled" juga menyembunyikan baris SKU berstatus Closed/Cancelled di sini
+      // (dan otomatis ikut mempengaruhi KPI Total Request/SKU/Qty di bawah, karena
+      // dihitung dari variabel `rows` yang sama).
+      const tampilkanClosedCancel = !!document.getElementById('ob-dash-include-closed-cancel')?.checked;
+      let rows = DASHOB_DATA_OB.filter(r =>
         !filter ||
         r.noRequest.toLowerCase().includes(filter) ||
         r.kodeStore.toLowerCase().includes(filter) ||
         r.kodeSku.toLowerCase().includes(filter) ||
         (r.grade || '').toLowerCase().includes(filter)
       );
+      if (!tampilkanClosedCancel) {
+        rows = rows.filter(r => r.status !== 'Closed' && r.status !== 'Cancelled');
+      }
 
       const tbody = document.getElementById('ob-dash-tbody');
       if (!tbody) return; // Elemen tabel tidak ada di DOM saat ini (mis. modul sedang tidak aktif) -- hentikan render dengan aman, tidak perlu crash.
@@ -13918,7 +14004,7 @@ async function eksekusiCancelOutbound() {
       const finalSet = hitungNoRequestFinalSet(DASHOB_DATA_OB);
       const cardsWrap = document.getElementById('ob-dash-detail-cards');
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
         if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
       } else {
         const rowsRendered = rows.map(r => {
@@ -13955,6 +14041,7 @@ async function eksekusiCancelOutbound() {
             <td class="fw-bold">${r.noRequest}${r.catatan ? ` <span class="text-muted fw-normal" style="font-size:11px;">(${escapeHtmlAttr(r.catatan)})</span>` : ''}</td>
             <td style="white-space:nowrap;">${r.tglRequest}</td>
             <td>${r.kodeStore}</td>
+            <td>${r.noSo ? escapeHtmlAttr(r.noSo) : '<span class="text-muted">-</span>'}</td>
             <td>${r.kodeSku}</td>
             <td>${r.grade || '-'}</td>
             <td class="text-center">${r.qtyRequest}</td>
@@ -13971,6 +14058,7 @@ async function eksekusiCancelOutbound() {
               <div>
                 <div class="ob-mcard-title" style="color:#212529;">${r.kodeSku}</div>
                 <div class="ob-mcard-sub">${r.tglRequest} • ${r.kodeStore} • ${r.grade || '-'}${r.catatan ? ` • ${escapeHtmlAttr(r.catatan)}` : ''}</div>
+                <div class="ob-mcard-sub">No SO: ${r.noSo ? escapeHtmlAttr(r.noSo) : '-'}</div>
               </div>
               <span class="${statusColor}" style="font-size:11px;white-space:nowrap;">${statusText}</span>
             </div>
@@ -14091,7 +14179,7 @@ async function eksekusiCancelOutbound() {
         if (!r.noRequest) return;
         if (!map[r.noRequest]) {
           map[r.noRequest] = {
-            noRequest: r.noRequest, tglRequest: r.tglRequest, kodeStore: r.kodeStore,
+            noRequest: r.noRequest, tglRequest: r.tglRequest, kodeStore: r.kodeStore, noSo: r.noSo || '',
             skuSet: new Set(), gradeSet: new Set(),
             qtyRequest: 0, qtyAllocated: 0, qtyPicker: 0, qtyCheckerKlop: 0, qtyShortpick: 0, qtyStockout: 0,
             _rows: []
@@ -14155,7 +14243,7 @@ async function eksekusiCancelOutbound() {
         else if (semuaCancelled) { leadingStatus = 'Cancelled'; trailingStatus = 'Cancelled'; }
 
         return {
-          noRequest: g.noRequest, tglRequest: g.tglRequest, kodeStore: g.kodeStore,
+          noRequest: g.noRequest, tglRequest: g.tglRequest, kodeStore: g.kodeStore, noSo: g.noSo,
           skuCount: g.skuSet.size, grade: Array.from(g.gradeSet).sort().join(', ') || '-',
           qtyRequest: g.qtyRequest, qtyAllocated: g.qtyAllocated, qtyPicker: g.qtyPicker,
           qtyCheckerKlop: g.qtyCheckerKlop, qtyShortpick: g.qtyShortpick, qtyStockout: g.qtyStockout,
@@ -14179,17 +14267,24 @@ async function eksekusiCancelOutbound() {
       if (!tbody) return; // Modul sedang tidak aktif di DOM -- aman, tidak perlu render.
       const filterEl = document.getElementById('ob-dash-filter-summary');
       const filter = ((filterEl ? filterEl.value : '') || '').trim().toLowerCase();
+      // FITUR BARU: checkbox "Tampilkan status Closed & Cancelled" -- default TIDAK
+      // dicentang, jadi No Request yang Trailing Status-nya sudah Closed ATAU Cancelled
+      // disembunyikan dari Form Request kecuali dicentang.
+      const tampilkanClosedCancel = !!document.getElementById('ob-dash-include-closed-cancel')?.checked;
 
-      const summaryRows = computeDashboardOutboundSummary(DASHOB_DATA_OB).filter(r =>
+      let summaryRows = computeDashboardOutboundSummary(DASHOB_DATA_OB).filter(r =>
         !filter ||
         r.noRequest.toLowerCase().includes(filter) ||
         (r.kodeStore || '').toLowerCase().includes(filter)
       );
+      if (!tampilkanClosedCancel) {
+        summaryRows = summaryRows.filter(r => r.trailingStatus !== 'Closed' && r.trailingStatus !== 'Cancelled');
+      }
 
       const cardsWrap = document.getElementById('ob-dash-summary-cards');
 
       if (!summaryRows.length) {
-        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
         if (cardsWrap) cardsWrap.innerHTML = '<div class="text-center text-muted py-3">Tidak ada data untuk periode ini.</div>';
         return;
       }
@@ -14203,6 +14298,7 @@ async function eksekusiCancelOutbound() {
           <td class="fw-bold">${r.noRequest}</td>
           <td style="white-space:nowrap;">${r.tglRequest}</td>
           <td>${r.kodeStore}</td>
+          <td>${r.noSo ? escapeHtmlAttr(r.noSo) : '<span class="text-muted">-</span>'}</td>
           <td class="text-center">${r.skuCount}</td>
           <td>${r.grade}</td>
           <td class="text-center">${r.qtyRequest.toLocaleString('id-ID')}</td>
@@ -14226,6 +14322,7 @@ async function eksekusiCancelOutbound() {
               <div>
                 <div class="ob-mcard-title">${r.noRequest}</div>
                 <div class="ob-mcard-sub">${r.tglRequest} • ${r.kodeStore} • ${r.grade}</div>
+                <div class="ob-mcard-sub">No SO: ${r.noSo ? escapeHtmlAttr(r.noSo) : '-'}</div>
               </div>
               <i class="fa-solid fa-chevron-right text-muted mt-1"></i>
             </div>
@@ -14290,13 +14387,18 @@ async function eksekusiCancelOutbound() {
         return;
       }
       const filter = (document.getElementById('ob-dash-filter').value || '').trim().toLowerCase();
-      const rows = DASHOB_DATA_OB.filter(r =>
+      // FITUR BARU: samakan dengan tabel -- ikutkan/kecualikan baris Closed/Cancelled sesuai checkbox.
+      const tampilkanClosedCancel = !!document.getElementById('ob-dash-include-closed-cancel')?.checked;
+      let rows = DASHOB_DATA_OB.filter(r =>
         !filter ||
         r.noRequest.toLowerCase().includes(filter) ||
         r.kodeStore.toLowerCase().includes(filter) ||
         r.kodeSku.toLowerCase().includes(filter) ||
         (r.grade || '').toLowerCase().includes(filter)
       );
+      if (!tampilkanClosedCancel) {
+        rows = rows.filter(r => r.status !== 'Closed' && r.status !== 'Cancelled');
+      }
 
       if (!rows.length) {
         customAlert("Tidak ada data untuk diexport (cek filter No Request/Store/SKU/Grade atau periode Bulan/Tahun yang dipilih).");
@@ -14308,6 +14410,7 @@ async function eksekusiCancelOutbound() {
         'Catatan': r.catatan || '',
         'Tanggal': r.tglRequest,
         'Store': r.kodeStore,
+        'No SO': r.noSo || '',
         'SKU': r.kodeSku,
         'Grade': r.grade || '-',
         'Qty Request': r.qtyRequest,
@@ -14320,7 +14423,7 @@ async function eksekusiCancelOutbound() {
       }));
 
       const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dashboard Outbound");
 
