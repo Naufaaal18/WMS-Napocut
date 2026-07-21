@@ -12345,16 +12345,47 @@ async function eksekusiCancelOutbound() {
     // data yang SEDANG TAMPIL sesuai filter SKU/Lokasi/Grade yang aktif (INV_TABLE_FILTERED_ROWS
     // sudah diisi oleh renderInventoryTable()), supaya export selalu konsisten dgn apa yang
     // dilihat user di layar saat itu. Bisa dipicu lewat tombol manual atau shortcut Ctrl+E.
+    // FITUR BARU: sekarang ikut menyertakan 3 tabel monitoring tambahan (Stok Open PO Active,
+    // Stok Belum Di-QC, Stok Pending Putaway Return) sebagai SHEET TERPISAH dalam 1 file Excel
+    // yang sama, memakai filter SKU/Lokasi yang sama seperti yang dipakai renderInventorySupplementary().
     function exportInventoryDashboardExcel() {
       const daftar = INV_TABLE_FILTERED_ROWS || [];
-      if (!daftar.length) { customAlert('Tidak ada data untuk di-export.'); return; }
-      const rows = daftar.map(r => ({
+      const fSku = sanitizeFilterInput(document.getElementById('inv-filter-sku').value);
+      const fLokasi = sanitizeFilterInput(document.getElementById('inv-filter-lokasi').value);
+
+      const filteredOpenPO = (INV_DATA_OPENPO || []).filter(r => (fSku === "" || r.sku.toLowerCase().includes(fSku)));
+      const filteredInbound = (INV_DATA_INBOUND || []).filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || r.lokasi.toLowerCase().includes(fLokasi)));
+      const filteredReturn = (INV_DATA_RETURN || []).filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || r.lokasi.toLowerCase().includes(fLokasi)));
+
+      if (!daftar.length && !filteredOpenPO.length && !filteredInbound.length && !filteredReturn.length) {
+        customAlert('Tidak ada data untuk di-export.'); return;
+      }
+
+      const wb = XLSX.utils.book_new();
+
+      const rowsDashboard = daftar.map(r => ({
         'SKU': r.sku, 'Deskripsi': r.deskripsi || '-', 'Lokasi': r.lokasi,
         'Grade': r.grade, 'Qty Available': Number(r.qtyAvailable || 0), 'Qty On Hand': Number(r.qtyOnHand || 0)
       }));
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Dashboard Inventory');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsDashboard), 'Dashboard Inventory');
+
+      const rowsOpenPO = filteredOpenPO.map(r => ({
+        'No PO': r.noPo, 'SKU': r.sku, 'Supplier': r.supplier || '-', 'Qty Sisa PO': Number(r.qtyOpenPO || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsOpenPO), 'Stok Open PO Active');
+
+      const rowsInbound = filteredInbound.map(r => ({
+        'SKU': r.sku, 'Lokasi': r.lokasi, 'Qty Belum QC': Number(r.qtyBelumQC || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsInbound), 'Stok Belum Di-QC');
+
+      const rowsReturn = filteredReturn.map(r => ({
+        'SKU': r.sku, 'Lokasi': r.lokasi, 'Grade': r.grade, 'Qty': Number(r.qty || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsReturn), 'Stok Pending Putaway Return');
+
       XLSX.writeFile(wb, `Dashboard_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
