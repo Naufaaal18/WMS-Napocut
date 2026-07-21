@@ -3163,6 +3163,15 @@ window.fetch = function (url, options) {
                 </select>
               </div>
             </div>
+            <!-- FITUR BARU: checkbox untuk include/exclude PO berstatus CLOSED dari tabel.
+                 Default TIDAK dicentang (Closed disembunyikan) supaya tabel utama fokus ke
+                 PO yang masih perlu perhatian; centang untuk menampilkan semua termasuk Closed. -->
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="pod-filter-include-closed" onchange="renderDataPOTable()">
+              <label class="form-check-label small" for="pod-filter-include-closed">
+                Tampilkan PO berstatus <strong>Closed</strong>
+              </label>
+            </div>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
               <table class="table table-sm table-bordered align-middle mb-0" id="pod-table" style="font-size:11px;">
                 <thead class="table-light" style="position:sticky;top:0;">
@@ -9404,8 +9413,14 @@ function renderDataPOTable() {
   const tbody = document.getElementById('pod-tbody');
   const keyword = (document.getElementById('pod-filter').value || '').trim().toLowerCase();
   const kategoriTerpilih = (document.getElementById('pod-filter-kategori')?.value || '').trim();
+  // FITUR BARU: checkbox "Tampilkan PO berstatus Closed" -- default TIDAK dicentang,
+  // jadi PO dengan status_po = CLOSED disembunyikan dari tabel utama kecuali dicentang.
+  const tampilkanClosed = !!document.getElementById('pod-filter-include-closed')?.checked;
 
   let daftar = PO_DATA_LIST;
+  if (!tampilkanClosed) {
+    daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
+  }
   if (keyword) {
     daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
   }
@@ -9443,7 +9458,10 @@ function renderDataPOTable() {
 function exportDataPOExcel() {
   const keyword = (document.getElementById('pod-filter')?.value || '').trim().toLowerCase();
   const kategoriTerpilih = (document.getElementById('pod-filter-kategori')?.value || '').trim();
+  // FITUR BARU: samakan dengan tabel -- ikutkan/kecualikan PO Closed sesuai checkbox.
+  const tampilkanClosed = !!document.getElementById('pod-filter-include-closed')?.checked;
   let daftar = PO_DATA_LIST;
+  if (!tampilkanClosed) daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
   if (keyword) daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
   if (kategoriTerpilih) daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
 
