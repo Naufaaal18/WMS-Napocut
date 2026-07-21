@@ -9642,6 +9642,14 @@ function renderDataPOTable() {
   // disembunyikan di bawah.
   hitungRingkasanDataPO(daftar);
 
+  // FITUR BARU: simpan jumlah SEBELUM checkbox Closed/Cancel diterapkan, supaya kalau
+  // hasil akhir tabel kosong, pesannya bisa membedakan 2 kondisi berbeda:
+  // (a) memang tidak ada PO sama sekali di periode/filter ini (KPI juga 0), vs
+  // (b) ada PO di periode ini (KPI menunjukkan angka) tapi semuanya sedang disembunyikan
+  //     oleh checkbox Closed/Cancel yang belum dicentang -- supaya user tidak bingung
+  //     kenapa Ringkasan KPI menunjukkan angka tapi tabel di bawahnya kosong.
+  const jumlahSebelumCheckbox = daftar.length;
+
   if (!tampilkanClosed) {
     daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
   }
@@ -9649,7 +9657,20 @@ function renderDataPOTable() {
     daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
   }
 
-  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>'; return; }
+  if (!daftar.length) {
+    if (jumlahSebelumCheckbox > 0) {
+      // Kondisi (b): ada data di periode ini, tapi disembunyikan checkbox Closed/Cancel.
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-3">
+        Ada ${jumlahSebelumCheckbox} PO pada periode ini, tapi semuanya berstatus Closed/Cancel
+        dan sedang disembunyikan. Centang <strong>"Tampilkan PO berstatus Closed"</strong>
+        dan/atau <strong>"Tampilkan PO berstatus Cancel"</strong> di atas untuk menampilkannya.
+      </td></tr>`;
+    } else {
+      // Kondisi (a): benar-benar tidak ada PO di periode/filter ini.
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>';
+    }
+    return;
+  }
 
   tbody.innerHTML = daftar.map(po => {
     const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
