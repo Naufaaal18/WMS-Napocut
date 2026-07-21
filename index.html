@@ -2614,8 +2614,8 @@ window.fetch = function (url, options) {
       </div>
     </div>
 
-    <!-- MODUL: LIVE MOVEMENT HISTORY (menu utama baru, feed real-time - beda dari
-         Movement History (Audit Trail)/Export Movement History yang perlu generate laporan) -->
+    <!-- MODUL: LIVE MOVEMENT HISTORY (menu utama). Berisi 2 sub: Live Feed real-time
+         & Export Movement History (Audit Trail, laporan dengan filter tanggal & generate). -->
     <div class="module-list-group" id="home-group-livemovement">
       <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-livemovement', this)">
         <div class="module-icon-wrap icon-livemovement"><i class="fa-solid fa-tower-broadcast"></i></div>
@@ -2626,9 +2626,14 @@ window.fetch = function (url, options) {
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
       </div>
       <div class="sub-module-list" id="home-sub-livemovement">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-livemovement', 'modul-livemovement')">
+        <div class="sub-module-row" id="home-subrow-livemovement-live" onclick="bukaModulDariHome('tab-livemovement', 'modul-livemovement', 'sub-livemovement-live')">
           <span class="sub-dot dot-livemovement"></span>
           <span class="sub-module-name">Live Feed Semua Pergerakan</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
+        <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-livemovement', 'modul-livemovement', 'sub-export-movhistory')">
+          <span class="sub-dot dot-livemovement"></span>
+          <span class="sub-module-name">Movement History (Audit Trail)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -2677,11 +2682,6 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-subrow-export-suratjalan" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-suratjalan')">
           <span class="sub-dot dot-export"></span>
           <span class="sub-module-name">Surat Jalan (dari Checking)</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" id="home-subrow-export-movhistory" onclick="bukaModulDariHome('tab-export', 'modul-export', 'sub-export-movhistory')">
-          <span class="sub-dot dot-export"></span>
-          <span class="sub-module-name">Movement History (Audit Trail)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -5314,121 +5314,6 @@ async function eksekusiAddSkuOutbound() {
       <div id="sj-alert-container" class="mt-2"></div>
       </div><!-- end sub-export-suratjalan -->
 
-      <!-- ===== SUB: EXPORT MOVEMENT HISTORY (menggantikan modul Movement History standalone) =====
-           Filter (No SKU, No Referensi, Tipe Transaksi, User) diisi dulu, lalu klik "Generate
-           Laporan" untuk mengambil data terbaru dari sheet Movement_History. Preview & tombol
-           Download (PDF/Excel) baru muncul setelah Generate, konsisten dengan pola Export
-           Laporan Inventory & Export Data QC di atas. -->
-      <div id="sub-export-movhistory">
-        <div class="card p-3 mb-3 border-start border-4" style="border-color:#37474F!important;">
-          <h6 class="fw-bold mb-1" style="color:#37474F;"><i class="fa-solid fa-clock-rotate-left me-2"></i>Export Movement History</h6>
-          <p class="small text-muted mb-2">Ekspor riwayat seluruh pergerakan stok (inbound, QC, putaway, picking, outbound,
-            adjustment, transfer, dll) dari sheet <strong>Movement_History</strong>.</p>
-
-          <div class="row g-2 mb-2">
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Filter No SKU</label>
-              <input type="text" id="mhexp-filter-sku" list="mhexp-list-sku" class="form-control form-control-sm" placeholder="Cth: FPS-BRC">
-              <datalist id="mhexp-list-sku"></datalist>
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Filter No. Referensi</label>
-              <input type="text" id="mhexp-filter-ref" class="form-control form-control-sm" placeholder="Cth: PO-2026-001">
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Tipe Transaksi</label>
-              <select id="mhexp-filter-type" class="form-select form-select-sm">
-                <option value="">Semua Tipe Transaksi</option>
-              </select>
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Filter User</label>
-              <input type="text" id="mhexp-filter-user" list="mhexp-list-user" class="form-control form-control-sm" placeholder="Cth: Andi">
-              <datalist id="mhexp-list-user"></datalist>
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Tgl Dari</label>
-              <input type="date" id="mhexp-filter-tgl-dari" class="form-control form-control-sm">
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label small fw-bold mb-1">Tgl Sampai</label>
-              <input type="date" id="mhexp-filter-tgl-sampai" class="form-control form-control-sm">
-            </div>
-          </div>
-
-          <button type="button" class="btn btn-sm fw-bold w-100 py-2 text-white" style="background:#37474F;" onclick="generateMovementHistoryExport()">
-            <i class="fa-solid fa-file-export me-1"></i>Generate Laporan
-          </button>
-        </div>
-
-        <!-- Area Preview Laporan Movement History -->
-        <div id="mhexp-preview" style="display:none;">
-          <div class="inv-export-controls d-flex gap-2 mb-3">
-            <button type="button" class="btn btn-success btn-sm fw-bold flex-grow-1" onclick="window.print()">
-              <i class="fa-solid fa-print me-1"></i>Download PDF
-            </button>
-            <button type="button" class="btn btn-primary btn-sm fw-bold flex-grow-1" style="background:#1D6F42;border-color:#1D6F42;" onclick="downloadMovementHistoryExportExcel()">
-              <i class="fa-solid fa-file-excel me-1"></i>Download Excel
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('mhexp-preview').style.display='none'">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
-
-          <!-- DOKUMEN LAPORAN -->
-          <div id="mhexp-dokumen" class="inv-export-doc">
-
-            <div class="inv-export-header">
-              <div>
-                <div class="inv-export-title">CV. KAMOE SUKSES BERSAMA</div>
-                <div class="inv-export-subtitle">Ruko Green Garden, Blok A14 No.36, Kedoya Utara, Kebon Jeruk, JK 11520</div>
-              </div>
-              <div style="text-align:right;">
-                <div class="inv-export-title">LAPORAN MOVEMENT HISTORY</div>
-                <div class="inv-export-subtitle" id="mhexp-printed-at"></div>
-              </div>
-            </div>
-
-            <div class="inv-export-subtitle mb-2" id="mhexp-filter-info" style="font-size:10.5px;"></div>
-
-            <!-- Summary Cards -->
-            <div class="inv-summary-box" id="mhexp-summary-box"></div>
-
-            <!-- SECTION: Movement History -->
-            <div id="mhexp-section">
-              <div class="inv-section-title">
-                <span><i class="fa-solid fa-clock-rotate-left me-1"></i>RIWAYAT MOVEMENT STOCK (Movement_History)</span>
-                <span id="mhexp-count" style="font-size:10px;font-weight:400;"></span>
-              </div>
-              <table id="mhexp-tbl" class="inv-tbl">
-                <thead>
-                  <tr>
-                    <th>No</th>
-                    <th>Waktu</th>
-                    <th>Tipe Transaksi</th>
-                    <th>Tipe Riwayat</th>
-                    <th>No. Referensi</th>
-                    <th>SKU</th>
-                    <th>Grade</th>
-                    <th style="text-align:right;">Qty</th>
-                    <th>Lokasi</th>
-                    <th>User</th>
-                    <th>Keterangan</th>
-                  </tr>
-                </thead>
-                <tbody id="mhexp-tbody"></tbody>
-                <tfoot id="mhexp-tfoot"></tfoot>
-              </table>
-            </div>
-
-            <div class="inv-page-footer" id="mhexp-footer"></div>
-          </div>
-        </div>
-
-        <div id="mhexp-alert" class="mt-2"></div>
-      </div>
-      <!-- ===== AKHIR SUB EXPORT MOVEMENT HISTORY ===== -->
-
     </div>
     <!-- ===== AKHIR MODUL EXPORT ===== -->
 
@@ -5572,10 +5457,14 @@ async function eksekusiAddSkuOutbound() {
     </div>
     <!-- ===== AKHIR MODUL ADMIN VALIDATE ===== -->
 
-    <!-- ===== MODUL: LIVE MOVEMENT HISTORY (feed real-time, BUKAN laporan/export -->
-    <!-- untuk laporan lengkap dengan filter tanggal & unduh Excel, tetap pakai menu -->
-    <!-- Export > Movement History yang sudah ada) ===== -->
+    <!-- ===== MODUL: LIVE MOVEMENT HISTORY. Berisi 2 sub: (1) Live Feed real-time
+         (sub-livemovement-live), (2) Export Movement History / laporan dengan filter
+         tanggal & download PDF/Excel (sub-export-movhistory, dipindah dari modul
+         Export Dokumen). Toggle antar sub via mapSubCards['modul-livemovement']. ===== -->
     <div id="modul-livemovement" class="form-section">
+
+      <!-- ===== SUB: LIVE FEED SEMUA PERGERAKAN (dibungkus 1 wrapper agar bisa disembunyikan per-role) ===== -->
+      <div id="sub-livemovement-live">
       <div class="card p-3 mb-3 border-start border-4" style="border-color:#0D47A1!important;">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Live Movement History</h6>
@@ -5586,12 +5475,130 @@ async function eksekusiAddSkuOutbound() {
             </button>
           </div>
         </div>
-        <p class="small text-muted mb-2">Feed pergerakan stok terbaru (otomatis diperbarui setiap beberapa detik). Ini <b>bukan</b> laporan — untuk laporan lengkap dengan filter tanggal &amp; unduh Excel, gunakan menu <b>Export &gt; Movement History (Audit Trail)</b>.</p>
+        <p class="small text-muted mb-2">Feed pergerakan stok terbaru (otomatis diperbarui setiap beberapa detik). Ini <b>bukan</b> laporan — untuk laporan lengkap dengan filter tanggal &amp; unduh Excel, gunakan sub-menu <b>Movement History (Audit Trail)</b> di bawah.</p>
         <input type="text" id="lmh-filter" class="form-control form-control-sm mb-2" placeholder="Cari SKU / No Referensi / Tipe / Lokasi / User..." oninput="renderLiveMovementHistory()">
         <div id="lmh-list-area" style="max-height:520px; overflow-y:auto;">
           <div class="text-muted small text-center py-4 border rounded">Memuat data...</div>
         </div>
       </div>
+      </div><!-- end sub-livemovement-live -->
+
+      <!-- ===== SUB: EXPORT MOVEMENT HISTORY (dipindah dari modul Export Dokumen ke sini
+           karena secara konsep sama-sama Movement History; Live Feed = real-time, sub ini
+           = laporan dengan filter tanggal & download PDF/Excel. Filter (No SKU, No Referensi,
+           Tipe Transaksi, User) diisi dulu, lalu klik "Generate Laporan" untuk mengambil data
+           terbaru dari sheet Movement_History. Preview & tombol Download baru muncul setelah
+           Generate, konsisten dengan pola Export Laporan Inventory & Export Data QC. -->
+      <div id="sub-export-movhistory">
+        <div class="card p-3 mb-3 border-start border-4" style="border-color:#37474F!important;">
+          <h6 class="fw-bold mb-1" style="color:#37474F;"><i class="fa-solid fa-clock-rotate-left me-2"></i>Export Movement History</h6>
+          <p class="small text-muted mb-2">Ekspor riwayat seluruh pergerakan stok (inbound, QC, putaway, picking, outbound,
+            adjustment, transfer, dll) dari sheet <strong>Movement_History</strong>.</p>
+
+          <div class="row g-2 mb-2">
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Filter No SKU</label>
+              <input type="text" id="mhexp-filter-sku" list="mhexp-list-sku" class="form-control form-control-sm" placeholder="Cth: FPS-BRC">
+              <datalist id="mhexp-list-sku"></datalist>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Filter No. Referensi</label>
+              <input type="text" id="mhexp-filter-ref" class="form-control form-control-sm" placeholder="Cth: PO-2026-001">
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Tipe Transaksi</label>
+              <select id="mhexp-filter-type" class="form-select form-select-sm">
+                <option value="">Semua Tipe Transaksi</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Filter User</label>
+              <input type="text" id="mhexp-filter-user" list="mhexp-list-user" class="form-control form-control-sm" placeholder="Cth: Andi">
+              <datalist id="mhexp-list-user"></datalist>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Tgl Dari</label>
+              <input type="date" id="mhexp-filter-tgl-dari" class="form-control form-control-sm">
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Tgl Sampai</label>
+              <input type="date" id="mhexp-filter-tgl-sampai" class="form-control form-control-sm">
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-sm fw-bold w-100 py-2 text-white" style="background:#37474F;" onclick="generateMovementHistoryExport()">
+            <i class="fa-solid fa-file-export me-1"></i>Generate Laporan
+          </button>
+        </div>
+
+        <!-- Area Preview Laporan Movement History -->
+        <div id="mhexp-preview" style="display:none;">
+          <div class="inv-export-controls d-flex gap-2 mb-3">
+            <button type="button" class="btn btn-success btn-sm fw-bold flex-grow-1" onclick="window.print()">
+              <i class="fa-solid fa-print me-1"></i>Download PDF
+            </button>
+            <button type="button" class="btn btn-primary btn-sm fw-bold flex-grow-1" style="background:#1D6F42;border-color:#1D6F42;" onclick="downloadMovementHistoryExportExcel()">
+              <i class="fa-solid fa-file-excel me-1"></i>Download Excel
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('mhexp-preview').style.display='none'">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- DOKUMEN LAPORAN -->
+          <div id="mhexp-dokumen" class="inv-export-doc">
+
+            <div class="inv-export-header">
+              <div>
+                <div class="inv-export-title">CV. KAMOE SUKSES BERSAMA</div>
+                <div class="inv-export-subtitle">Ruko Green Garden, Blok A14 No.36, Kedoya Utara, Kebon Jeruk, JK 11520</div>
+              </div>
+              <div style="text-align:right;">
+                <div class="inv-export-title">LAPORAN MOVEMENT HISTORY</div>
+                <div class="inv-export-subtitle" id="mhexp-printed-at"></div>
+              </div>
+            </div>
+
+            <div class="inv-export-subtitle mb-2" id="mhexp-filter-info" style="font-size:10.5px;"></div>
+
+            <!-- Summary Cards -->
+            <div class="inv-summary-box" id="mhexp-summary-box"></div>
+
+            <!-- SECTION: Movement History -->
+            <div id="mhexp-section">
+              <div class="inv-section-title">
+                <span><i class="fa-solid fa-clock-rotate-left me-1"></i>RIWAYAT MOVEMENT STOCK (Movement_History)</span>
+                <span id="mhexp-count" style="font-size:10px;font-weight:400;"></span>
+              </div>
+              <table id="mhexp-tbl" class="inv-tbl">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>Waktu</th>
+                    <th>Tipe Transaksi</th>
+                    <th>Tipe Riwayat</th>
+                    <th>No. Referensi</th>
+                    <th>SKU</th>
+                    <th>Grade</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>Lokasi</th>
+                    <th>User</th>
+                    <th>Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody id="mhexp-tbody"></tbody>
+                <tfoot id="mhexp-tfoot"></tfoot>
+              </table>
+            </div>
+
+            <div class="inv-page-footer" id="mhexp-footer"></div>
+          </div>
+        </div>
+
+        <div id="mhexp-alert" class="mt-2"></div>
+      </div>
+      <!-- ===== AKHIR SUB EXPORT MOVEMENT HISTORY (dipindah) ===== -->
+
     </div>
 
     <!-- ===== MODUL BARU: KELOLA USER (khusus Administrator) ===== -->
@@ -6466,10 +6473,10 @@ async function eksekusiAddSkuOutbound() {
       // modal yang dipicu dari popup Aksi), hanya perlu grup/tab Inventory tetap terbuka.
       INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory' },
       INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory' },
-      LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement' },
+      LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-livemovement-live', subcard: 'sub-livemovement-live' },
       DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
       EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
-      EXPORT_MOVHISTORY:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
+      EXPORT_MOVHISTORY:    { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
       ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
       KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
       CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
@@ -6534,10 +6541,10 @@ async function eksekusiAddSkuOutbound() {
       INV_DASHBOARD:             { grup: 'Inventory',         label: 'Dashboard Stock (Inventory)' },
       INV_ADJUSTMENT:            { grup: 'Inventory',         label: 'Adjustment Inventory' },
       INV_TRANSFER:              { grup: 'Inventory',         label: 'Transfer Lokasi / Grade' },
-      LIVE_MOVEMENT:             { grup: 'Live Movement',     label: 'Live Movement History' },
+      LIVE_MOVEMENT:             { grup: 'Live Movement',     label: 'Live Feed Semua Pergerakan' },
       DASHBOARD_OBIB:            { grup: 'Dashboard OB/IB',   label: 'Dashboard Outbound/Inbound' },
       EXPORT_SURATJALAN:         { grup: 'Export',            label: 'Export Surat Jalan' },
-      EXPORT_MOVHISTORY:         { grup: 'Export',            label: 'Export Movement History' },
+      EXPORT_MOVHISTORY:         { grup: 'Live Movement',     label: 'Export Movement History (Audit Trail)' },
       ADMIN_VALIDATE:            { grup: 'Admin Validate',    label: 'Admin Validate (Inbound & QC)' },
       KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
     };
@@ -6596,8 +6603,15 @@ async function eksekusiAddSkuOutbound() {
       // USER_PUNYA_AKSES_TRANSFER / USER_PUNYA_AKSES_ADJUSTMENT langsung di dalam fungsi
       // buka*DariDashboard().
       document.getElementById('home-subrow-export-suratjalan').style.display = 'none';
-      document.getElementById('home-subrow-export-movhistory').style.display = 'none';
       document.getElementById('sub-export-suratjalan').classList.add('d-none');
+
+      // FITUR BARU: modul Live Movement History sekarang punya 2 sub (Live Feed real-time
+      // & Export Movement History/Audit Trail yang dipindah dari modul Export Dokumen) --
+      // sembunyikan dulu keduanya di sini, RBAC di bawah akan menampilkan sesuai hak akses
+      // masing-masing (LIVE_MOVEMENT vs EXPORT_MOVHISTORY).
+      document.getElementById('home-subrow-livemovement-live').style.display = 'none';
+      document.getElementById('home-subrow-export-movhistory').style.display = 'none';
+      document.getElementById('sub-livemovement-live').classList.add('d-none');
       document.getElementById('sub-export-movhistory').classList.add('d-none');
 
       // Sembunyikan dulu sub-baris & sub-card Inbound baru (Validasi Inbound)
@@ -7021,7 +7035,8 @@ async function eksekusiAddSkuOutbound() {
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
-          'modul-export': ['sub-export-suratjalan', 'sub-export-movhistory'],
+          'modul-export': ['sub-export-suratjalan'],
+          'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory'],
           'modul-openpo': ['sub-po-buat', 'sub-po-data']
         };
         const daftarSub = mapSubCards[modulId];
@@ -7142,9 +7157,9 @@ async function eksekusiAddSkuOutbound() {
         'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests, loadPickingQcUlangPendingRequests],
         'modul-inventory': [loadInventoryDashboard],
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
-        'modul-export'   : [loadListNoRequestSuratJalan, preloadMovementHistoryFilters],
+        'modul-export'   : [loadListNoRequestSuratJalan],
         'modul-adminvalidate' : [loadAdminValidateInbound],
-        'modul-livemovement' : [startLiveMovementPolling],
+        'modul-livemovement' : [startLiveMovementPolling, preloadMovementHistoryFilters],
         'modul-kelolauser' : [loadKelolaUserData]
       };
 
