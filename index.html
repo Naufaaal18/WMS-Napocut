@@ -831,9 +831,9 @@ Object.assign(ENDPOINTS, {
     // tanpa mengubah bentuk poMap yang sudah dipakai di banyak tempat lain (PO -> {sku: qty}).
     // Supplier dikembalikan terpisah lewat `supplierByPo` (PO -> nama supplier).
     // FITUR BARU: ikut ambil kolom `grade` -- Grade AWAL barang return ini saat pertama
-    // masuk Staging Return (mis. hasil temuan Return dari Toko), dipakai supaya dropdown
-    // "Grade Simpan" di form Putaway Return bisa otomatis ter-pilih sesuai Grade Awal-nya
-    // (operator tetap bebas mengganti manual kalau memang perlu dikoreksi).
+    // masuk Staging Return (mis. hasil temuan Return dari Toko). Dipakai supaya field
+    // "Grade Simpan" di form Putaway Return OTOMATIS terisi sesuai Grade Awal-nya dan
+    // TERKUNCI (operator TIDAK BISA mengganti manual -- lihat pwr-grade-display/pwr-grade).
     const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi, supplier, grade').ilike('lokasi', 'staging return').gt('qty', 0);
     if (error) throw new Error(error.message);
     const poMap = {};
@@ -3919,13 +3919,15 @@ window.fetch = function (url, options) {
               </div>
 
               <div class="col-6">
-                <label class="form-label small fw-bold mb-0">Grade Simpan</label>
-                <select id="pwr-grade" class="form-select form-select-sm" onchange="onReturnGradeChanged()">
-          <option value="Bagus">Bagus</option>
-          <option value="Minor">Minor</option>
-          <option value="Kotor">Kotor</option>
-          <option value="Reject">Reject</option>
-        </select>
+                <label class="form-label small fw-bold mb-0">Grade Simpan <i class="fa-solid fa-lock text-muted ms-1" style="font-size:10px;" title="Otomatis mengikuti Grade Awal dari PO Return, tidak bisa diubah manual"></i></label>
+                <!-- FITUR PERBAIKAN: Grade Simpan SEKARANG WAJIB mengikuti persis Grade Awal
+                     yang tercatat di Staging Return (stock_return.grade) saat PO Return dibuat,
+                     dan TIDAK BISA diubah manual oleh operator -- diganti dari dropdown pilihan
+                     menjadi field readonly/terkunci. pwr-grade (hidden) menyimpan nilai ASLI apa
+                     adanya (termasuk grade non-standar seperti "Perbaikan" atau kode angka),
+                     pwr-grade-display hanya menampilkan ulang nilai yang sama ke operator. -->
+                <input type="text" id="pwr-grade-display" class="form-control form-control-sm bg-light fw-bold" value="" readonly disabled placeholder="-- Pilih SKU dahulu --">
+                <input type="hidden" id="pwr-grade" value="">
               </div>
 
               <div class="col-6">
@@ -9781,23 +9783,28 @@ function onReturnSkuChanged() {
     pwrQtyElEmpty.removeAttribute("max");
     pwrQtyElEmpty.disabled = true;
     document.getElementById("pwr-max-info").style.display = "none";
+    // FITUR PERBAIKAN: kosongkan juga field Grade Simpan (terkunci) saat SKU belum dipilih
+    const pwrGradeHiddenElEmpty = document.getElementById("pwr-grade");
+    const pwrGradeDisplayElEmpty = document.getElementById("pwr-grade-display");
+    if (pwrGradeHiddenElEmpty) pwrGradeHiddenElEmpty.value = "";
+    if (pwrGradeDisplayElEmpty) pwrGradeDisplayElEmpty.value = "";
     resetReturnConfirmSku();
     return;
   }
 
   document.getElementById("pwr-qty").disabled = false;
 
-  // FITUR BARU: auto-pilih dropdown "Grade Simpan" mengikuti Grade Awal SKU ini di PO
-  // Return (dari Staging Return) -- operator tetap bisa mengganti manual kalau memang
-  // perlu dikoreksi (mis. ternyata kondisi fisiknya berbeda dari catatan Grade Awal).
-  // Kalau Grade Awal-nya tidak dikenali (kosong / bukan salah satu dari 4 opsi dropdown
-  // ini, mis. "Perbaikan"), dropdown dibiarkan pada pilihan default tanpa error.
+  // FITUR PERBAIKAN: Grade Simpan sekarang WAJIB mengikuti persis Grade Awal SKU ini
+  // dari PO Return (Staging Return), dan TIDAK BISA diubah manual oleh operator --
+  // field ditampilkan readonly/terkunci. Nilai apa adanya diterima (termasuk grade
+  // non-standar seperti "Perbaikan" atau kode angka), karena sekarang hanya menampilkan
+  // ulang nilai yang tercatat, bukan lagi dropdown 4 pilihan tetap.
   const gradeAwal = (globalPutawayReturnGradeMap[poSelected] && globalPutawayReturnGradeMap[poSelected][skuSelected]) || '';
-  const pwrGradeSelectEl = document.getElementById("pwr-grade");
-  if (pwrGradeSelectEl && gradeAwal) {
-    const opsiCocok = Array.from(pwrGradeSelectEl.options).find(o => o.value.toLowerCase() === gradeAwal.toLowerCase());
-    if (opsiCocok) pwrGradeSelectEl.value = opsiCocok.value;
-  }
+  const pwrGradeHiddenEl = document.getElementById("pwr-grade");
+  const pwrGradeDisplayEl = document.getElementById("pwr-grade-display");
+  if (pwrGradeHiddenEl) pwrGradeHiddenEl.value = gradeAwal;
+  if (pwrGradeDisplayEl) pwrGradeDisplayEl.value = gradeAwal || '-- Grade Awal tidak tercatat, hubungi Admin --';
+  onReturnGradeChanged(); // refresh saran lokasi "teman" mengikuti Grade Awal ini
 
   // Aktifkan langkah konfirmasi scan/ketik SKU (langkah baru sebelum boleh isi Lokasi Rak)
   document.getElementById("pwr-confirm-sku").disabled = false;
@@ -9843,10 +9850,11 @@ function resetReturnConfirmSku() {
 // FITUR SARAN LOKASI "TEMAN" - PUTAWAY RETURN
 // -------------------------------------------------------------------------
 // Sama seperti Putaway Hasil QC: setelah SKU dikonfirmasi cocok, tampilkan lokasi-lokasi
-// yang SUDAH berisi SKU + Grade PERSIS SAMA di Stock_FG (Grade di sini diambil dari
-// dropdown "Grade Simpan"). TIDAK ADA validasi kapasitas otomatis — operator sendiri yang
-// menilai kalau lokasi sudah penuh secara fisik, lalu tetap bebas ketik/scan lokasi lain
-// secara manual di field Target Lokasi Rak Baru.
+// yang SUDAH berisi SKU + Grade PERSIS SAMA di Stock_FG (Grade di sini diambil dari field
+// "Grade Simpan" yang sekarang terkunci/otomatis, bukan dropdown pilihan manual lagi).
+// TIDAK ADA validasi kapasitas otomatis — operator sendiri yang menilai kalau lokasi sudah
+// penuh secara fisik, lalu tetap bebas ketik/scan lokasi lain secara manual di field Target
+// Lokasi Rak Baru.
 // =========================================================================
 function loadPutawayReturnSuggestion() {
   const skuTarget = (document.getElementById("pwr-sku").value || "").trim();
@@ -9886,9 +9894,10 @@ function pilihLokasiSuggestionReturn(lokasi) {
   lokasiInput.focus();
 }
 
-// Dipanggil saat dropdown "Grade Simpan" berubah -> saran lokasi "teman" ikut berubah karena
-// kombinasi SKU+Grade berbeda. Cukup panggil ulang validasi konfirmasi SKU (aman/idempotent,
-// tidak akan menghapus lokasi yang sudah diisi operator) supaya saran lokasi ikut ter-refresh.
+// Dipanggil setiap kali field "Grade Simpan" (otomatis/terkunci) ter-update -> saran lokasi
+// "teman" ikut berubah karena kombinasi SKU+Grade berbeda. Cukup panggil ulang validasi
+// konfirmasi SKU (aman/idempotent, tidak akan menghapus lokasi yang sudah diisi operator)
+// supaya saran lokasi ikut ter-refresh.
 function onReturnGradeChanged() {
   onReturnConfirmSkuChanged();
 }
@@ -9946,6 +9955,14 @@ function submitPutawayReturn(event) {
 
   if(!poSelected || !skuSelected || qtyVal <= 0 || !locVal) {
     customAlert("Mohon lengkapi seluruh field formulir Putaway Return!");
+    return;
+  }
+
+  // FITUR PERBAIKAN: Grade Simpan sekarang otomatis & terkunci (tidak bisa diketik manual),
+  // jadi kalau ternyata Grade Awal-nya tidak tercatat di Staging Return, submit harus ditolak
+  // di sini juga (bukan cuma di tampilan) supaya tidak ada data masuk dengan Grade kosong.
+  if (!gradeVal || !gradeVal.trim()) {
+    customAlert("Grade Simpan tidak terdeteksi dari data PO Return ini. Hubungi Admin untuk memperbaiki Grade Awal di Staging Return sebelum Putaway bisa diproses.");
     return;
   }
 
@@ -14188,7 +14205,14 @@ async function eksekusiCancelOutbound() {
         }
         const g = map[r.noRequest];
         g.skuSet.add(r.kodeSku);
-        if (r.grade) g.gradeSet.add(r.grade);
+        // FITUR BARU: hanya untuk TAMPILAN Dashboard (data asli di DB TIDAK diubah) --
+        // sejumlah baris Outbound Request lama yang sudah Cancelled ternyata Grade-nya
+        // kebetulan berupa angka murni (bug data lama: qty yang kesasar masuk ke kolom
+        // Grade). Supaya tidak membingungkan operator, baris Cancelled dengan Grade angka
+        // murni ditampilkan sebagai "Perbaikan". Baris yang masih aktif TIDAK disentuh.
+        const gradeUntukTampilan = (r.status === 'Cancelled' && /^\d+(\.\d+)?$/.test(String(r.grade || '').trim()))
+          ? 'Perbaikan' : r.grade;
+        if (gradeUntukTampilan) g.gradeSet.add(gradeUntukTampilan);
         g.qtyRequest += Number(r.qtyRequest || 0);
         g.qtyAllocated += Number(r.qtyAllocated || 0);
         g.qtyPicker += Number(r.qtyPicker || 0);
