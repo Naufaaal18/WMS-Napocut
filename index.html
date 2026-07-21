@@ -3173,6 +3173,75 @@ window.fetch = function (url, options) {
               </div>
             </div>
             <p class="small text-muted mb-2">Semua PO yang sudah tercatat di Master PO (input manual maupun upload Excel), dikelompokkan per No PO. Klik salah satu baris untuk lihat rincian SKU-nya. Tekan <kbd>Ctrl+E</kbd> untuk export ke Excel.</p>
+
+            <!-- FITUR BARU: Filter Bulan & Tahun + Ringkasan KPI, meniru gaya header
+                 Dashboard Outbound Request. Filter ini murni filter TAMPILAN di sisi
+                 client (berdasarkan Tanggal PO / created_date) -- semua data PO tetap
+                 dimuat sekali dari server (loadDataPOList), tidak perlu request ulang
+                 ke server tiap ganti Bulan/Tahun. -->
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label small fw-bold mb-0">Bulan</label>
+                <select id="pod-filter-bulan" class="form-select form-select-sm" onchange="renderDataPOTable()">
+                  <option value="1">Januari</option><option value="2">Februari</option>
+                  <option value="3">Maret</option><option value="4">April</option>
+                  <option value="5">Mei</option><option value="6">Juni</option>
+                  <option value="7">Juli</option><option value="8">Agustus</option>
+                  <option value="9">September</option><option value="10">Oktober</option>
+                  <option value="11">November</option><option value="12">Desember</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label small fw-bold mb-0">Tahun</label>
+                <select id="pod-filter-tahun" class="form-select form-select-sm" onchange="renderDataPOTable()"></select>
+              </div>
+            </div>
+
+            <!-- FITUR BARU: Ringkasan KPI Data PO -- Total PO, PO Closed, PO Active,
+                 Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO. Dihitung
+                 dari PO yang lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori
+                 (TIDAK terpengaruh checkbox Tampilkan Closed/Cancel di bawah, supaya
+                 KPI "PO Closed" tetap akurat walau baris Closed sedang disembunyikan
+                 dari tabel). -->
+            <div class="row g-2 mb-3 text-center" id="pod-summary-cards">
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">Total PO</div>
+                  <div class="fw-bold fs-5 text-danger" id="pod-sum-total">-</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">PO Closed</div>
+                  <div class="fw-bold fs-5 text-secondary" id="pod-sum-closed">-</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">PO Active</div>
+                  <div class="fw-bold fs-5 text-success" id="pod-sum-active">-</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">Total Qty PO</div>
+                  <div class="fw-bold fs-5 text-primary" id="pod-sum-qtypo">-</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">Total Qty Pending PO</div>
+                  <div class="fw-bold fs-5 text-warning" id="pod-sum-qtypending">-</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">Total Qty Receiving PO</div>
+                  <div class="fw-bold fs-5 text-info" id="pod-sum-qtyreceiving">-</div>
+                </div>
+              </div>
+            </div>
+
             <div class="row g-2 mb-2">
               <div class="col-8">
                 <input type="text" id="pod-filter" class="form-control form-control-sm" placeholder="Cari No PO / Supplier..." oninput="renderDataPOTable()">
@@ -3186,10 +3255,18 @@ window.fetch = function (url, options) {
             <!-- FITUR BARU: checkbox untuk include/exclude PO berstatus CLOSED dari tabel.
                  Default TIDAK dicentang (Closed disembunyikan) supaya tabel utama fokus ke
                  PO yang masih perlu perhatian; centang untuk menampilkan semua termasuk Closed. -->
-            <div class="form-check mb-2">
+            <div class="form-check mb-1">
               <input class="form-check-input" type="checkbox" id="pod-filter-include-closed" onchange="renderDataPOTable()">
               <label class="form-check-label small" for="pod-filter-include-closed">
                 Tampilkan PO berstatus <strong>Closed</strong>
+              </label>
+            </div>
+            <!-- FITUR BARU: checkbox serupa untuk PO berstatus CANCEL/CANCELLED -- default
+                 TIDAK dicentang (disembunyikan juga dari tabel utama), sama seperti Closed. -->
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="pod-filter-include-cancel" onchange="renderDataPOTable()">
+              <label class="form-check-label small" for="pod-filter-include-cancel">
+                Tampilkan PO berstatus <strong>Cancel</strong>
               </label>
             </div>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
@@ -9267,9 +9344,64 @@ const PO_STATUS_WARNA = {
   'ACTIVE': 'success', 'OPEN': 'success', 'CLOSED': 'secondary', 'CANCEL': 'danger', 'CANCELLED': 'danger'
 };
 
+// FITUR BARU: inisialisasi filter Bulan & Tahun Data PO ke bulan/tahun berjalan,
+// meniru initDashOBFilter() di Dashboard Outbound. Opsi Tahun hanya dibuat SEKALI
+// (dicek options.length === 0) supaya tidak menduplikasi tiap kali modul dibuka ulang,
+// dan nilai Bulan hanya di-set ke default kalau belum ada pilihan (supaya filter yang
+// sudah dipilih user tidak ke-reset tiap klik "Muat Ulang").
+function initDataPOFilter() {
+  const now = new Date();
+  const bln = now.getMonth() + 1;
+  const thn = now.getFullYear();
+  const selBulan = document.getElementById('pod-filter-bulan');
+  const selTahun = document.getElementById('pod-filter-tahun');
+  if (selBulan && !selBulan.value) selBulan.value = bln;
+  if (selTahun && selTahun.options.length === 0) {
+    for (let y = thn - 2; y <= thn + 1; y++) {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = y;
+      if (y === thn) opt.selected = true;
+      selTahun.appendChild(opt);
+    }
+  }
+}
+
+// FITUR BARU: hitung & tampilkan Ringkasan KPI Data PO (Total PO, PO Closed, PO Active,
+// Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO) dari daftar PO yang sudah
+// lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori (lihat renderDataPOTable()).
+function hitungRingkasanDataPO(daftar) {
+  const elTotal = document.getElementById('pod-sum-total');
+  if (!elTotal) return; // Modul tidak sedang aktif di DOM -- aman, tidak perlu hitung.
+  const elClosed = document.getElementById('pod-sum-closed');
+  const elActive = document.getElementById('pod-sum-active');
+  const elQtyPo = document.getElementById('pod-sum-qtypo');
+  const elQtyPending = document.getElementById('pod-sum-qtypending');
+  const elQtyReceiving = document.getElementById('pod-sum-qtyreceiving');
+
+  let totalClosed = 0, totalActive = 0, totalQtyPo = 0, totalQtyPending = 0, totalQtyReceiving = 0;
+  daftar.forEach(po => {
+    const statusUp = String(po.statusPo || '').toUpperCase();
+    if (statusUp === 'CLOSED') totalClosed++;
+    else if (statusUp === 'ACTIVE' || statusUp === 'OPEN') totalActive++;
+    // Samakan persis dengan kolom tabel: Qty PO = totalQtySisa, Pending Qty PO =
+    // totalQtyOrder, Qty Receiving PO = totalQtyDiterima (lihat renderDataPOTable()).
+    totalQtyPo += Number(po.totalQtySisa || 0);
+    totalQtyPending += Number(po.totalQtyOrder || 0);
+    totalQtyReceiving += Number(po.totalQtyDiterima || 0);
+  });
+
+  elTotal.textContent = daftar.length.toLocaleString('id-ID');
+  if (elClosed) elClosed.textContent = totalClosed.toLocaleString('id-ID');
+  if (elActive) elActive.textContent = totalActive.toLocaleString('id-ID');
+  if (elQtyPo) elQtyPo.textContent = totalQtyPo.toLocaleString('id-ID');
+  if (elQtyPending) elQtyPending.textContent = totalQtyPending.toLocaleString('id-ID');
+  if (elQtyReceiving) elQtyReceiving.textContent = totalQtyReceiving.toLocaleString('id-ID');
+}
+
 function loadDataPOList() {
   const tbody = document.getElementById('pod-tbody');
   tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+  initDataPOFilter(); // FITUR BARU: pastikan dropdown Bulan/Tahun sudah terisi sebelum render pertama
   ENDPOINTS.getDataPOList()
     .then(res => {
       if (!res.success) { tbody.innerHTML = `<tr><td colspan="10" class="text-danger text-center py-3">Gagal memuat: ${escapeHtmlAttr(res.message || '')}</td></tr>`; return; }
@@ -9480,10 +9612,21 @@ function renderDataPOTable() {
   // FITUR BARU: checkbox "Tampilkan PO berstatus Closed" -- default TIDAK dicentang,
   // jadi PO dengan status_po = CLOSED disembunyikan dari tabel utama kecuali dicentang.
   const tampilkanClosed = !!document.getElementById('pod-filter-include-closed')?.checked;
+  // FITUR BARU: checkbox "Tampilkan PO berstatus Cancel" -- perilakunya sama persis
+  // seperti Closed di atas: default TIDAK dicentang (PO Cancel/Cancelled disembunyikan).
+  const tampilkanCancel = !!document.getElementById('pod-filter-include-cancel')?.checked;
+  // FITUR BARU: filter Bulan & Tahun (berdasarkan Tanggal PO / created_date), meniru
+  // header Dashboard Outbound Request.
+  const bulanTerpilih = parseInt(document.getElementById('pod-filter-bulan')?.value || '0', 10);
+  const tahunTerpilih = parseInt(document.getElementById('pod-filter-tahun')?.value || '0', 10);
 
   let daftar = PO_DATA_LIST;
-  if (!tampilkanClosed) {
-    daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
+  if (bulanTerpilih && tahunTerpilih) {
+    daftar = daftar.filter(po => {
+      if (!po.tanggal) return false;
+      const d = new Date(po.tanggal);
+      return (d.getMonth() + 1) === bulanTerpilih && d.getFullYear() === tahunTerpilih;
+    });
   }
   if (keyword) {
     daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
@@ -9492,7 +9635,21 @@ function renderDataPOTable() {
     daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
   }
 
-  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Belum ada PO yang tercatat.</td></tr>'; return; }
+  // FITUR BARU: Ringkasan KPI dihitung dari `daftar` di titik ini -- SUDAH lolos filter
+  // Bulan/Tahun + Cari No PO/Supplier + Kategori, TAPI SEBELUM checkbox Closed/Cancel
+  // menyembunyikan baris dari tabel. Supaya KPI "PO Closed"/"PO Active" tetap
+  // menghitung SEMUA PO pada periode itu walau baris Closed/Cancel-nya sedang
+  // disembunyikan di bawah.
+  hitungRingkasanDataPO(daftar);
+
+  if (!tampilkanClosed) {
+    daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
+  }
+  if (!tampilkanCancel) {
+    daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
+  }
+
+  if (!daftar.length) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Tidak ada data untuk periode ini.</td></tr>'; return; }
 
   tbody.innerHTML = daftar.map(po => {
     const warnaStatus = PO_STATUS_WARNA[String(po.statusPo || '').toUpperCase()] || 'secondary';
@@ -9524,8 +9681,21 @@ function exportDataPOExcel() {
   const kategoriTerpilih = (document.getElementById('pod-filter-kategori')?.value || '').trim();
   // FITUR BARU: samakan dengan tabel -- ikutkan/kecualikan PO Closed sesuai checkbox.
   const tampilkanClosed = !!document.getElementById('pod-filter-include-closed')?.checked;
+  // FITUR BARU: samakan dengan tabel -- ikutkan/kecualikan PO Cancel sesuai checkbox.
+  const tampilkanCancel = !!document.getElementById('pod-filter-include-cancel')?.checked;
+  // FITUR BARU: samakan dengan tabel -- ikutkan hanya PO pada Bulan/Tahun yang dipilih.
+  const bulanTerpilih = parseInt(document.getElementById('pod-filter-bulan')?.value || '0', 10);
+  const tahunTerpilih = parseInt(document.getElementById('pod-filter-tahun')?.value || '0', 10);
   let daftar = PO_DATA_LIST;
+  if (bulanTerpilih && tahunTerpilih) {
+    daftar = daftar.filter(po => {
+      if (!po.tanggal) return false;
+      const d = new Date(po.tanggal);
+      return (d.getMonth() + 1) === bulanTerpilih && d.getFullYear() === tahunTerpilih;
+    });
+  }
   if (!tampilkanClosed) daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
+  if (!tampilkanCancel) daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
   if (keyword) daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
   if (kategoriTerpilih) daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
 
