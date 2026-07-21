@@ -3183,6 +3183,7 @@ window.fetch = function (url, options) {
               <div class="col-6">
                 <label class="form-label small fw-bold mb-0">Bulan</label>
                 <select id="pod-filter-bulan" class="form-select form-select-sm" onchange="renderDataPOTable()">
+                  <option value="0">-- Semua Bulan --</option>
                   <option value="1">Januari</option><option value="2">Februari</option>
                   <option value="3">Maret</option><option value="4">April</option>
                   <option value="5">Mei</option><option value="6">Juni</option>
@@ -9357,6 +9358,11 @@ function initDataPOFilter() {
   const selTahun = document.getElementById('pod-filter-tahun');
   if (selBulan && !selBulan.value) selBulan.value = bln;
   if (selTahun && selTahun.options.length === 0) {
+    // FITUR BARU: opsi "-- Semua Tahun --" (value 0) supaya user bisa lihat data lintas
+    // tahun sekaligus, sama seperti "-- Semua Bulan --" di dropdown Bulan.
+    const optSemua = document.createElement('option');
+    optSemua.value = '0'; optSemua.textContent = '-- Semua Tahun --';
+    selTahun.appendChild(optSemua);
     for (let y = thn - 2; y <= thn + 1; y++) {
       const opt = document.createElement('option');
       opt.value = y; opt.textContent = y;
@@ -9621,11 +9627,17 @@ function renderDataPOTable() {
   const tahunTerpilih = parseInt(document.getElementById('pod-filter-tahun')?.value || '0', 10);
 
   let daftar = PO_DATA_LIST;
-  if (bulanTerpilih && tahunTerpilih) {
+  // FITUR BARU: Bulan dan Tahun sekarang bisa "-- Semua --" (value 0) secara independen.
+  // - bulanTerpilih=0 & tahunTerpilih spesifik -> filter tahun saja (semua bulan di tahun itu).
+  // - bulanTerpilih spesifik & tahunTerpilih=0 -> filter bulan saja (bulan itu di semua tahun).
+  // - keduanya 0 -> tidak ada filter periode sama sekali (tampilkan semua PO).
+  if (bulanTerpilih || tahunTerpilih) {
     daftar = daftar.filter(po => {
       if (!po.tanggal) return false;
       const d = new Date(po.tanggal);
-      return (d.getMonth() + 1) === bulanTerpilih && d.getFullYear() === tahunTerpilih;
+      const cocokBulan = !bulanTerpilih || (d.getMonth() + 1) === bulanTerpilih;
+      const cocokTahun = !tahunTerpilih || d.getFullYear() === tahunTerpilih;
+      return cocokBulan && cocokTahun;
     });
   }
   if (keyword) {
@@ -9708,11 +9720,14 @@ function exportDataPOExcel() {
   const bulanTerpilih = parseInt(document.getElementById('pod-filter-bulan')?.value || '0', 10);
   const tahunTerpilih = parseInt(document.getElementById('pod-filter-tahun')?.value || '0', 10);
   let daftar = PO_DATA_LIST;
-  if (bulanTerpilih && tahunTerpilih) {
+  // FITUR BARU: samakan dengan tabel -- Bulan/Tahun bisa "-- Semua --" (value 0) independen.
+  if (bulanTerpilih || tahunTerpilih) {
     daftar = daftar.filter(po => {
       if (!po.tanggal) return false;
       const d = new Date(po.tanggal);
-      return (d.getMonth() + 1) === bulanTerpilih && d.getFullYear() === tahunTerpilih;
+      const cocokBulan = !bulanTerpilih || (d.getMonth() + 1) === bulanTerpilih;
+      const cocokTahun = !tahunTerpilih || d.getFullYear() === tahunTerpilih;
+      return cocokBulan && cocokTahun;
     });
   }
   if (!tampilkanClosed) daftar = daftar.filter(po => String(po.statusPo || '').toUpperCase() !== 'CLOSED');
