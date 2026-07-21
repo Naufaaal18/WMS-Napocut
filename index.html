@@ -3198,12 +3198,11 @@ window.fetch = function (url, options) {
               </div>
             </div>
 
-            <!-- FITUR BARU: Ringkasan KPI Data PO -- Total PO, PO Closed, PO Active,
-                 Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO. Dihitung
-                 dari PO yang lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori
-                 (TIDAK terpengaruh checkbox Tampilkan Closed/Cancel di bawah, supaya
-                 KPI "PO Closed" tetap akurat walau baris Closed sedang disembunyikan
-                 dari tabel). -->
+            <!-- FITUR BARU: Ringkasan KPI Data PO -- Total PO, PO Closed, PO Active, PO Cancel,
+                 Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO. Dihitung dari PO
+                 yang lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori + checkbox
+                 Tampilkan Closed/Cancel di bawah (KPI selalu mengikuti apa yang benar-benar
+                 tampil di tabel). -->
             <div class="row g-2 mb-3 text-center" id="pod-summary-cards">
               <div class="col-6 col-md-2">
                 <div class="border rounded p-2">
@@ -3221,6 +3220,16 @@ window.fetch = function (url, options) {
                 <div class="border rounded p-2">
                   <div class="small text-muted">PO Active</div>
                   <div class="fw-bold fs-5 text-success" id="pod-sum-active">-</div>
+                </div>
+              </div>
+              <!-- FITUR BARU: kartu "PO Cancel" -- jumlah PO berstatus Cancel/Cancelled yang
+                   lolos filter Bulan/Tahun/Cari/Kategori + checkbox "Tampilkan PO berstatus
+                   Cancel" di bawah (kalau checkbox tidak dicentang, angka ini akan 0 karena
+                   baris Cancel memang sedang disembunyikan dari tabel). -->
+              <div class="col-6 col-md-2">
+                <div class="border rounded p-2">
+                  <div class="small text-muted">PO Cancel</div>
+                  <div class="fw-bold fs-5 text-danger" id="pod-sum-cancel">-</div>
                 </div>
               </div>
               <div class="col-6 col-md-2">
@@ -3242,6 +3251,7 @@ window.fetch = function (url, options) {
                 </div>
               </div>
             </div>
+
 
             <div class="row g-2 mb-2">
               <div class="col-8">
@@ -9373,22 +9383,25 @@ function initDataPOFilter() {
 }
 
 // FITUR BARU: hitung & tampilkan Ringkasan KPI Data PO (Total PO, PO Closed, PO Active,
-// Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO) dari daftar PO yang sudah
-// lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori (lihat renderDataPOTable()).
+// PO Cancel, Total Qty PO, Total Qty Pending PO, Total Qty Receiving PO) dari daftar PO
+// yang sudah lolos filter Bulan/Tahun + Cari No PO/Supplier + Kategori + checkbox
+// Closed/Cancel (lihat renderDataPOTable()).
 function hitungRingkasanDataPO(daftar) {
   const elTotal = document.getElementById('pod-sum-total');
   if (!elTotal) return; // Modul tidak sedang aktif di DOM -- aman, tidak perlu hitung.
   const elClosed = document.getElementById('pod-sum-closed');
   const elActive = document.getElementById('pod-sum-active');
+  const elCancel = document.getElementById('pod-sum-cancel');
   const elQtyPo = document.getElementById('pod-sum-qtypo');
   const elQtyPending = document.getElementById('pod-sum-qtypending');
   const elQtyReceiving = document.getElementById('pod-sum-qtyreceiving');
 
-  let totalClosed = 0, totalActive = 0, totalQtyPo = 0, totalQtyPending = 0, totalQtyReceiving = 0;
+  let totalClosed = 0, totalActive = 0, totalCancel = 0, totalQtyPo = 0, totalQtyPending = 0, totalQtyReceiving = 0;
   daftar.forEach(po => {
     const statusUp = String(po.statusPo || '').toUpperCase();
     if (statusUp === 'CLOSED') totalClosed++;
     else if (statusUp === 'ACTIVE' || statusUp === 'OPEN') totalActive++;
+    else if (statusUp === 'CANCEL' || statusUp === 'CANCELLED') totalCancel++;
     // Samakan persis dengan kolom tabel: Qty PO = totalQtySisa, Pending Qty PO =
     // totalQtyOrder, Qty Receiving PO = totalQtyDiterima (lihat renderDataPOTable()).
     totalQtyPo += Number(po.totalQtySisa || 0);
@@ -9398,6 +9411,7 @@ function hitungRingkasanDataPO(daftar) {
 
   elTotal.textContent = daftar.length.toLocaleString('id-ID');
   if (elClosed) elClosed.textContent = totalClosed.toLocaleString('id-ID');
+  if (elCancel) elCancel.textContent = totalCancel.toLocaleString('id-ID');
   if (elActive) elActive.textContent = totalActive.toLocaleString('id-ID');
   if (elQtyPo) elQtyPo.textContent = totalQtyPo.toLocaleString('id-ID');
   if (elQtyPending) elQtyPending.textContent = totalQtyPending.toLocaleString('id-ID');
