@@ -81,7 +81,10 @@ const ENDPOINTS = {
     p_no_po: data.noPo, p_kode_sku: data.kodeSku, p_kategori: data.kategori,
     p_qty: Number(data.qty), p_lokasi_rak: data.lokasiRak || null, p_grade: data.grade || null,
     p_short_putaway: !!data.shortPutaway, p_user_login: data.userLogin,
-    p_nomor_odoo_receiving: data.nomorOdooReceiving || null
+    p_nomor_odoo_receiving: data.nomorOdooReceiving || null,
+    // FITUR BARU: SKU Tambahan (di luar PO) -- Qty PO tercatat 0, Qty Receiving PO mengikuti
+    // qty yang diterima di sini. Lihat migration process_inbound_receiving di Supabase.
+    p_extra_sku: !!data.extraSku
   }),
 
   submitQCFG: (data) => _callRpc('submit_qc_fg', {
@@ -2057,7 +2060,7 @@ window.fetch = function (url, options) {
 
     @media (max-width: 576px) {
       #sub-inbound { padding: 10px !important; }
-      #sub-inbound #ib-list-container .table-responsive { overflow-x: hidden; max-height: 320px; }
+      #modal-inbound-process #ib-list-container .table-responsive { overflow-x: hidden; max-height: 320px; }
       /* PENTING: elemen <table> & <th> di HTML punya inline style="width:...;font-size:..."
          bawaan (dipakai utk tampilan desktop). Inline style SELALU menang atas selector
          CSS biasa (termasuk selector ID) berapa pun spesifisitasnya -- HANYA declaration
@@ -2066,11 +2069,11 @@ window.fetch = function (url, options) {
          lebar inline desktop (28+85+100+150+55 = 418px+), itu sebabnya tabel terpotong/
          perlu di-scroll ke samping walau sudah ada table-layout:fixed. Fix: tambahkan
          !important di semua width & font-size supaya konsisten dipakai di layar sempit. */
-      #sub-inbound #ib-list-container table { table-layout: fixed !important; font-size: 9.5px !important; }
-      #sub-inbound #ib-list-container th, #sub-inbound #ib-list-container td {
+      #modal-inbound-process #ib-list-container table { table-layout: fixed !important; font-size: 9.5px !important; }
+      #modal-inbound-process #ib-list-container th, #modal-inbound-process #ib-list-container td {
         padding: 3px 2px !important; overflow: hidden; word-break: break-word;
       }
-      #sub-inbound #ib-list-container thead th { font-size: 8.5px !important; line-height: 1.15; white-space: normal; }
+      #modal-inbound-process #ib-list-container thead th { font-size: 8.5px !important; line-height: 1.15; white-space: normal; }
       /* Lebar kolom dipatok fixed (total sengaja dijaga di bawah ~280px supaya pas di
          layar HP terkecil sekalipun): checkbox 18px, SKU 78px, Sisa Order 38px,
          Qty Diterima 54px, Lokasi Rak 58px, Short 22px. */
@@ -2703,8 +2706,8 @@ window.fetch = function (url, options) {
         <div id="sub-inbound" class="card p-3 mb-3 border-start border-4 border-primary">
           <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-download me-2"></i>Inbound Receiving
           </h6>
-          <p class="text-muted small mb-2">Pilih Nomor PO, lalu isi <strong>Qty Diterima untuk setiap SKU</strong> pada
-            daftar di bawah dan kirim sekaligus dalam 1 kali submit.</p>
+          <p class="text-muted small mb-2">Pilih Nomor PO — halaman proses SKU akan otomatis terbuka untuk isi
+            <strong>Qty Diterima setiap SKU</strong> dan kirim sekaligus dalam 1 kali submit.</p>
           <form id="form-inbound" onsubmit="event.preventDefault();">
             <div class="row g-2">
 
@@ -2725,58 +2728,9 @@ window.fetch = function (url, options) {
                 <input type="text" id="ib-kategori" class="form-control form-control-sm fw-bold bg-light" readonly placeholder="- Otomatis -">
               </div>
             </div>
-
-            <!-- ===== FITUR BARU (poin 6): LIST SEMUA SKU PADA PO INI, QTY BISA DIISI SEKALIGUS ===== -->
-            <div id="ib-list-container" class="mt-2" style="display:none;">
-              <div class="d-flex justify-content-between align-items-center mb-1">
-                <label class="form-label small fw-bold mb-0">Daftar SKU pada PO Ini</label>
-                <div class="form-check form-check-inline mb-0">
-                  <input class="form-check-input" type="checkbox" id="ib-check-all" onchange="toggleAllInboundList(this)">
-                  <label class="form-check-label small" for="ib-check-all">Pilih Semua</label>
-                </div>
-              </div>
-              <!-- FITUR BARU (poin 1): Filter SKU pada daftar Receiving Inbound. Data selalu
-                   diurutkan alfabetis berdasarkan SKU (lihat onInboundPoSelected di script). -->
-              <div class="input-group input-group-sm mb-1">
-                <span class="input-group-text bg-light"><i class="fa-solid fa-filter"></i></span>
-                <input type="text" id="ib-filter-input" class="form-control form-control-sm" placeholder="Ketik untuk filter SKU..." oninput="filterInboundList()">
-              </div>
-              <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
-                <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
-                  <thead class="table-light" style="position: sticky; top: 0;">
-                    <tr>
-                      <th style="width: 28px;"></th>
-                      <th>Kode SKU</th>
-                      <th class="text-center" style="width: 85px;">Sisa Order</th>
-                      <th class="text-center" style="width: 100px;">Qty Diterima</th>
-                      <th id="ib-th-lokasi" style="width: 150px;">Lokasi Rak</th>
-                      <th class="text-center" style="width: 55px;">Short</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ib-list-tbody"></tbody>
-                </table>
-              </div>
-              <p class="text-muted mb-0 mt-1" style="font-size: 10px;">
-                <i class="fa-solid fa-circle-info me-1"></i>Centang kolom <strong>Short</strong> pada baris SKU yang
-                vendor TIDAK akan mengirim sisanya lagi — PO untuk SKU tersebut otomatis ditutup (Closed) dengan qty
-                yang diterima saat ini, walau kurang dari Qty Order.
-              </p>
-            </div>
-
-            <!-- FITUR BARU: Nomor Odoo WAJIB diisi khusus untuk kategori Finish Good sebelum
-                 tombol "Kirim Semua SKU Terpilih" bisa dipakai. Field ini terpisah dari Nomor
-                 Odoo yang diisi belakangan oleh Admin/SPV di modul Validasi Inbound Sebelum QC
-                 (2 input independen sesuai keputusan). Diletakkan di bawah tabel SKU & di atas
-                 tombol kirim supaya operator mengisinya setelah selesai isi qty semua baris. -->
-            <div class="mt-3 mb-1" id="ib-nomor-odoo-wrap" style="display:none;">
-              <label class="form-label small fw-bold mb-0 text-primary"><i class="fa-solid fa-hashtag me-1"></i>Nomor Odoo</label>
-              <input type="text" id="ib-nomor-odoo" class="form-control form-control-sm" placeholder="Contoh: WH/IN/00123" oninput="updateIbSubmitButtonState()">
-              <div class="text-muted" style="font-size: 10px;">Wajib diisi untuk kategori Finish Good sebelum bisa mengirim data receiving.</div>
-            </div>
-
-            <button type="button" id="ib-submit-btn" class="btn btn-primary text-white btn-sm w-100 fw-bold mt-3" onclick="submitInboundReceivingList()">
-      <i class="fa-solid fa-arrow-down-1-9 me-1"></i>Kirim Semua SKU Terpilih
-    </button>
+            <!-- FITUR BARU: memilih Nomor PO sekarang otomatis membuka halaman/modal terpisah
+                 ("Proses Inbound") berisi daftar SKU-nya -- lihat onInboundPoSelected() &
+                 modal #modal-inbound-process di luar #konten-aplikasi. -->
           </form>
         </div>
 
@@ -5976,6 +5930,89 @@ async function eksekusiAddSkuOutbound() {
       </div>
     </div>
 
+  </div>
+
+  <!-- MODAL: PROSES INBOUND RECEIVING (dibuka otomatis begitu Nomor PO dipilih) -->
+  <!-- FITUR BARU: sebelumnya daftar SKU tampil inline di bawah dropdown Nomor PO di halaman
+       yang sama; sekarang dipindah ke modal terpisah ("halaman baru" utk memproses SKU pada
+       PO yang dipilih), supaya tidak bercampur dengan form pemilihan PO & lebih leluasa dilihat.
+       ID elemen di dalamnya (ib-list-container, ib-list-tbody, ib-nomor-odoo, ib-submit-btn, dst)
+       SENGAJA tetap sama seperti sebelumnya supaya semua fungsi JS lama (onInboundPoSelected,
+       filterInboundList, submitInboundReceivingList, dst) tetap jalan tanpa perlu diubah selectornya.
+       Sengaja diletakkan DI LUAR #konten-aplikasi, sama seperti modal-detail-po. -->
+  <div class="modal fade" id="modal-inbound-process" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header py-2" style="background:#0d6efd;color:#fff;">
+          <h6 class="modal-title fw-bold mb-0"><i class="fa-solid fa-download me-2"></i>Proses Inbound — <span id="ibp-modal-title">-</span></h6>
+          <button type="button" class="btn-close btn-close-white" onclick="tutupModalInboundProcess()"></button>
+        </div>
+        <div class="modal-body p-3">
+          <div id="ib-list-container" style="display:none;">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label small fw-bold mb-0">Daftar SKU pada PO Ini</label>
+              <div class="d-flex align-items-center gap-2">
+                <!-- FITUR BARU: tombol "+" untuk menambahkan SKU yang TIDAK ada di PO ini
+                     (mis. supplier ternyata kirim item lain). Baris yang ditambahkan lewat
+                     tombol ini akan tercatat di Data PO dengan Qty PO = 0 dan Qty Receiving PO
+                     mengikuti Qty yang diisi di sini. -->
+                <button type="button" class="btn btn-outline-success btn-sm py-0 px-2" onclick="addExtraSkuRow()" title="Tambah SKU yang TIDAK ada di PO ini">
+                  <i class="fa-solid fa-plus"></i>
+                </button>
+                <div class="form-check form-check-inline mb-0">
+                  <input class="form-check-input" type="checkbox" id="ib-check-all" onchange="toggleAllInboundList(this)">
+                  <label class="form-check-label small" for="ib-check-all">Pilih Semua</label>
+                </div>
+              </div>
+            </div>
+            <!-- FITUR BARU (poin 1): Filter SKU pada daftar Receiving Inbound. Data selalu
+                 diurutkan alfabetis berdasarkan SKU (lihat onInboundPoSelected di script). -->
+            <div class="input-group input-group-sm mb-1">
+              <span class="input-group-text bg-light"><i class="fa-solid fa-filter"></i></span>
+              <input type="text" id="ib-filter-input" class="form-control form-control-sm" placeholder="Ketik untuk filter SKU..." oninput="filterInboundList()">
+            </div>
+            <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+                <thead class="table-light" style="position: sticky; top: 0;">
+                  <tr>
+                    <th style="width: 28px;"></th>
+                    <th>Kode SKU</th>
+                    <th class="text-center" style="width: 85px;">Sisa Order</th>
+                    <th class="text-center" style="width: 100px;">Qty Diterima</th>
+                    <th id="ib-th-lokasi" style="width: 150px;">Lokasi Rak</th>
+                    <th class="text-center" style="width: 55px;">Short</th>
+                  </tr>
+                </thead>
+                <tbody id="ib-list-tbody"></tbody>
+              </table>
+            </div>
+            <p class="text-muted mb-0 mt-1" style="font-size: 10px;">
+              <i class="fa-solid fa-circle-info me-1"></i>Centang kolom <strong>Short</strong> pada baris SKU yang
+              vendor TIDAK akan mengirim sisanya lagi — PO untuk SKU tersebut otomatis ditutup (Closed) dengan qty
+              yang diterima saat ini, walau kurang dari Qty Order. Baris berlabel
+              <span class="badge bg-warning text-dark">Tambahan</span> adalah SKU di luar PO ini (Qty PO tercatat 0,
+              Qty Receiving PO mengikuti Qty yang diisi) — pakai tombol "×" di kolom Short untuk menghapus baris ini.
+            </p>
+          </div>
+
+          <!-- FITUR BARU: Nomor Odoo WAJIB diisi khusus untuk kategori Finish Good sebelum
+               tombol "Kirim Semua SKU Terpilih" bisa dipakai. Field ini terpisah dari Nomor
+               Odoo yang diisi belakangan oleh Admin/SPV di modul Validasi Inbound Sebelum QC
+               (2 input independen sesuai keputusan). -->
+          <div class="mt-3 mb-1" id="ib-nomor-odoo-wrap" style="display:none;">
+            <label class="form-label small fw-bold mb-0 text-primary"><i class="fa-solid fa-hashtag me-1"></i>Nomor Odoo</label>
+            <input type="text" id="ib-nomor-odoo" class="form-control form-control-sm" placeholder="Contoh: WH/IN/00123" oninput="updateIbSubmitButtonState()">
+            <div class="text-muted" style="font-size: 10px;">Wajib diisi untuk kategori Finish Good sebelum bisa mengirim data receiving.</div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="tutupModalInboundProcess()">Tutup</button>
+          <button type="button" id="ib-submit-btn" class="btn btn-primary text-white btn-sm fw-bold" onclick="submitInboundReceivingList()">
+            <i class="fa-solid fa-arrow-down-1-9 me-1"></i>Kirim Semua SKU Terpilih
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: DETAIL PO (dibuka dari sub-modul "Data PO") -->
@@ -11043,7 +11080,9 @@ function onInboundPoSelected() {
   if (filterInputEl) filterInputEl.value = "";
 
   if (skus.length === 0) {
-    listContainer.style.display = "none";
+    listTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">Belum ada SKU pada PO ini. Gunakan tombol "+" untuk menambahkan SKU.</td></tr>';
+    listContainer.style.display = "block";
+    bukaModalInboundProcess(poSelected, detailPO.kategori);
     return;
   }
 
@@ -11087,6 +11126,106 @@ function onInboundPoSelected() {
   }).join('');
 
   listContainer.style.display = "block";
+
+  // FITUR BARU: begitu Nomor PO dipilih, langsung buka "halaman" (modal) terpisah utk
+  // memproses SKU-SKU pada PO ini, alih-alih tampil inline di bawah dropdown seperti sebelumnya.
+  bukaModalInboundProcess(poSelected, detailPO.kategori);
+}
+
+// FITUR BARU: buka modal "Proses Inbound" -- dipanggil otomatis begitu operator memilih
+// Nomor PO yang valid. Judul modal menampilkan No PO + Kategori supaya jelas PO mana yang
+// sedang diproses.
+function bukaModalInboundProcess(noPo, kategori) {
+  const titleEl = document.getElementById("ibp-modal-title");
+  if (titleEl) titleEl.textContent = kategori ? `${noPo} - ${kategori}` : noPo;
+  const modalEl = document.getElementById("modal-inbound-process");
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+// FITUR BARU: tutup modal "Proses Inbound" & reset pilihan Nomor PO supaya operator harus
+// memilih PO lagi dari awal untuk membuka halaman proses berikutnya (selaras dengan alur
+// "pilih PO -> buka halaman proses SKU").
+function tutupModalInboundProcess() {
+  const modalEl = document.getElementById("modal-inbound-process");
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.hide();
+
+  const poSelect = document.getElementById("ib-nopo");
+  if (poSelect) poSelect.value = "";
+  const kategoriInput = document.getElementById("ib-kategori");
+  if (kategoriInput) kategoriInput.value = "";
+  const listTbody = document.getElementById("ib-list-tbody");
+  if (listTbody) listTbody.innerHTML = "";
+  const listContainer = document.getElementById("ib-list-container");
+  if (listContainer) listContainer.style.display = "none";
+  const nomorOdooWrap = document.getElementById("ib-nomor-odoo-wrap");
+  const nomorOdooInput = document.getElementById("ib-nomor-odoo");
+  if (nomorOdooWrap) nomorOdooWrap.style.display = "none";
+  if (nomorOdooInput) nomorOdooInput.value = "";
+  const filterInputEl = document.getElementById("ib-filter-input");
+  if (filterInputEl) filterInputEl.value = "";
+}
+
+// FITUR BARU: tombol "+" di samping "Pilih Semua" -- menambahkan 1 baris SKU TAMBAHAN yang
+// TIDAK ada di daftar PO ini (mis. supplier ternyata mengirim item lain / item pengganti).
+// Baris ini dikirim terpisah ke process_inbound_receiving dengan flag p_extra_sku=true, yang
+// akan mencatatnya sebagai baris baru di Open_PO dengan Qty PO (qty_awal) = 0 dan Qty Order
+// (qty_order) = NEGATIF sebesar qty yang diterima -- supaya di sub-modul Data PO otomatis
+// tampil Qty PO = 0 dan Qty Receiving PO = qty yang diisi di sini (lihat migration Supabase).
+let IB_EXTRA_ROW_SEQ = 0;
+function addExtraSkuRow() {
+  const poSelected = document.getElementById("ib-nopo").value;
+  const kat = (document.getElementById("ib-kategori").value || "").trim().toLowerCase();
+  if (!poSelected || !kat) {
+    customAlert("Pilih Nomor PO terlebih dahulu sebelum menambahkan SKU Tambahan.");
+    return;
+  }
+
+  const listTbody = document.getElementById("ib-list-tbody");
+  const listContainer = document.getElementById("ib-list-container");
+  // Hilangkan baris placeholder "Belum ada SKU..." (kalau ada) begitu baris pertama ditambahkan.
+  const placeholderRow = listTbody.querySelector('tr td[colspan="6"]');
+  if (placeholderRow) placeholderRow.closest('tr').remove();
+
+  IB_EXTRA_ROW_SEQ++;
+  const rowId = `ib-extra-${IB_EXTRA_ROW_SEQ}`;
+  const gradeAuto = (kat === "raw material") ? "Bagus" : (kat === "return" ? "Return" : "-");
+
+  let kolomLokasi = "";
+  if (kat === "raw material") {
+    const lokasiInputId = `${rowId}-lokasi`;
+    kolomLokasi = `<div class="ib-lokasi-wrap">
+        <input type="text" id="${lokasiInputId}" class="form-control form-control-sm ib-row-lokasi" placeholder="cth: RM-01">
+        <button type="button" class="btn btn-outline-primary btn-sm ib-lokasi-scan-btn" onclick="openBarcodeScannerFor('${lokasiInputId}','Scan Lokasi Rak')" title="Scan Barcode Lokasi Rak dengan Kamera">
+          <i class="fa-solid fa-barcode"></i>
+        </button>
+      </div>`;
+  } else if (kat === "return") {
+    kolomLokasi = `<input type="text" class="form-control form-control-sm ib-row-lokasi" value="Staging Return" readonly tabindex="-1">`;
+  } else {
+    kolomLokasi = `<input type="text" class="form-control form-control-sm ib-row-lokasi" value="Staging Inbound" readonly tabindex="-1">`;
+  }
+
+  const trHtml = `<tr class="ib-extra-row table-warning" id="${rowId}">
+      <td class="text-center"><input type="checkbox" class="ib-row-check"></td>
+      <td><input type="text" class="form-control form-control-sm ib-extra-sku-input" placeholder="Ketik Kode SKU..." style="min-width:90px;"><input type="hidden" class="ib-row-grade" value="${gradeAuto}"></td>
+      <td class="text-center"><span class="badge bg-warning text-dark" title="SKU ini TIDAK ada di PO -- Qty PO tercatat 0">Tambahan</span></td>
+      <td><input type="number" class="form-control form-control-sm ib-row-qty" min="1" placeholder="0" oninput="onIbRowQtyChanged(this)"></td>
+      <td>${kolomLokasi}</td>
+      <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm py-0 px-1" onclick="removeExtraSkuRow('${rowId}')" title="Hapus baris SKU Tambahan ini"><i class="fa-solid fa-xmark"></i></button></td>
+    </tr>`;
+
+  listTbody.insertAdjacentHTML("afterbegin", trHtml);
+  listContainer.style.display = "block";
+  filterInboundList();
+}
+
+// FITUR BARU: hapus 1 baris SKU Tambahan yang salah ditambahkan/tidak jadi dipakai.
+function removeExtraSkuRow(rowId) {
+  const tr = document.getElementById(rowId);
+  if (tr) tr.remove();
+  updateIbSelectAllState();
 }
 
 // FITUR BARU: kunci tombol "Kirim Semua SKU Terpilih" kalau kategori PO ini Finish Good
@@ -11114,7 +11253,7 @@ function toggleAllInboundList(checkboxHeader) {
 // centang ikut lepas otomatis. Setelah itu, cek juga apakah SEMUA baris sudah terisi untuk
 // memutuskan status checkbox header "Pilih Semua".
 function onIbRowQtyChanged(inputEl) {
-  const tr = inputEl.closest('tr[data-sku-row]');
+  const tr = inputEl.closest('tr');
   if (tr) {
     const cb = tr.querySelector('.ib-row-check');
     const qty = parseInt(inputEl.value) || 0;
@@ -11145,12 +11284,18 @@ function updateIbSelectAllState() {
 // FITUR BARU (poin 1): filter baris SKU pada tabel Receiving Inbound berdasarkan teks yang
 // diketik operator (cocok jika Kode SKU MENGANDUNG teks filter, tidak case-sensitive).
 // Baris yang tidak cocok disembunyikan (bukan dihapus), sehingga qty/checkbox yang sudah
-// diisi tetap tersimpan walau sedang tidak tampil.
+// diisi tetap tersimpan walau sedang tidak tampil. Baris SKU Tambahan (ib-extra-row) ikut
+// difilter berdasarkan Kode SKU yang sedang diketik di baris tsb.
 function filterInboundList() {
   const keyword = (document.getElementById("ib-filter-input").value || "").trim().toUpperCase();
   document.querySelectorAll('#ib-list-tbody tr[data-sku-row]').forEach(tr => {
     const sku = tr.getAttribute('data-sku-row').toUpperCase();
     tr.style.display = (!keyword || sku.includes(keyword)) ? "" : "none";
+  });
+  document.querySelectorAll('#ib-list-tbody tr.ib-extra-row').forEach(tr => {
+    const skuInput = tr.querySelector('.ib-extra-sku-input');
+    const sku = skuInput ? skuInput.value.trim().toUpperCase() : '';
+    tr.style.display = (!keyword || !sku || sku.includes(keyword)) ? "" : "none";
   });
 }
 
@@ -11225,7 +11370,45 @@ async function submitInboundReceivingList() {
 
   if (adaError) return;
 
-  if (itemsNormal.length === 0 && itemsShort.length === 0) {
+  // FITUR BARU: kumpulkan baris SKU TAMBAHAN (di luar PO ini, ditambahkan lewat tombol "+").
+  // Tiap baris = 1 SKU unik yang diketik manual, jadi dikirim satu-per-satu (bukan lewat
+  // processInboundReceivingMulti yang mengandalkan Qty Order dari Open_PO yang sudah ada).
+  const extraRows = document.querySelectorAll('#ib-list-tbody tr.ib-extra-row');
+  const itemsExtra = [];
+  extraRows.forEach(tr => {
+    const skuInput = tr.querySelector('.ib-extra-sku-input');
+    const sku = skuInput ? skuInput.value.trim().toUpperCase() : "";
+    const qtyInput = tr.querySelector('.ib-row-qty');
+    const qty = parseInt(qtyInput.value) || 0;
+
+    if (!sku && qty <= 0) return; // baris SKU Tambahan yang masih kosong, diamkan saja
+
+    if (!sku) {
+      customAlert("Mohon isi Kode SKU untuk baris SKU Tambahan yang sudah diisi Qty-nya.");
+      adaError = true;
+      return;
+    }
+    if (qty <= 0) {
+      customAlert(`Mohon isi Qty untuk SKU Tambahan ${sku}.`);
+      adaError = true;
+      return;
+    }
+
+    const lokasiEl = tr.querySelector('.ib-row-lokasi');
+    const lokasiVal = lokasiEl ? lokasiEl.value.trim() : "";
+    if (kategoriVal.trim().toLowerCase() === "raw material" && lokasiVal === "") {
+      customAlert(`Mohon isi Lokasi Rak untuk SKU Tambahan ${sku} (kategori Raw Material).`);
+      adaError = true;
+      return;
+    }
+
+    const gradeEl = tr.querySelector('.ib-row-grade');
+    itemsExtra.push({ kodeSku: sku, qty: qty, lokasiRak: lokasiVal, grade: gradeEl ? gradeEl.value : "" });
+  });
+
+  if (adaError) return;
+
+  if (itemsNormal.length === 0 && itemsShort.length === 0 && itemsExtra.length === 0) {
     customAlert("Mohon isi Qty Diterima untuk minimal 1 SKU sebelum mengirim.");
     return;
   }
@@ -11280,14 +11463,26 @@ async function submitInboundReceivingList() {
     }
   }
 
+  // 3. Kirim baris SKU TAMBAHAN (di luar PO) satu-per-satu -- tiap baris SKU-nya diketik
+  // manual & unik, jadi tidak bisa digabung lewat processInboundReceivingMulti.
+  for (const item of itemsExtra) {
+    try {
+      const resExtra = await new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(reject)
+          .processInboundReceiving({ noPo: poSelected, kodeSku: item.kodeSku, kategori: kategoriVal, qty: item.qty, grade: item.grade, lokasiRak: item.lokasiRak, extraSku: true, userLogin: userLogin, nomorOdooReceiving: nomorOdooReceiving });
+      });
+      pesanGabungan.push(resExtra.message);
+      adaSukses = true;
+    } catch (errExtra) {
+      pesanGabungan.push(`Gagal SKU Tambahan ${item.kodeSku}: ` + errExtra.message);
+    }
+  }
+
   customAlert(pesanGabungan.join('\n\n'));
   if (adaSukses) {
-    document.getElementById("ib-list-container").style.display = "none";
-    document.getElementById("ib-list-tbody").innerHTML = "";
-    const nomorOdooWrapDone = document.getElementById("ib-nomor-odoo-wrap");
-    const nomorOdooInputDone = document.getElementById("ib-nomor-odoo");
-    if (nomorOdooWrapDone) nomorOdooWrapDone.style.display = "none";
-    if (nomorOdooInputDone) nomorOdooInputDone.value = "";
+    tutupModalInboundProcess();
     loadOpenPOToInboundDropdown(); // Muat ulang data PO fresh dari spreadsheet agar sinkron antar user
   }
 }
