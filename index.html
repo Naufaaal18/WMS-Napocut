@@ -1965,8 +1965,43 @@ window.fetch = function (url, options) {
       color: #9aa6c7;
     }
     .whdash-toggle-row i { transition: transform .2s ease; }
-    #whdash-root.whdash-collapsed .whdash-body { display: none; }
+    #whdash-root.whdash-collapsed .whdash-swipe-viewport,
+    #whdash-root.whdash-collapsed .whdash-swipe-dots { display: none; }
     #whdash-root.whdash-collapsed .whdash-toggle-row i { transform: rotate(180deg); }
+
+    /* FITUR BARU: dashboard Home 2 halaman (swipe kiri/kanan) */
+    .whdash-swipe-viewport {
+      overflow: hidden;
+      position: relative;
+      touch-action: pan-y; /* biarkan scroll vertikal jalan normal, kita tangani sendiri gesture horizontal */
+    }
+    .whdash-swipe-track {
+      display: flex;
+      width: 200%;
+      transition: transform .28s ease;
+    }
+    .whdash-swipe-track.whdash-swipe-dragging { transition: none; }
+    .whdash-page {
+      flex: 0 0 50%; /* 50% dari track yang lebarnya 200% = 100% dari viewport */
+      max-width: 50%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    .whdash-swipe-dots {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 0 2px;
+    }
+    .whdash-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #333e63;
+      cursor: pointer;
+      transition: background .2s ease, transform .2s ease;
+    }
+    .whdash-dot.active { background: #4c8dff; transform: scale(1.3); }
 
     .whdash-kpi-strip {
       display: grid;
@@ -2322,7 +2357,15 @@ window.fetch = function (url, options) {
         <i class="fa-solid fa-chevron-down"></i>
       </div>
 
-      <div class="whdash-body" id="whdash-body">
+      <!-- FITUR BARU: dashboard Home sekarang punya 2 halaman yang bisa di-swipe.
+           Halaman 1 = KPI Inbound/Outbound/Work/Employees (seperti sebelumnya).
+           Halaman 2 = Monitoring Klaim Picking + preview Live Monitor Checker +
+           preview Live Movement History, ditumpuk ke bawah. Swipe kiri dari
+           halaman 1 menuju halaman 2, swipe kanan untuk kembali. -->
+      <div class="whdash-swipe-viewport" id="whdash-swipe-viewport">
+        <div class="whdash-swipe-track" id="whdash-swipe-track">
+
+      <div class="whdash-body whdash-page" id="whdash-body">
 
         <div class="whdash-section">
           <div class="whdash-section-title">Inbound</div>
@@ -2386,6 +2429,182 @@ window.fetch = function (url, options) {
         </div>
 
       </div>
+      <div class="whdash-body whdash-page whdash-page2" id="whdash-page2" style="color:#212529;">
+
+      <!-- SUB: MONITORING KLAIM PICKING (khusus SPV/Admin) -->
+      <div id="sub-dashob-picking-monitor" class="card p-3 mb-3 border-start border-4" style="border-color:#F57C00!important;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-bold mb-0" style="color:#F57C00;"><i class="fa-solid fa-hand me-2"></i>Monitoring Klaim Picking</h6>
+          <div class="d-flex gap-1 align-items-center">
+            <span class="badge bg-success" id="pcm-live-badge" style="font-size:10px;"><i class="fa-solid fa-circle fa-2xs me-1"></i>Live</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadPickingClaimsMonitor()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+        </div>
+        <p class="text-muted small mb-2">Menampilkan baris SKU yang SEDANG diklaim/dikerjakan picker secara real-time (auto-refresh tiap 15 detik), gabungan Picking Outbound &amp; Picking QC Ulang. 1 picker maksimal 1 klaim aktif — kalau ada baris terkunci lama, kemungkinan picker itu sedang kesulitan dan perlu dibantu.</p>
+
+        <!-- Summary Cards -->
+        <div class="row g-2 mb-3 text-center">
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Klaim Aktif</div>
+              <div class="fw-bold fs-5" style="color:#F57C00;" id="pcm-sum-aktif">-</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Picker Bekerja</div>
+              <div class="fw-bold fs-5 text-primary" id="pcm-sum-picker">-</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2">
+              <div class="small text-muted">Lama (&gt;10 mnt)</div>
+              <div class="fw-bold fs-5 text-danger" id="pcm-sum-lama">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabel Klaim Aktif -->
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <small class="fw-bold text-secondary">Sedang Dikerjakan Sekarang</small>
+          <input type="text" id="pcm-filter-picker" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter nama picker" oninput="renderPickingClaimsMonitorActive()">
+        </div>
+        <div class="table-responsive" style="max-height:320px;">
+          <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+            <thead class="table-light" style="position:sticky;top:0;">
+              <tr>
+                <th>Picker</th>
+                <th>No Request</th>
+                <th>Tipe</th>
+                <th>SKU</th>
+                <th>Grade</th>
+                <th>Lokasi</th>
+                <th class="text-center">Sejak</th>
+                <th class="text-center">Durasi</th>
+              </tr>
+            </thead>
+            <tbody id="pcm-tbody-aktif">
+              <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Riwayat Klaim (collapsible) -->
+        <div class="mt-3">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" style="font-size:11px;" data-bs-toggle="collapse" data-bs-target="#pcm-riwayat-box">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i>Lihat Riwayat Klaim Terakhir (Selesai/Dilepas/Kedaluwarsa)
+          </button>
+          <div class="collapse mt-2" id="pcm-riwayat-box">
+            <div class="table-responsive" style="max-height:300px;">
+              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+                <thead class="table-light" style="position:sticky;top:0;">
+                  <tr>
+                    <th>Waktu Selesai</th>
+                    <th>Picker</th>
+                    <th>No Request</th>
+                    <th>Tipe</th>
+                    <th>SKU</th>
+                    <th>Lokasi</th>
+                    <th>Status</th>
+                    <th class="text-center">Durasi Kerja</th>
+                  </tr>
+                </thead>
+                <tbody id="pcm-tbody-riwayat">
+                  <tr><td colspan="8" class="text-center text-muted py-3">Klik untuk memuat riwayat...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Laporan Produktivitas Picker -->
+        <div class="mt-3">
+          <h6 class="fw-bold small text-secondary mb-2"><i class="fa-solid fa-ranking-star me-1"></i>Laporan Produktivitas Picker</h6>
+          <div class="row g-2 mb-2 align-items-end">
+            <div class="col-5">
+              <label class="form-label small fw-bold mb-0">Dari Tanggal</label>
+              <input type="date" id="pcm-prod-tgl-mulai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
+            </div>
+            <div class="col-5">
+              <label class="form-label small fw-bold mb-0">Sampai Tanggal</label>
+              <input type="date" id="pcm-prod-tgl-selesai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
+            </div>
+            <div class="col-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="loadPickingProductivityReport()" title="Muat Ulang">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height:320px;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
+              <thead class="table-light" style="position:sticky;top:0;">
+                <tr>
+                  <th>#</th>
+                  <th>Picker</th>
+                  <th class="text-center">Total Selesai</th>
+                  <th class="text-center">Outbound</th>
+                  <th class="text-center">QC Ulang</th>
+                  <th class="text-center">Rata-rata / Baris</th>
+                  <th class="text-center">Total Waktu Kerja</th>
+                </tr>
+              </thead>
+              <tbody id="pcm-prod-tbody">
+                <tr><td colspan="7" class="text-center text-muted py-3">Pilih rentang tanggal untuk melihat laporan.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="pcm-prod-alert" class="mt-2"></div>
+        </div>
+
+        <div id="pcm-alert" class="mt-2"></div>
+      </div>
+
+        <!-- PREVIEW RINGKAS: LIVE MONITOR CHECKER (hasil checking terbaru, hanya baca) -->
+        <div class="card p-3 mb-3 border-start border-4 border-success">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold text-success mb-0"><i class="fa-solid fa-tv me-2"></i>Live Monitor Checker</h6>
+            <div class="d-flex align-items-center gap-2">
+              <span id="whd2-lcm-status-dot" class="lcm-live-dot"></span>
+              <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-1" onclick="loadWhd2LiveChecker()" title="Muat Ulang" style="font-size: 10px;">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+          <p class="text-muted small mb-2">Menampilkan hasil checking terbaru secara otomatis (live). Label <span class="fw-bold text-success">HIJAU</span> = Qty Checker klop dengan Qty Picker, <span class="fw-bold text-danger">MERAH</span> = Qty Checker tidak klop.</p>
+          <div id="whd2-lcm-list-area">
+            <div class="text-muted small text-center py-4 border rounded">Memuat...</div>
+          </div>
+        </div>
+
+        <!-- PREVIEW RINGKAS: LIVE MOVEMENT HISTORY (feed pergerakan stok terbaru, hanya baca) -->
+        <div class="card p-3 mb-1 border-start border-4" style="border-color:#0D47A1!important;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Live Movement History</h6>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-success" style="font-size:10px;"><i class="fa-solid fa-circle fa-2xs me-1"></i>Live</span>
+              <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-1" onclick="loadWhd2LiveMovement()" title="Muat Ulang" style="font-size: 10px;">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+          <p class="text-muted small mb-2">Feed pergerakan stok terbaru (5 terakhir). Untuk laporan lengkap dengan filter tanggal &amp; unduh Excel, gunakan menu <b>Export &gt; Movement History (Audit Trail)</b>.</p>
+          <div id="whd2-lmh-list-area" style="max-height:260px; overflow-y:auto;">
+            <div class="text-muted small text-center py-4 border rounded">Memuat...</div>
+          </div>
+        </div>
+
+      </div>
+
+        </div>
+      </div>
+
+      <div class="whdash-swipe-dots" id="whdash-swipe-dots">
+        <span class="whdash-dot active" data-pg="0" onclick="whDashGoToPage(0)"></span>
+        <span class="whdash-dot" data-pg="1" onclick="whDashGoToPage(1)"></span>
+      </div>
+
     </div>
 
     <div id="home-sidebar-overlay" class="home-sidebar-overlay" onclick="closeHomeSidebar()"></div>
@@ -2660,12 +2879,9 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Dashboard Inbound</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-picking-monitor')">
-          <span class="sub-dot dot-dashob"></span>
-          <span class="sub-module-name">Monitoring Klaim Picking</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
       </div>
+      <!-- FITUR BARU: "Monitoring Klaim Picking" dipindah ke Warehouse Dashboard Home
+           (swipe kiri, halaman 2) -- tidak lagi jadi submenu terpisah di sini. -->
     </div>
 
     <!-- MODUL: EXPORT -->
@@ -4970,136 +5186,8 @@ async function eksekusiAddSkuOutbound() {
         <div id="ib-dash-alert" class="mt-2"></div>
       </div>
 
-      <!-- SUB: MONITORING KLAIM PICKING (khusus SPV/Admin) -->
-      <div id="sub-dashob-picking-monitor" class="card p-3 mb-3 border-start border-4" style="border-color:#F57C00!important;">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0" style="color:#F57C00;"><i class="fa-solid fa-hand me-2"></i>Monitoring Klaim Picking</h6>
-          <div class="d-flex gap-1 align-items-center">
-            <span class="badge bg-success" id="pcm-live-badge" style="font-size:10px;"><i class="fa-solid fa-circle fa-2xs me-1"></i>Live</span>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadPickingClaimsMonitor()" title="Muat Ulang">
-              <i class="fa-solid fa-rotate"></i>
-            </button>
-          </div>
-        </div>
-        <p class="text-muted small mb-2">Menampilkan baris SKU yang SEDANG diklaim/dikerjakan picker secara real-time (auto-refresh tiap 15 detik), gabungan Picking Outbound &amp; Picking QC Ulang. 1 picker maksimal 1 klaim aktif — kalau ada baris terkunci lama, kemungkinan picker itu sedang kesulitan dan perlu dibantu.</p>
-
-        <!-- Summary Cards -->
-        <div class="row g-2 mb-3 text-center">
-          <div class="col-4">
-            <div class="border rounded p-2">
-              <div class="small text-muted">Klaim Aktif</div>
-              <div class="fw-bold fs-5" style="color:#F57C00;" id="pcm-sum-aktif">-</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div class="border rounded p-2">
-              <div class="small text-muted">Picker Bekerja</div>
-              <div class="fw-bold fs-5 text-primary" id="pcm-sum-picker">-</div>
-            </div>
-          </div>
-          <div class="col-4">
-            <div class="border rounded p-2">
-              <div class="small text-muted">Lama (&gt;10 mnt)</div>
-              <div class="fw-bold fs-5 text-danger" id="pcm-sum-lama">-</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tabel Klaim Aktif -->
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <small class="fw-bold text-secondary">Sedang Dikerjakan Sekarang</small>
-          <input type="text" id="pcm-filter-picker" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter nama picker" oninput="renderPickingClaimsMonitorActive()">
-        </div>
-        <div class="table-responsive" style="max-height:320px;">
-          <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
-            <thead class="table-light" style="position:sticky;top:0;">
-              <tr>
-                <th>Picker</th>
-                <th>No Request</th>
-                <th>Tipe</th>
-                <th>SKU</th>
-                <th>Grade</th>
-                <th>Lokasi</th>
-                <th class="text-center">Sejak</th>
-                <th class="text-center">Durasi</th>
-              </tr>
-            </thead>
-            <tbody id="pcm-tbody-aktif">
-              <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Riwayat Klaim (collapsible) -->
-        <div class="mt-3">
-          <button type="button" class="btn btn-outline-secondary btn-sm w-100" style="font-size:11px;" data-bs-toggle="collapse" data-bs-target="#pcm-riwayat-box">
-            <i class="fa-solid fa-clock-rotate-left me-1"></i>Lihat Riwayat Klaim Terakhir (Selesai/Dilepas/Kedaluwarsa)
-          </button>
-          <div class="collapse mt-2" id="pcm-riwayat-box">
-            <div class="table-responsive" style="max-height:300px;">
-              <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
-                <thead class="table-light" style="position:sticky;top:0;">
-                  <tr>
-                    <th>Waktu Selesai</th>
-                    <th>Picker</th>
-                    <th>No Request</th>
-                    <th>Tipe</th>
-                    <th>SKU</th>
-                    <th>Lokasi</th>
-                    <th>Status</th>
-                    <th class="text-center">Durasi Kerja</th>
-                  </tr>
-                </thead>
-                <tbody id="pcm-tbody-riwayat">
-                  <tr><td colspan="8" class="text-center text-muted py-3">Klik untuk memuat riwayat...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Laporan Produktivitas Picker -->
-        <div class="mt-3">
-          <h6 class="fw-bold small text-secondary mb-2"><i class="fa-solid fa-ranking-star me-1"></i>Laporan Produktivitas Picker</h6>
-          <div class="row g-2 mb-2 align-items-end">
-            <div class="col-5">
-              <label class="form-label small fw-bold mb-0">Dari Tanggal</label>
-              <input type="date" id="pcm-prod-tgl-mulai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
-            </div>
-            <div class="col-5">
-              <label class="form-label small fw-bold mb-0">Sampai Tanggal</label>
-              <input type="date" id="pcm-prod-tgl-selesai" class="form-control form-control-sm" onchange="loadPickingProductivityReport()">
-            </div>
-            <div class="col-2">
-              <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="loadPickingProductivityReport()" title="Muat Ulang">
-                <i class="fa-solid fa-rotate"></i>
-              </button>
-            </div>
-          </div>
-          <div class="table-responsive" style="max-height:320px;">
-            <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
-              <thead class="table-light" style="position:sticky;top:0;">
-                <tr>
-                  <th>#</th>
-                  <th>Picker</th>
-                  <th class="text-center">Total Selesai</th>
-                  <th class="text-center">Outbound</th>
-                  <th class="text-center">QC Ulang</th>
-                  <th class="text-center">Rata-rata / Baris</th>
-                  <th class="text-center">Total Waktu Kerja</th>
-                </tr>
-              </thead>
-              <tbody id="pcm-prod-tbody">
-                <tr><td colspan="7" class="text-center text-muted py-3">Pilih rentang tanggal untuk melihat laporan.</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div id="pcm-prod-alert" class="mt-2"></div>
-        </div>
-
-        <div id="pcm-alert" class="mt-2"></div>
-      </div>
-
+      <!-- FITUR BARU: "Monitoring Klaim Picking" dipindah ke Warehouse Dashboard Home
+           (swipe kiri, halaman 2) -- lihat #whdash-page2. -->
     </div>
     <!-- ===== AKHIR MODUL DASHBOARD OB VS IB ===== -->
 
@@ -6725,6 +6813,7 @@ async function eksekusiAddSkuOutbound() {
       if (ROLE_BOLEH_LIHAT_DASHBOARD.includes(r)) {
         if (whdashRootEl) whdashRootEl.style.display = 'block';
         loadHomeDashboard();
+        initWhDashSwipe(); // FITUR BARU: pasang gesture swipe kiri/kanan dashboard Home (sekali saja, lihat guard whDashSwipeInitDone)
 
         // PERBAIKAN: aplikasi ini SPA -- logout TIDAK me-reload halaman (lihat
         // eksekusiLogout()), jadi kalau sebelumnya sempat login sebagai role yang
@@ -6760,6 +6849,292 @@ async function eksekusiAddSkuOutbound() {
 
     function toggleWhDashboard() {
       document.getElementById('whdash-root').classList.toggle('whdash-collapsed');
+    }
+
+    // =========================================================================
+    // FITUR BARU: SWIPE 2-HALAMAN UNTUK WAREHOUSE DASHBOARD (HOME)
+    // Halaman 1 = KPI Inbound/Outbound/Work/Employees (bawaan).
+    // Halaman 2 = Monitoring Klaim Picking + preview Live Monitor Checker +
+    // preview Live Movement History, ditumpuk ke bawah.
+    // Digeser pakai touch (HP) maupun mouse-drag (desktop), atau klik titik dot.
+    // =========================================================================
+    let whDashCurrentPage = 0; // 0 = halaman 1, 1 = halaman 2
+    let whDashSwipeStartX = 0;
+    let whDashSwipeStartY = 0;
+    let whDashSwipeDeltaX = 0;
+    let whDashSwipeActive = false;
+    let whDashSwipeAxisLocked = null; // 'x' atau 'y', ditentukan begitu gerakan cukup jelas arahnya
+    let whDashSwipeInitDone = false;
+
+    function whDashApplyPageTransform(withTransition) {
+      const track = document.getElementById('whdash-swipe-track');
+      if (!track) return;
+      track.classList.toggle('whdash-swipe-dragging', !withTransition);
+      const viewportWidth = document.getElementById('whdash-swipe-viewport').clientWidth;
+      const baseOffset = -whDashCurrentPage * viewportWidth;
+      const dragOffset = whDashSwipeActive ? whDashSwipeDeltaX : 0;
+      track.style.transform = `translateX(${baseOffset + dragOffset}px)`;
+    }
+
+    function whDashUpdateDots() {
+      document.querySelectorAll('#whdash-swipe-dots .whdash-dot').forEach(dot => {
+        dot.classList.toggle('active', parseInt(dot.dataset.pg, 10) === whDashCurrentPage);
+      });
+    }
+
+    function whDashGoToPage(pageIndex) {
+      whDashCurrentPage = pageIndex === 1 ? 1 : 0;
+      whDashSwipeActive = false;
+      whDashApplyPageTransform(true);
+      whDashUpdateDots();
+      if (whDashCurrentPage === 1) {
+        startWhDashPage2Polling();
+      } else {
+        stopWhDashPage2Polling();
+      }
+    }
+
+    // Dipanggil setiap kali Home dashboard dimunculkan (login & kembaliKeHome) supaya
+    // selalu mulai dari halaman 1 dan tidak ada polling halaman 2 yang nyangkut.
+    function resetWhDashToPage1() {
+      whDashCurrentPage = 0;
+      whDashSwipeActive = false;
+      whDashApplyPageTransform(false);
+      whDashUpdateDots();
+      stopWhDashPage2Polling();
+    }
+
+    function whDashSwipeOnStart(clientX, clientY) {
+      whDashSwipeActive = true;
+      whDashSwipeAxisLocked = null;
+      whDashSwipeStartX = clientX;
+      whDashSwipeStartY = clientY;
+      whDashSwipeDeltaX = 0;
+    }
+
+    function whDashSwipeOnMove(clientX, clientY, evt) {
+      if (!whDashSwipeActive) return;
+      const diffX = clientX - whDashSwipeStartX;
+      const diffY = clientY - whDashSwipeStartY;
+
+      if (!whDashSwipeAxisLocked) {
+        if (Math.abs(diffX) < 6 && Math.abs(diffY) < 6) return; // masih di zona diam, belum tentu arah
+        whDashSwipeAxisLocked = Math.abs(diffX) > Math.abs(diffY) ? 'x' : 'y';
+      }
+      if (whDashSwipeAxisLocked !== 'x') return; // gerakan vertikal (scroll) dibiarkan lewat, tidak diambil alih
+
+      if (evt && evt.cancelable) evt.preventDefault(); // hanya cegah scroll horizontal saat memang menggeser dashboard
+      // Batasi geser tidak lewat dari halaman yang tersedia (efek "karet")
+      let delta = diffX;
+      if (whDashCurrentPage === 0 && delta > 0) delta *= 0.35;
+      if (whDashCurrentPage === 1 && delta < 0) delta *= 0.35;
+      whDashSwipeDeltaX = delta;
+      whDashApplyPageTransform(false);
+    }
+
+    function whDashSwipeOnEnd() {
+      if (!whDashSwipeActive) return;
+      const viewportWidth = document.getElementById('whdash-swipe-viewport').clientWidth;
+      const threshold = viewportWidth * 0.18;
+
+      if (whDashSwipeAxisLocked === 'x') {
+        if (whDashSwipeDeltaX < -threshold && whDashCurrentPage === 0) {
+          whDashCurrentPage = 1;
+        } else if (whDashSwipeDeltaX > threshold && whDashCurrentPage === 1) {
+          whDashCurrentPage = 0;
+        }
+      }
+      whDashSwipeActive = false;
+      whDashSwipeDeltaX = 0;
+      whDashApplyPageTransform(true);
+      whDashUpdateDots();
+      if (whDashCurrentPage === 1) {
+        startWhDashPage2Polling();
+      } else {
+        stopWhDashPage2Polling();
+      }
+    }
+
+    // Dipanggil sekali saat Warehouse Dashboard pertama kali dimunculkan untuk role
+    // yang berhak (lihat inisialisasiAplikasi -> ROLE_BOLEH_LIHAT_DASHBOARD).
+    function initWhDashSwipe() {
+      if (whDashSwipeInitDone) return; // jangan pasang listener dobel kalau dipanggil berkali-kali
+      whDashSwipeInitDone = true;
+
+      const viewport = document.getElementById('whdash-swipe-viewport');
+      if (!viewport) return;
+
+      viewport.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        whDashSwipeOnStart(t.clientX, t.clientY);
+      }, { passive: true });
+      viewport.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        whDashSwipeOnMove(t.clientX, t.clientY, e);
+      }, { passive: false });
+      viewport.addEventListener('touchend', whDashSwipeOnEnd);
+      viewport.addEventListener('touchcancel', whDashSwipeOnEnd);
+
+      // Mouse-drag juga didukung supaya bisa dites/dipakai di desktop
+      let mouseDown = false;
+      viewport.addEventListener('mousedown', e => {
+        mouseDown = true;
+        whDashSwipeOnStart(e.clientX, e.clientY);
+      });
+      window.addEventListener('mousemove', e => {
+        if (!mouseDown) return;
+        whDashSwipeOnMove(e.clientX, e.clientY, e);
+      });
+      window.addEventListener('mouseup', () => {
+        if (!mouseDown) return;
+        mouseDown = false;
+        whDashSwipeOnEnd();
+      });
+
+      // Kalau ukuran layar berubah (rotate HP, resize window), posisikan ulang tanpa animasi aneh
+      window.addEventListener('resize', () => whDashApplyPageTransform(true));
+
+      whDashApplyPageTransform(true);
+      whDashUpdateDots();
+    }
+
+    // Mulai semua polling milik halaman 2 (Klaim Picking + preview Live Monitor
+    // Checker + preview Live Movement History) -- dipanggil begitu halaman 2 terlihat.
+    function startWhDashPage2Polling() {
+      startPickingClaimMonitorPolling();
+      startWhd2LiveCheckerPolling();
+      startWhd2LiveMovementPolling();
+    }
+
+    // Hentikan semua polling milik halaman 2 -- dipanggil begitu user geser balik ke
+    // halaman 1, kembali ke Home, atau membuka modul lain dari Home.
+    function stopWhDashPage2Polling() {
+      stopPickingClaimMonitorPolling();
+      stopWhd2LiveCheckerPolling();
+      stopWhd2LiveMovementPolling();
+    }
+
+    // ---- PREVIEW: LIVE MONITOR CHECKER (versi ringkas untuk halaman 2 Home) ----
+    // Sengaja pakai variabel & interval sendiri (terpisah dari lcm* milik sub-modul
+    // aslinya di modul Checking) supaya keduanya tidak saling mengganggu kalau
+    // kebetulan sama-sama terbuka.
+    let whd2LcmData = [];
+    let whd2LcmIntervalId = null;
+    const WHD2_LCM_LIMIT = 5;
+    const WHD2_LCM_REFRESH_MS = 5000;
+
+    function loadWhd2LiveChecker() {
+      const dot = document.getElementById('whd2-lcm-status-dot');
+      if (dot) dot.style.background = '#FFC107';
+      google.script.run
+        .withSuccessHandler(list => {
+          whd2LcmData = list || [];
+          if (dot) dot.style.background = '#00C853';
+          renderWhd2LiveChecker();
+        })
+        .withFailureHandler(err => {
+          if (dot) dot.style.background = '#E00000';
+          const area = document.getElementById('whd2-lcm-list-area');
+          if (area) area.innerHTML = `<div class="alert alert-danger small py-2 mb-0">Gagal memuat: ${err.message}</div>`;
+        })
+        .getLiveCheckerMonitor(WHD2_LCM_LIMIT);
+    }
+
+    function renderWhd2LiveChecker() {
+      const area = document.getElementById('whd2-lcm-list-area');
+      if (!area) return;
+      const rows = whd2LcmData;
+      if (!rows || rows.length === 0) {
+        area.innerHTML = '<div class="text-muted small text-center py-4 border rounded">Belum ada hasil checking untuk ditampilkan.</div>';
+        return;
+      }
+      area.innerHTML = rows.map(r => {
+        const klop = !!r.klop;
+        const clsTop  = klop ? 'lcm-green-top'  : 'lcm-red-top';
+        const clsSku  = klop ? 'lcm-green-sku'  : 'lcm-red-sku';
+        const clsQty  = klop ? 'lcm-green-qty'  : 'lcm-red-qty';
+        const clsMeta = klop ? 'lcm-green-meta' : 'lcm-red-meta';
+        const ket = klop
+          ? `Checker: ${r.checker || '-'} &nbsp;|&nbsp; ${r.timestamp || ''}`
+          : `Seharusnya: ${r.qtyPicker} Pcs &nbsp;|&nbsp; Checker: ${r.checker || '-'} &nbsp;|&nbsp; ${r.timestamp || ''}`;
+        return `
+          <div class="lcm-card">
+            <div class="lcm-card-top ${clsTop}">${r.noRequest}</div>
+            <div class="lcm-card-body">
+              <div class="lcm-card-sku ${clsSku}">${r.kodeSku}</div>
+              <div class="lcm-card-qty ${clsQty}">${r.qtyChecker}</div>
+            </div>
+            <div class="lcm-card-meta ${clsMeta}">${ket}</div>
+          </div>`;
+      }).join('');
+    }
+
+    function startWhd2LiveCheckerPolling() {
+      stopWhd2LiveCheckerPolling();
+      loadWhd2LiveChecker();
+      whd2LcmIntervalId = setInterval(loadWhd2LiveChecker, WHD2_LCM_REFRESH_MS);
+    }
+
+    function stopWhd2LiveCheckerPolling() {
+      if (whd2LcmIntervalId) { clearInterval(whd2LcmIntervalId); whd2LcmIntervalId = null; }
+    }
+
+    // ---- PREVIEW: LIVE MOVEMENT HISTORY (versi ringkas untuk halaman 2 Home) ----
+    // Sama seperti loadLiveMovementHistory() di modul Live Movement History,
+    // tapi langsung ke Supabase dan ditarget ke container/variabel sendiri.
+    let whd2LmhData = [];
+    let whd2LmhIntervalId = null;
+    const WHD2_LMH_LIMIT = 5;
+    const WHD2_LMH_REFRESH_MS = 8000;
+
+    function loadWhd2LiveMovement() {
+      const area = document.getElementById('whd2-lmh-list-area');
+      if (!area) return;
+      _sb.from('movement_history')
+        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
+        .order('waktu', { ascending: false })
+        .limit(WHD2_LMH_LIMIT)
+        .then(({ data, error }) => {
+          if (error) { area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(error.message)}</div>`; return; }
+          whd2LmhData = data || [];
+          renderWhd2LiveMovement();
+        })
+        .catch(err => {
+          area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(err.message)}</div>`;
+        });
+    }
+
+    function renderWhd2LiveMovement() {
+      const area = document.getElementById('whd2-lmh-list-area');
+      if (!area) return;
+      const rows = whd2LmhData;
+      if (!rows || rows.length === 0) {
+        area.innerHTML = '<div class="text-muted small text-center py-4 border rounded">Belum ada pergerakan stok untuk ditampilkan.</div>';
+        return;
+      }
+      area.innerHTML = rows.map(r => {
+        const gaya = LMH_TIPE_STYLE[r.tipe] || { warna: 'secondary', label: r.tipe || '-' };
+        const waktu = r.waktu ? new Date(r.waktu).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+        return `
+          <div class="d-flex align-items-start gap-2 border-bottom py-2">
+            <span class="badge bg-${gaya.warna}" style="min-width:118px;">${escapeHtmlAttr(gaya.label)}</span>
+            <div class="flex-grow-1" style="font-size:12px;">
+              <div><b>${escapeHtmlAttr(r.kode_sku || '-')}</b> &middot; Qty: <b>${Number(r.qty || 0).toLocaleString('id-ID')}</b>${r.lokasi ? ' &middot; ' + escapeHtmlAttr(r.lokasi) : ''}</div>
+              <div class="text-muted">Ref: ${escapeHtmlAttr(r.ref || '-')} &middot; Oleh: ${escapeHtmlAttr(r.user_login || '-')} &middot; ${waktu}</div>
+              ${r.catatan ? `<div class="text-muted fst-italic">${escapeHtmlAttr(r.catatan)}</div>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function startWhd2LiveMovementPolling() {
+      stopWhd2LiveMovementPolling();
+      loadWhd2LiveMovement();
+      whd2LmhIntervalId = setInterval(loadWhd2LiveMovement, WHD2_LMH_REFRESH_MS);
+    }
+
+    function stopWhd2LiveMovementPolling() {
+      if (whd2LmhIntervalId) { clearInterval(whd2LmhIntervalId); whd2LmhIntervalId = null; }
     }
 
     function whdashDestroyChart(key) {
@@ -7034,7 +7409,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
-          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound', 'sub-dashob-picking-monitor'],
+          'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound'],
           'modul-export': ['sub-export-suratjalan'],
           'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory'],
           'modul-openpo': ['sub-po-buat', 'sub-po-data']
@@ -7068,13 +7443,12 @@ async function eksekusiAddSkuOutbound() {
         stopLiveCheckerMonitorPolling();
       }
 
-      // FITUR BARU: sama seperti Live Monitor Checker, Dashboard Monitoring Klaim Picking
-      // hanya auto-polling selagi sub-card-nya benar-benar terbuka.
-      if (subCardId === 'sub-dashob-picking-monitor') {
-        startPickingClaimMonitorPolling();
-      } else {
-        stopPickingClaimMonitorPolling();
-      }
+      // FITUR BARU: "Monitoring Klaim Picking" sekarang tinggal di Warehouse Dashboard
+      // Home (halaman swipe ke-2), jadi begitu user membuka modul apa pun dari Home,
+      // hentikan semua polling milik halaman 2 Home dashboard (klaim picking + kedua
+      // widget preview Whd2) supaya tidak terus mengirim request di background.
+      stopPickingClaimMonitorPolling();
+      stopWhDashPage2Polling();
     }
 
     // Tombol back ke home dari dalam modul (dipanggil dari header konten-aplikasi)
@@ -7094,6 +7468,7 @@ async function eksekusiAddSkuOutbound() {
       if (whdashRootElKembali && whdashRootElKembali.style.display !== 'none') {
         loadHomeDashboard();
       }
+      resetWhDashToPage1(); // FITUR BARU: selalu mulai dari halaman 1 & hentikan polling halaman 2 saat kembali ke Home
     }
 
     // Navigasi Antar Halaman Tab
