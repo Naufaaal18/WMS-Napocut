@@ -2078,6 +2078,12 @@ window.fetch = function (url, options) {
       font-weight: 700;
       margin-top: 2px;
     }
+    .whdash-kpi-tile.whdash-kpi-clickable {
+      cursor: pointer;
+      transition: transform .12s ease, filter .12s ease;
+    }
+    .whdash-kpi-tile.whdash-kpi-clickable:hover { filter: brightness(1.15); }
+    .whdash-kpi-tile.whdash-kpi-clickable:active { transform: scale(0.95); }
 
     .whdash-section {
       background: #1c2440;
@@ -7620,6 +7626,21 @@ async function eksekusiAddSkuOutbound() {
       kuning: '#ffcc4d', ungu: '#8b6fd6', oranye: '#ff9f43'
     };
 
+    // FITUR BARU: klik tile KPI strip di Home -> langsung buka modul terkait.
+    // Key harus PERSIS sama dengan 'label' yang dikirim RPC get_dashboard_home_data().
+    // Sebagian tujuan juga memicu setTimeout(loadXxx, 300) yang sama seperti dipakai
+    // menu sidebar Home, supaya data di modul tujuan langsung ke-load tanpa perlu
+    // user refresh manual.
+    const WHDASH_KPI_NAV = {
+      'Open PO Aktif': () => { bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-po-data'); setTimeout(loadDataPOList, 300); },
+      'Pending Validasi Inbound': () => { bukaModulDariHome('tab-inbound', 'modul-inbound', 'sub-validasi-inbound'); setTimeout(loadValidasiInboundData, 300); },
+      'Stockout Outbound': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
+      'Outbound In Packing': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
+      'Siap Kirim (Ready to Ship)': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
+      'Checking Selisih': () => bukaModulDariHome('tab-checking', 'modul-checking', 'sub-dashboard-checker'),
+      'Picking Klaim Aktif': () => bukaModulDariHome('tab-checking', 'modul-checking', 'sub-picking')
+    };
+
     function whdashFormatNum(n) {
       if (n === null || n === undefined) return '-';
       n = Number(n);
@@ -7729,10 +7750,22 @@ async function eksekusiAddSkuOutbound() {
 
         // ---- KPI STRIP ----
         kpiEl.innerHTML = (d.kpi || []).map(k => `
-          <div class="whdash-kpi-tile">
+          <div class="whdash-kpi-tile${WHDASH_KPI_NAV[k.label] ? ' whdash-kpi-clickable' : ''}" data-kpi-label="${k.label}">
             <div class="whdash-kpi-label">${k.label}</div>
             <div class="whdash-kpi-value">${whdashFormatNum(k.value)}</div>
           </div>`).join('');
+        // Listener dipasang sekali saja (bukan tiap loadHomeDashboard()) supaya tidak
+        // menumpuk handler tiap kali dashboard di-refresh; delegasi ke container karena
+        // isi tile diganti total lewat innerHTML di atas.
+        if (!kpiEl.dataset.navBound) {
+          kpiEl.addEventListener('click', (e) => {
+            const tile = e.target.closest('.whdash-kpi-tile[data-kpi-label]');
+            if (!tile) return;
+            const nav = WHDASH_KPI_NAV[tile.dataset.kpiLabel];
+            if (nav) nav();
+          });
+          kpiEl.dataset.navBound = '1';
+        }
 
         // ---- INBOUND ----
         const ib = d.inbound || {};
