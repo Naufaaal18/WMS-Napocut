@@ -2154,6 +2154,17 @@ window.fetch = function (url, options) {
     .whdash-emp-bar { height: 14px; border-radius: 3px; background: #8b6fd6; }
     .whdash-emp-count { width: 24px; text-align: right; font-weight: 700; flex: 0 0 auto; }
 
+    .whdash-inv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .whdash-inv-tile {
+      background: rgba(255,255,255,0.05);
+      border-left: 3px solid var(--inv-color, #4c8dff);
+      border-radius: 5px;
+      padding: 7px 9px;
+    }
+    .whdash-inv-cat { font-size: 11px; font-weight: 700; color: #cfd6ec; margin-bottom: 3px; }
+    .whdash-inv-qty { font-size: 16px; font-weight: 700; color: #e7ebf5; line-height: 1.1; }
+    .whdash-inv-sku { font-size: 10px; color: #9aa6c7; margin-top: 1px; }
+
     .whdash-loading, .whdash-error { text-align: center; padding: 20px 8px; font-size: 12px; color: #9aa6c7; }
     .whdash-error { color: #ff9d9d; }
 
@@ -2710,6 +2721,16 @@ window.fetch = function (url, options) {
                 <div class="whdash-status-legend" id="whdash-ob-status"></div>
                 <div class="whdash-status-throughput" id="whdash-ob-throughput"></div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="whdash-section">
+          <div class="whdash-section-title">Inventory</div>
+          <div class="whdash-section-body">
+            <div class="whdash-subtitle" id="whdash-inv-subtitle">Total SKU &amp; Qty per Kategori</div>
+            <div class="whdash-inv-grid" id="whdash-inv-body">
+              <div class="whdash-loading">Memuat...</div>
             </div>
           </div>
         </div>
@@ -7774,6 +7795,23 @@ async function eksekusiAddSkuOutbound() {
           </div>`).join('');
         document.getElementById('whdash-ob-throughput').innerHTML =
           `Throughput <b>${ob.throughput_per_hr != null ? ob.throughput_per_hr : '-'}</b> shipment/jam`;
+
+        // ---- INVENTORY ----
+        // Kategori & warna sesuai grade fisik barang di stock_fg. Urutan tampil
+        // sudah ditentukan dari sisi RPC (get_dashboard_home_data), FE tinggal render apa adanya.
+        const inv = d.inventory || {};
+        const invColorMap = {
+          'Bagus': WHDASH_COLORS.hijau, 'Minor': WHDASH_COLORS.kuning, 'Kotor': WHDASH_COLORS.abu,
+          'Perbaikan': WHDASH_COLORS.oranye, 'Reject': WHDASH_COLORS.merah
+        };
+        document.getElementById('whdash-inv-subtitle').textContent =
+          `Total ${whdashFormatNum(inv.total_sku)} SKU • ${whdashFormatNum(inv.total_qty)} Qty`;
+        document.getElementById('whdash-inv-body').innerHTML = (inv.categories || []).map(c => `
+          <div class="whdash-inv-tile" style="--inv-color:${invColorMap[c.kategori] || WHDASH_COLORS.biru}">
+            <div class="whdash-inv-cat">${c.kategori}</div>
+            <div class="whdash-inv-qty">${whdashFormatNum(c.total_qty)}</div>
+            <div class="whdash-inv-sku">${whdashFormatNum(c.total_sku)} SKU</div>
+          </div>`).join('') || '<div class="whdash-loading">Belum ada data</div>';
 
         // ---- WORK ----
         const w = d.work || {};
