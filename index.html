@@ -1213,11 +1213,7 @@ Object.assign(ENDPOINTS, {
     }
   },
 
-  // --- MODUL BARU: Admin Validate ---
-  getAdminValidateInboundPending: () => _callRpc('get_admin_validate_inbound_pending', {}),
-  submitAdminValidateInbound: (payload) => _callRpc('submit_admin_validate_inbound', {
-    p_ids: payload.ids, p_no_so: payload.noSo, p_validator: payload.validator
-  }),
+  // --- Validate Admin Hasil QC (bagian dari modul Putaway) ---
   getAdminValidateQCPending: () => _callRpc('get_admin_validate_qc_pending', {}),
   submitAdminValidateQC: (payload) => _callRpc('submit_admin_validate_qc', {
     p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
@@ -1881,8 +1877,6 @@ window.fetch = function (url, options) {
     }
     .icon-export   { background: #FBE9E7; color: #BF360C; }
     .dot-export    { background: #BF360C; }
-    .icon-adminvalidate { background: #EDE7F6; color: #6f42c1; }
-    .dot-adminvalidate  { background: #6f42c1; }
     .icon-recheckqc{ background: #FFF3E0; color: #EF6C00; }
     .dot-recheckqc { background: #EF6C00; }
     .icon-dashob   { background: #E8F5E9; color: #1B5E20; }
@@ -3061,6 +3055,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Putaway Barang Return</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-subrow-ops-adminvalidateqc" onclick="bukaModulDariHome('tab-ops', 'modul-ops', 'sub-admin-validate-qc')">
+          <span class="sub-dot dot-putaway"></span>
+          <span class="sub-module-name">Validate Admin Hasil QC</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -3136,30 +3135,6 @@ window.fetch = function (url, options) {
         <div class="sub-module-row" id="home-sub-livechecker-row" onclick="bukaModulDariHome('tab-checking', 'modul-checking', 'sub-live-checker-monitor')" style="display:none;">
           <span class="sub-dot dot-checking"></span>
           <span class="sub-module-name">Live Monitor Checker</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODUL: ADMIN VALIDATE -->
-    <div class="module-list-group" id="home-group-adminvalidate" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-adminvalidate', this)">
-        <div class="module-icon-wrap icon-adminvalidate"><i class="fa-solid fa-user-shield"></i></div>
-        <div class="module-row-text">
-          <div class="module-row-name">Admin Validate</div>
-          <div class="module-row-desc">Assign No SO untuk Inbound & QC</div>
-        </div>
-        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
-      </div>
-      <div class="sub-module-list" id="home-sub-adminvalidate">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('inbound'),300)">
-          <span class="sub-dot dot-adminvalidate"></span>
-          <span class="sub-module-name">Validate Inbound</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-adminvalidate', 'modul-adminvalidate'); setTimeout(()=>avSwitchSubTab('qc'),300)">
-          <span class="sub-dot dot-adminvalidate"></span>
-          <span class="sub-module-name">Validate QC</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
@@ -4362,6 +4337,76 @@ window.fetch = function (url, options) {
       <i class="fa-solid fa-boxes-stacked me-1"></i>Simpan Putaway Return
     </button>
           </form>
+        </div>
+
+        <!-- SUB: VALIDATE ADMIN HASIL QC (dipindahkan dari modul Admin Validate) -->
+        <div id="sub-admin-validate-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#6f42c1!important;">
+          <h6 class="fw-bold mb-2" style="color:#6f42c1;"><i class="fa-solid fa-user-shield me-2"></i>Validate Admin Hasil QC</h6>
+          <p class="small text-muted mb-2">Berikan Nomor Transaksi SO untuk data QC sebagai catatan/audit trail Admin.
+            Centang beberapa baris yang mau digabung, ketik 1 Nomor SO, lalu submit. Baris yang belum diisi No SO akan tetap
+            muncul di daftar "Pending" di bawah ini.</p>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate QC</h6>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn btn-outline-success btn-sm" onclick="exportAdminValidateQCExcel()" title="Export ke Excel (sesuai filter No PO/Grade yang aktif)">
+                <i class="fa-solid fa-file-excel"></i>
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateQC()" title="Muat Ulang">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+          </div>
+          <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>Daftar dipecah per <strong>Grade</strong> — SKU
+            berbeda dengan Grade yang sama boleh dicentang &amp; digabung jadi 1 Nomor SO (contoh: SKU A dan SKU B sama-sama
+            Grade Bagus bisa divalidasi bersamaan).</p>
+          <div class="mb-2 d-flex gap-2">
+            <input type="text" id="av-qc-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateQCTable()" style="flex:2;">
+            <select id="av-qc-filter-grade" class="form-select form-select-sm" onchange="renderAdminValidateQCTable()" style="flex:1;">
+              <option value="">Semua Grade</option>
+              <option value="Bagus">Bagus</option>
+              <option value="Minor">Minor</option>
+              <option value="Reject">Reject</option>
+              <option value="Kotor">Kotor</option>
+              <option value="Perbaikan">Perbaikan</option>
+            </select>
+          </div>
+          <div class="mb-2 d-flex gap-2 align-items-center">
+            <label class="small text-muted mb-0" style="white-space:nowrap;">Tgl Dari</label>
+            <input type="date" id="av-qc-filter-tgl-dari" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
+            <label class="small text-muted mb-0" style="white-space:nowrap;">s/d</label>
+            <input type="date" id="av-qc-filter-tgl-sampai" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
+            <button type="button" class="btn btn-outline-secondary btn-sm" title="Reset Filter Tanggal" onclick="document.getElementById('av-qc-filter-tgl-dari').value='';document.getElementById('av-qc-filter-tgl-sampai').value='';renderAdminValidateQCTable()">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
+            <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+              <thead class="table-light" style="position: sticky; top: 0;">
+                <tr>
+                  <th class="text-center" style="width: 34px;">
+                    <input type="checkbox" id="av-qc-check-all" onchange="avToggleAllQC(this)">
+                  </th>
+                  <th>No QC</th>
+                  <th>No PO</th>
+                  <th>SKU</th>
+                  <th>Grade</th>
+                  <th class="text-center">Qty</th>
+                  <th>Waktu</th>
+                </tr>
+              </thead>
+              <tbody id="av-qc-tbody">
+                <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-bold mb-1">Nomor Transaksi SO</label>
+            <input type="text" id="av-qc-noso" class="form-control form-control-sm fw-bold" placeholder="Contoh: SO-2026-001">
+          </div>
+          <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background-color:#6f42c1;" onclick="submitAdminValidateQCTerpilih()">
+            <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
+          </button>
+          <div id="av-qc-alert" class="mt-2"></div>
         </div>
       </div>
 
@@ -5904,145 +5949,6 @@ async function eksekusiAddSkuOutbound() {
     </div>
     <!-- ===== AKHIR MODUL EXPORT ===== -->
 
-    <!-- ===== MODUL BARU: ADMIN VALIDATE (assign No SO ke Data_Inbound & Data_QC) ===== -->
-    <div id="modul-adminvalidate" class="form-section">
-      <div class="card p-3 mb-3 border-start border-4" style="border-color:#6f42c1!important;">
-        <h6 class="fw-bold mb-1" style="color:#6f42c1;"><i class="fa-solid fa-user-shield me-2"></i>Admin Validate</h6>
-        <p class="small text-muted mb-2">Berikan Nomor Transaksi SO untuk data Inbound &amp; QC sebagai catatan/audit trail Admin.
-          Centang beberapa baris yang mau digabung, ketik 1 Nomor SO, lalu submit. Baris yang belum diisi No SO akan tetap
-          muncul di daftar "Pending" di bawah ini.</p>
-        <div class="d-flex gap-2 mb-1">
-          <button type="button" class="btn btn-sm fw-bold flex-grow-1" id="av-btn-inbound" onclick="avSwitchSubTab('inbound')">
-            <i class="fa-solid fa-download me-1"></i>Validate Inbound
-          </button>
-          <button type="button" class="btn btn-outline-secondary btn-sm fw-bold flex-grow-1" id="av-btn-qc" onclick="avSwitchSubTab('qc')">
-            <i class="fa-solid fa-shield-heart me-1"></i>Validate QC
-          </button>
-        </div>
-      </div>
-
-      <!-- SUB: VALIDATE INBOUND -->
-      <div id="av-sub-inbound" class="card p-3 mb-3 border-start border-4" style="border-color:#6f42c1!important;">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate Inbound</h6>
-          <div class="d-flex gap-1">
-            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportAdminValidateInboundExcel()" title="Export ke Excel (sesuai filter No PO yang aktif)">
-              <i class="fa-solid fa-file-excel"></i>
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateInbound()" title="Muat Ulang">
-              <i class="fa-solid fa-rotate"></i>
-            </button>
-          </div>
-        </div>
-        <div class="mb-2">
-          <input type="text" id="av-inbound-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateInboundTable()">
-        </div>
-        <div class="mb-2 d-flex gap-2 align-items-center">
-          <label class="small text-muted mb-0" style="white-space:nowrap;">Tgl Dari</label>
-          <input type="date" id="av-inbound-filter-tgl-dari" class="form-control form-control-sm" onchange="renderAdminValidateInboundTable()">
-          <label class="small text-muted mb-0" style="white-space:nowrap;">s/d</label>
-          <input type="date" id="av-inbound-filter-tgl-sampai" class="form-control form-control-sm" onchange="renderAdminValidateInboundTable()">
-          <button type="button" class="btn btn-outline-secondary btn-sm" title="Reset Filter Tanggal" onclick="document.getElementById('av-inbound-filter-tgl-dari').value='';document.getElementById('av-inbound-filter-tgl-sampai').value='';renderAdminValidateInboundTable()">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
-          <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
-            <thead class="table-light" style="position: sticky; top: 0;">
-              <tr>
-                <th class="text-center" style="width: 34px;">
-                  <input type="checkbox" id="av-inbound-check-all" onchange="avToggleAllInbound(this)">
-                </th>
-                <th>No PO</th>
-                <th>SKU</th>
-                <th>Supplier</th>
-                <th class="text-center">Qty</th>
-                <th>Lokasi</th>
-                <th>Waktu</th>
-              </tr>
-            </thead>
-            <tbody id="av-inbound-tbody">
-              <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small fw-bold mb-1">Nomor Transaksi SO</label>
-          <input type="text" id="av-inbound-noso" class="form-control form-control-sm fw-bold" placeholder="Contoh: SO-2026-001">
-        </div>
-        <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background-color:#6f42c1;" onclick="submitAdminValidateInboundTerpilih()">
-          <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
-        </button>
-        <div id="av-inbound-alert" class="mt-2"></div>
-      </div>
-
-      <!-- SUB: VALIDATE QC -->
-      <div id="av-sub-qc" class="card p-3 mb-3 border-start border-4 d-none" style="border-color:#6f42c1!important;">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0" style="color:#6f42c1;">Pending Validate QC</h6>
-          <div class="d-flex gap-1">
-            <button type="button" class="btn btn-outline-success btn-sm" onclick="exportAdminValidateQCExcel()" title="Export ke Excel (sesuai filter No PO/Grade yang aktif)">
-              <i class="fa-solid fa-file-excel"></i>
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadAdminValidateQC()" title="Muat Ulang">
-              <i class="fa-solid fa-rotate"></i>
-            </button>
-          </div>
-        </div>
-        <p class="text-muted small mb-2"><i class="fa-solid fa-circle-info me-1"></i>Daftar dipecah per <strong>Grade</strong> — SKU
-          berbeda dengan Grade yang sama boleh dicentang &amp; digabung jadi 1 Nomor SO (contoh: SKU A dan SKU B sama-sama
-          Grade Bagus bisa divalidasi bersamaan).</p>
-        <div class="mb-2 d-flex gap-2">
-          <input type="text" id="av-qc-filter-po" class="form-control form-control-sm" placeholder="Cari / filter No PO..." oninput="renderAdminValidateQCTable()" style="flex:2;">
-          <select id="av-qc-filter-grade" class="form-select form-select-sm" onchange="renderAdminValidateQCTable()" style="flex:1;">
-            <option value="">Semua Grade</option>
-            <option value="Bagus">Bagus</option>
-            <option value="Minor">Minor</option>
-            <option value="Reject">Reject</option>
-            <option value="Kotor">Kotor</option>
-            <option value="Perbaikan">Perbaikan</option>
-          </select>
-        </div>
-        <div class="mb-2 d-flex gap-2 align-items-center">
-          <label class="small text-muted mb-0" style="white-space:nowrap;">Tgl Dari</label>
-          <input type="date" id="av-qc-filter-tgl-dari" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
-          <label class="small text-muted mb-0" style="white-space:nowrap;">s/d</label>
-          <input type="date" id="av-qc-filter-tgl-sampai" class="form-control form-control-sm" onchange="renderAdminValidateQCTable()">
-          <button type="button" class="btn btn-outline-secondary btn-sm" title="Reset Filter Tanggal" onclick="document.getElementById('av-qc-filter-tgl-dari').value='';document.getElementById('av-qc-filter-tgl-sampai').value='';renderAdminValidateQCTable()">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <div class="table-responsive mb-2" style="max-height: 340px; overflow-y: auto;">
-          <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
-            <thead class="table-light" style="position: sticky; top: 0;">
-              <tr>
-                <th class="text-center" style="width: 34px;">
-                  <input type="checkbox" id="av-qc-check-all" onchange="avToggleAllQC(this)">
-                </th>
-                <th>No QC</th>
-                <th>No PO</th>
-                <th>SKU</th>
-                <th>Grade</th>
-                <th class="text-center">Qty</th>
-                <th>Waktu</th>
-              </tr>
-            </thead>
-            <tbody id="av-qc-tbody">
-              <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small fw-bold mb-1">Nomor Transaksi SO</label>
-          <input type="text" id="av-qc-noso" class="form-control form-control-sm fw-bold" placeholder="Contoh: SO-2026-001">
-        </div>
-        <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background-color:#6f42c1;" onclick="submitAdminValidateQCTerpilih()">
-          <i class="fa-solid fa-check-double me-1"></i>Validasi Terpilih
-        </button>
-        <div id="av-qc-alert" class="mt-2"></div>
-      </div>
-    </div>
-    <!-- ===== AKHIR MODUL ADMIN VALIDATE ===== -->
 
     <!-- ===== MODUL: LIVE MOVEMENT HISTORY. Berisi 2 sub: (1) Live Feed real-time
          (sub-livemovement-live), (2) Export Movement History / laporan dengan filter
@@ -6803,9 +6709,6 @@ async function eksekusiAddSkuOutbound() {
       <a href="#" id="tab-kelolauser" class="nav-link" onclick="switchTab(this, 'modul-kelolauser')">
         <i class="fa-solid fa-users-gear"></i>Kelola User
       </a>
-      <a href="#" id="tab-adminvalidate" class="nav-link" onclick="switchTab(this, 'modul-adminvalidate')">
-        <i class="fa-solid fa-user-shield"></i>Admin Validate
-      </a>
       <a href="#" id="tab-livemovement" class="nav-link" onclick="switchTab(this, 'modul-livemovement')">
         <i class="fa-solid fa-tower-broadcast"></i>Live Movement
       </a>
@@ -7052,6 +6955,7 @@ async function eksekusiAddSkuOutbound() {
       OPS_VALIDATE:         { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-validate',      subcard: 'sub-validate-qc' },
       OPS_PUTAWAY:          { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putaway',       subcard: 'sub-putaway' },
       OPS_PUTAWAYRETURN:    { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-putawayreturn', subcard: 'sub-putaway-return' },
+      OPS_ADMINVALIDATEQC:  { grup: 'home-group-ops',          tab: 'tab-ops',          subrow: 'home-subrow-ops-adminvalidateqc', subcard: 'sub-admin-validate-qc' },
       CHECKING_PICKING:     { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-picking-row',          subcard: 'sub-picking' },
       CHECKING_DASHBOARD:   { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-dashchecker-row',      subcard: 'sub-dashboard-checker' },
       CHECKING_LIVEMONITOR: { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-sub-livechecker-row',      subcard: 'sub-live-checker-monitor' },
@@ -7064,7 +6968,6 @@ async function eksekusiAddSkuOutbound() {
       DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
       EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
       EXPORT_MOVHISTORY:    { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
-      ADMIN_VALIDATE:       { grup: 'home-group-adminvalidate',tab: 'tab-adminvalidate' },
       KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
       CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
     };
@@ -7121,6 +7024,7 @@ async function eksekusiAddSkuOutbound() {
       OPS_VALIDATE:              { grup: 'Putaway',           label: 'Validasi Hasil QC Sebelum Putaway' },
       OPS_PUTAWAY:               { grup: 'Putaway',           label: 'Putaway' },
       OPS_PUTAWAYRETURN:         { grup: 'Putaway',           label: 'Putaway Barang Return' },
+      OPS_ADMINVALIDATEQC:       { grup: 'Putaway',           label: 'Validate Admin Hasil QC' },
       CHECKING_PICKING:          { grup: 'Checking',          label: 'Picking Outbound' },
       CHECKING_PICKING_QCULANG:  { grup: 'Checking',          label: 'Picking QC Ulang' },
       CHECKING_DASHBOARD:        { grup: 'Checking',          label: 'Dashboard Checker' },
@@ -7132,11 +7036,10 @@ async function eksekusiAddSkuOutbound() {
       DASHBOARD_OBIB:            { grup: 'Dashboard OB/IB',   label: 'Dashboard Outbound/Inbound' },
       EXPORT_SURATJALAN:         { grup: 'Export',            label: 'Export Surat Jalan' },
       EXPORT_MOVHISTORY:         { grup: 'Live Movement',     label: 'Export Movement History (Audit Trail)' },
-      ADMIN_VALIDATE:            { grup: 'Admin Validate',    label: 'Admin Validate (Inbound & QC)' },
       KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
     };
     const RBAC_URUTAN_GRUP = ['Inbound', 'Open PO', 'QC', 'Outbound', 'Putaway', 'Checking', 'Inventory',
-      'Live Movement', 'Dashboard OB/IB', 'Export', 'Admin Validate', 'Kelola User'];
+      'Live Movement', 'Dashboard OB/IB', 'Export', 'Kelola User'];
 
     // Helper: parse field 'akses' (string JSON dari DB, atau sudah array) jadi array kunci
     // fitur RBAC yang valid, atau null kalau memang tidak ada kustomisasi (harus fallback
@@ -7234,8 +7137,10 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-subrow-ops-validate').style.display = 'none';
       document.getElementById('home-subrow-ops-putaway').style.display = 'none';
       document.getElementById('home-subrow-ops-putawayreturn').style.display = 'none';
+      document.getElementById('home-subrow-ops-adminvalidateqc').style.display = 'none';
       document.getElementById('sub-validate-qc').classList.add('d-none');
       document.getElementById('sub-putaway-return').classList.add('d-none');
+      document.getElementById('sub-admin-validate-qc').classList.add('d-none');
 
       // (RBAC_FITUR, RBAC_SEMUA_FITUR, RBAC_PER_ROLE sekarang didefinisikan di scope
       // GLOBAL di atas fungsi ini -- supaya bisa dipakai ulang oleh checklist akses
@@ -7951,7 +7856,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-inbound': ['sub-inbound', 'sub-validasi-inbound'],
           'modul-checking': ['sub-picking', 'sub-dashboard-checker', 'sub-live-checker-monitor', 'sub-picking-qc-ulang'],
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
-          'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return'],
+          'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return', 'sub-admin-validate-qc'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound'],
           'modul-export': ['sub-export-suratjalan'],
           'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory'],
@@ -8038,7 +7943,7 @@ async function eksekusiAddSkuOutbound() {
         stopLiveMovementPolling();
       }
       // 1. Masukkan 'modul-openpo' ke dalam daftar pembersihan agar ikut dikendalikan
-      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-adminvalidate', 'modul-livemovement', 'modul-kelolauser'];
+      const semuaModul = ['modul-inbound', 'modul-qc', 'modul-ops', 'modul-checking', 'modul-outbound', 'modul-openpo', 'modul-inventory', 'modul-dashob', 'modul-export', 'modul-livemovement', 'modul-kelolauser'];
       semuaModul.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -8076,12 +7981,11 @@ async function eksekusiAddSkuOutbound() {
       const mapRefresh = {
         'modul-inbound': [loadOpenPOToInboundDropdown, loadValidasiInboundData],
         'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown, loadStagingQCSwarovskiDropdown, loadDataQCFilterUserDropdown],
-        'modul-ops': [loadQCFGToPutawayDropdown, loadStockReturnToDropdown, loadQCFGToValidateDropdown],
+        'modul-ops': [loadQCFGToPutawayDropdown, loadStockReturnToDropdown, loadQCFGToValidateDropdown, loadAdminValidateQC],
         'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests, loadPickingQcUlangPendingRequests],
         'modul-inventory': [loadInventoryDashboard],
         'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
         'modul-export'   : [loadListNoRequestSuratJalan],
-        'modul-adminvalidate' : [loadAdminValidateInbound],
         'modul-livemovement' : [startLiveMovementPolling, preloadMovementHistoryFilters],
         'modul-kelolauser' : [loadKelolaUserData]
       };
@@ -15301,39 +15205,11 @@ async function eksekusiCancelOutbound() {
     }
 
     // =========================================================================
-    // FITUR BARU: EXPORT ADMIN VALIDATE (INBOUND & QC) KE EXCEL
-    // Mengekspor data yang SEDANG tampil di masing-masing tabel (mengikuti filter
-    // No PO / Grade yang sedang aktif), supaya Admin bisa menyimpan/mengirim
-    // daftar pending validasi tanpa perlu screenshot.
+    // FITUR BARU: EXPORT VALIDATE ADMIN HASIL QC KE EXCEL
+    // Mengekspor data yang SEDANG tampil di tabel (mengikuti filter No PO / Grade
+    // yang sedang aktif), supaya Admin bisa menyimpan/mengirim daftar pending
+    // validasi tanpa perlu screenshot.
     // =========================================================================
-    function exportAdminValidateInboundExcel() {
-      if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
-      const keyword = (document.getElementById('av-inbound-filter-po').value || '').trim().toLowerCase();
-      const rows = _avFilterTanggal(
-        keyword ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword)) : AV_DATA_INBOUND,
-        'av-inbound'
-      );
-
-      if (!rows.length) { customAlert("Tidak ada data untuk diexport (cek filter No PO/Tanggal, atau memang tidak ada yang pending)."); return; }
-
-      const dataExport = rows.map(r => ({
-        'No PO': r.no_po || '-',
-        'SKU': r.kode_sku,
-        'Supplier': r.supplier || '-',
-        'Qty': Number(r.qty),
-        'Lokasi': r.lokasi || '-',
-        'Waktu': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(dataExport);
-      ws['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 20 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Pending Validate Inbound");
-
-      const namaFileFilter = keyword ? `_filter-${keyword.replace(/[^a-z0-9]/gi, '')}` : '';
-      XLSX.writeFile(wb, `Pending_Validate_Inbound${namaFileFilter}_${_tglFileSekarang()}.xlsx`);
-    }
-
     function exportAdminValidateQCExcel() {
       if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
       const keyword = (document.getElementById('av-qc-filter-po').value || '').trim().toLowerCase();
@@ -15637,30 +15513,9 @@ async function eksekusiCancelOutbound() {
     }
 
     // ==========================================
-    // MODUL BARU: ADMIN VALIDATE (No SO untuk Data_Inbound & Data_QC)
+    // MODUL: VALIDATE ADMIN HASIL QC (No SO untuk Data_QC, dipindah ke dalam Putaway)
     // ==========================================
-    let AV_DATA_INBOUND = [];
     let AV_DATA_QC = [];
-
-    function avSwitchSubTab(tujuan) {
-      const btnInbound = document.getElementById('av-btn-inbound');
-      const btnQc = document.getElementById('av-btn-qc');
-      const subInbound = document.getElementById('av-sub-inbound');
-      const subQc = document.getElementById('av-sub-qc');
-      if (tujuan === 'inbound') {
-        subInbound.classList.remove('d-none');
-        subQc.classList.add('d-none');
-        btnInbound.classList.remove('btn-outline-secondary'); btnInbound.style.backgroundColor = '#6f42c1'; btnInbound.classList.add('text-white');
-        btnQc.classList.add('btn-outline-secondary'); btnQc.style.backgroundColor = ''; btnQc.classList.remove('text-white');
-        loadAdminValidateInbound();
-      } else {
-        subQc.classList.remove('d-none');
-        subInbound.classList.add('d-none');
-        btnQc.classList.remove('btn-outline-secondary'); btnQc.style.backgroundColor = '#6f42c1'; btnQc.classList.add('text-white');
-        btnInbound.classList.add('btn-outline-secondary'); btnInbound.style.backgroundColor = ''; btnInbound.classList.remove('text-white');
-        loadAdminValidateQC();
-      }
-    }
 
     function showAVAlert(containerId, message, type = "success") {
       const container = document.getElementById(containerId);
@@ -15685,8 +15540,7 @@ async function eksekusiCancelOutbound() {
       }
     }
 
-    // ----- SUB: VALIDATE INBOUND -----
-    // FITUR BARU: filter tanggal untuk Pending Validate (Inbound & QC). Membandingkan
+    // FITUR BARU: filter tanggal untuk Pending Validate QC. Membandingkan
     // tanggal (bukan jam) dari kolom `waktu` terhadap range Tgl Dari s/d Tgl Sampai yang
     // diisi user. Kalau salah satu/kedua tanggal dikosongkan, filter itu diabaikan (dianggap
     // tidak ada batas ke arah tsb).
@@ -15703,87 +15557,6 @@ async function eksekusiCancelOutbound() {
         if (sampai && tglBaris > sampai) return false;
         return true;
       });
-    }
-
-    function loadAdminValidateInbound() {
-      const tbody = document.getElementById('av-inbound-tbody');
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>';
-
-      google.script.run
-        .withSuccessHandler(function(rows) {
-          AV_DATA_INBOUND = rows || [];
-          renderAdminValidateInboundTable();
-        })
-        .withFailureHandler(function(err) {
-          tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">Gagal memuat: ${err.message}</td></tr>`;
-        })
-        .getAdminValidateInboundPending();
-    }
-
-    function renderAdminValidateInboundTable() {
-      const tbody = document.getElementById('av-inbound-tbody');
-      const filterInput = document.getElementById('av-inbound-filter-po');
-      const keyword = (filterInput ? filterInput.value : '').trim().toLowerCase();
-
-      if (AV_DATA_INBOUND.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada data Inbound yang pending validasi.</td></tr>';
-        return;
-      }
-
-      const dataTampil = _avFilterTanggal(
-        keyword ? AV_DATA_INBOUND.filter(r => (r.no_po || '').toLowerCase().includes(keyword)) : AV_DATA_INBOUND,
-        'av-inbound'
-      );
-
-      if (dataTampil.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada No PO yang cocok dengan "${keyword}".</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = dataTampil.map((r) => {
-        const idx = AV_DATA_INBOUND.indexOf(r);
-        return `
-        <tr>
-          <td class="text-center"><input type="checkbox" class="av-inbound-check" data-idx="${idx}"></td>
-          <td>${r.no_po || '-'}</td>
-          <td class="fw-bold">${r.kode_sku}</td>
-          <td>${r.supplier || '-'}</td>
-          <td class="text-center">${Number(r.qty).toLocaleString('id-ID')}</td>
-          <td>${r.lokasi || '-'}</td>
-          <td style="font-size:10px;">${r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-'}</td>
-        </tr>`;
-      }).join('');
-    }
-
-    function avToggleAllInbound(checkboxAll) {
-      document.querySelectorAll('.av-inbound-check').forEach(cb => cb.checked = checkboxAll.checked);
-    }
-
-    async function submitAdminValidateInboundTerpilih() {
-      const idxTerpilih = Array.from(document.querySelectorAll('.av-inbound-check:checked')).map(cb => Number(cb.dataset.idx));
-      if (idxTerpilih.length === 0) {
-        showAVAlert('av-inbound-alert', 'Pilih minimal 1 baris untuk divalidasi.', 'danger');
-        return;
-      }
-      const noSo = document.getElementById('av-inbound-noso').value.trim();
-      if (!noSo) {
-        showAVAlert('av-inbound-alert', 'Nomor Transaksi SO wajib diisi.', 'danger');
-        return;
-      }
-      const ids = idxTerpilih.map(i => AV_DATA_INBOUND[i].id);
-      const validator = DEKLARASI_USER.nama || "Admin";
-
-      try {
-        const res = await new Promise((resolve, reject) => {
-          google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
-            .submitAdminValidateInbound({ ids: ids, noSo: noSo, validator: validator });
-        });
-        showAVAlert('av-inbound-alert', res.message, 'success');
-        document.getElementById('av-inbound-noso').value = '';
-        loadAdminValidateInbound();
-      } catch (err) {
-        showAVAlert('av-inbound-alert', 'Gagal: ' + err.message, 'danger');
-      }
     }
 
     // ----- SUB: VALIDATE QC -----
