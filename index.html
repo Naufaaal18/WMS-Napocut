@@ -5358,7 +5358,7 @@ async function eksekusiAddSkuOutbound() {
         </div>
 
         <!-- Summary Cards Outbound -->
-        <div class="row g-2 mb-3 text-center" id="ob-dash-summary">
+        <div class="row g-2 mb-2 text-center" id="ob-dash-summary">
           <div class="col-4">
             <div class="border rounded p-2">
               <div class="small text-muted">Total Request</div>
@@ -5375,6 +5375,26 @@ async function eksekusiAddSkuOutbound() {
             <div class="border rounded p-2">
               <div class="small text-muted">Total Qty</div>
               <div class="fw-bold fs-5 text-primary" id="ob-sum-qty">-</div>
+            </div>
+          </div>
+        </div>
+        <!-- FITUR BARU: sub-total khusus Stockout, posisinya sengaja digeser (offset-2) supaya
+             tiap kartu ada di tengah-tengah 2 kartu di baris atas -- "Total SKU Stockout" di
+             bawah antara Total Request & Total SKU, "Total Qty Stockout" di bawah antara
+             Total SKU & Total Qty. Store "TRIMS PROD" SENGAJA dikecualikan dari kedua angka
+             ini (lihat renderDashboardOutboundTable) karena punya alur sendiri dan tidak
+             dihitung sebagai stockout riil di dashboard ini. -->
+        <div class="row g-2 mb-3 text-center" id="ob-dash-summary-stockout">
+          <div class="col-4 offset-2">
+            <div class="border border-danger rounded p-2">
+              <div class="small text-muted">Total SKU Stockout</div>
+              <div class="fw-bold fs-6 text-danger" id="ob-sum-stockout-sku">-</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border border-danger rounded p-2">
+              <div class="small text-muted">Total Qty Stockout</div>
+              <div class="fw-bold fs-6 text-danger" id="ob-sum-stockout-qty">-</div>
             </div>
           </div>
         </div>
@@ -7634,9 +7654,9 @@ async function eksekusiAddSkuOutbound() {
     const WHDASH_KPI_NAV = {
       'Open PO Aktif': () => { bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-po-data'); setTimeout(loadDataPOList, 300); },
       'Pending Validasi Inbound': () => { bukaModulDariHome('tab-inbound', 'modul-inbound', 'sub-validasi-inbound'); setTimeout(loadValidasiInboundData, 300); },
-      'Stockout Outbound': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
-      'Outbound In Packing': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
-      'Siap Kirim (Ready to Ship)': () => bukaModulDariHome('tab-outbound', 'modul-outbound'),
+      'Stockout Outbound': () => bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-outbound'),
+      'Outbound In Packing': () => bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-outbound'),
+      'Siap Kirim (Ready to Ship)': () => bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-outbound'),
       'Checking Selisih': () => bukaModulDariHome('tab-checking', 'modul-checking', 'sub-dashboard-checker'),
       'Picking Klaim Aktif': () => bukaModulDariHome('tab-checking', 'modul-checking', 'sub-picking')
     };
@@ -14300,6 +14320,8 @@ async function eksekusiCancelOutbound() {
       const elReq = document.getElementById('ob-sum-request'); if (elReq) elReq.textContent = '-';
       const elSku = document.getElementById('ob-sum-sku'); if (elSku) elSku.textContent = '-';
       const elQty = document.getElementById('ob-sum-qty'); if (elQty) elQty.textContent = '-';
+      const elStockoutSku = document.getElementById('ob-sum-stockout-sku'); if (elStockoutSku) elStockoutSku.textContent = '-';
+      const elStockoutQty = document.getElementById('ob-sum-stockout-qty'); if (elStockoutQty) elStockoutQty.textContent = '-';
       const elStockoutBox = document.getElementById('ob-dash-stockout-box'); if (elStockoutBox) elStockoutBox.style.display = 'none';
 
       google.script.run
@@ -14681,15 +14703,26 @@ async function eksekusiCancelOutbound() {
       // Summary
       const setRequest = new Set(rows.map(r => r.noRequest));
       const totalQty = rows.reduce((a, r) => a + (r.qtyRequest || 0), 0);
-      const totalStockout = rows.reduce((a, r) => a + (r.qtyStockout || 0), 0);
       const sumReqEl = document.getElementById('ob-sum-request'); if (sumReqEl) sumReqEl.textContent = setRequest.size;
       const sumSkuEl = document.getElementById('ob-sum-sku'); if (sumSkuEl) sumSkuEl.textContent = rows.length;
       const sumQtyEl = document.getElementById('ob-sum-qty'); if (sumQtyEl) sumQtyEl.textContent = totalQty.toLocaleString('id-ID');
 
-      if (totalStockout > 0) {
+      // FITUR BARU: Total SKU Stockout & Total Qty Stockout. Store "TRIMS PROD" SENGAJA
+      // dikecualikan dari kedua angka ini (dan dari pesan "Ringkasan Stockout" di bawah)
+      // atas permintaan -- TRIMS PROD punya alur sendiri, stockout-nya tidak dihitung
+      // sebagai stockout riil di dashboard ini. Baris TRIMS PROD sendiri TETAP tampil
+      // apa adanya di tabel Form Request & Ringkasan per Store, exclude ini HANYA berlaku
+      // untuk total agregat.
+      const stockoutRows = rows.filter(r => r.qtyStockout > 0 && r.kodeStore !== 'TRIMS PROD');
+      const totalStockoutSku = stockoutRows.length;
+      const totalStockoutQty = stockoutRows.reduce((a, r) => a + (r.qtyStockout || 0), 0);
+      const sumStockoutSkuEl = document.getElementById('ob-sum-stockout-sku'); if (sumStockoutSkuEl) sumStockoutSkuEl.textContent = totalStockoutSku.toLocaleString('id-ID');
+      const sumStockoutQtyEl = document.getElementById('ob-sum-stockout-qty'); if (sumStockoutQtyEl) sumStockoutQtyEl.textContent = totalStockoutQty.toLocaleString('id-ID');
+
+      if (totalStockoutQty > 0) {
         const boxSo = document.getElementById('ob-dash-stockout-box');
         const infoSo = document.getElementById('ob-dash-stockout-info');
-        if (infoSo) infoSo.textContent = `Total ${totalStockout} Pcs SKU mengalami Stockout pada periode ini.`;
+        if (infoSo) infoSo.textContent = `Total ${totalStockoutQty} Pcs SKU mengalami Stockout pada periode ini.`;
         if (boxSo) boxSo.style.display = 'block';
       }
 
