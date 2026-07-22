@@ -3134,7 +3134,7 @@ window.fetch = function (url, options) {
         <!-- PREVIEW RINGKAS: LIVE MOVEMENT HISTORY (feed pergerakan stok terbaru, hanya baca) -->
         <div class="card p-3 mb-1 border-start border-4" style="border-color:#0D47A1!important;">
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Live Movement History</h6>
+            <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Movement History</h6>
             <div class="d-flex align-items-center gap-2">
               <span class="badge bg-success" style="font-size:10px;"><i class="fa-solid fa-circle fa-2xs me-1"></i>Live</span>
               <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-1" onclick="loadWhd2LiveMovement()" title="Muat Ulang" style="font-size: 10px;">
@@ -3330,6 +3330,15 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Request QC Ulang</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <!-- FITUR PINDAH: sebelumnya "Dashboard Outbound" ada di modul terpisah
+             "Dashboard OB vs IB". Dipindah ke sini & diganti nama jadi "Data Outbound
+             Request" (modul Dashboard OB vs IB dihapus dari index; Dashboard Inbound-nya
+             juga dihapus karena datanya sudah ada di Data PO/Master PO). -->
+        <div class="sub-module-row" id="home-subrow-dashob-outbound" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-outbound')">
+          <span class="sub-dot dot-dashob"></span>
+          <span class="sub-module-name">Data Outbound Request</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -3373,7 +3382,7 @@ window.fetch = function (url, options) {
       <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-livemovement', this)">
         <div class="module-icon-wrap icon-livemovement"><i class="fa-solid fa-tower-broadcast"></i></div>
         <div class="module-row-text">
-          <div class="module-row-name">Live Movement History</div>
+          <div class="module-row-name">Movement History</div>
           <div class="module-row-desc">Feed real-time pergerakan stok</div>
         </div>
         <i class="fa-solid fa-chevron-right module-row-chevron"></i>
@@ -3390,32 +3399,6 @@ window.fetch = function (url, options) {
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
       </div>
-    </div>
-
-    <!-- MODUL: DASHBOARD OUTBOUND VS INBOUND -->
-    <div class="module-list-group" id="home-group-dashob" style="display:none;">
-      <div class="module-row has-sub" onclick="toggleHomeModule('home-sub-dashob', this)">
-        <div class="module-icon-wrap icon-dashob"><i class="fa-solid fa-chart-bar"></i></div>
-        <div class="module-row-text">
-          <div class="module-row-name">Dashboard OB vs IB</div>
-          <div class="module-row-desc">Monitoring Outbound & Inbound bulanan</div>
-        </div>
-        <i class="fa-solid fa-chevron-right module-row-chevron"></i>
-      </div>
-      <div class="sub-module-list" id="home-sub-dashob">
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-outbound')">
-          <span class="sub-dot dot-dashob"></span>
-          <span class="sub-module-name">Dashboard Outbound</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-        <div class="sub-module-row" onclick="bukaModulDariHome('tab-dashob', 'modul-dashob', 'sub-dashob-inbound')">
-          <span class="sub-dot dot-dashob"></span>
-          <span class="sub-module-name">Dashboard Inbound</span>
-          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
-        </div>
-      </div>
-      <!-- FITUR BARU: "Monitoring Klaim Picking" dipindah ke Warehouse Dashboard Home
-           (swipe kiri, halaman 2) -- tidak lagi jadi submenu terpisah di sini. -->
     </div>
 
     <!-- MODUL: EXPORT -->
@@ -6187,7 +6170,7 @@ async function eksekusiAddSkuOutbound() {
       <div id="sub-livemovement-live">
       <div class="card p-3 mb-3 border-start border-4" style="border-color:#0D47A1!important;">
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Live Movement History</h6>
+          <h6 class="fw-bold mb-0" style="color:#0D47A1;"><i class="fa-solid fa-tower-broadcast me-2"></i>Movement History</h6>
           <div class="d-flex align-items-center gap-2">
             <span class="badge bg-success"><i class="fa-solid fa-circle me-1" style="font-size:6px;"></i>Live</span>
             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadLiveMovementHistory()" title="Muat Ulang Sekarang">
@@ -7192,7 +7175,13 @@ async function eksekusiAddSkuOutbound() {
       INV_ADJUSTMENT:       { grup: 'home-group-inventory',    tab: 'tab-inventory' },
       INV_TRANSFER:         { grup: 'home-group-inventory',    tab: 'tab-inventory' },
       LIVE_MOVEMENT:        { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-livemovement-live', subcard: 'sub-livemovement-live' },
-      DASHBOARD_OBIB:       { grup: 'home-group-dashob',       tab: 'tab-dashob' },
+      // FITUR PINDAH: DASHBOARD_OBIB dulu mengontrol grup index tersendiri
+      // ("home-group-dashob") berisi Dashboard Outbound + Dashboard Inbound.
+      // Sekarang grup itu sudah dihapus dari index (Dashboard Inbound dihapus
+      // total, Dashboard Outbound dipindah jadi baris "Data Outbound Request"
+      // di dalam grup Outbound Request) -- jadi izin ini sekarang hanya
+      // mengatur subrow tsb, grup index-nya tetap 'home-group-outbound'.
+      DASHBOARD_OBIB:       { grup: 'home-group-outbound',     tab: 'tab-dashob',       subrow: 'home-subrow-dashob-outbound' },
       EXPORT_SURATJALAN:    { grup: 'home-group-export',       tab: 'tab-export',       subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
       EXPORT_MOVHISTORY:    { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
       KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
@@ -7260,13 +7249,13 @@ async function eksekusiAddSkuOutbound() {
       INV_ADJUSTMENT:            { grup: 'Inventory',         label: 'Adjustment Inventory' },
       INV_TRANSFER:              { grup: 'Inventory',         label: 'Transfer Lokasi / Grade' },
       LIVE_MOVEMENT:             { grup: 'Live Movement',     label: 'Live Feed Semua Pergerakan' },
-      DASHBOARD_OBIB:            { grup: 'Dashboard OB/IB',   label: 'Dashboard Outbound/Inbound' },
+      DASHBOARD_OBIB:            { grup: 'Outbound',          label: 'Data Outbound Request' },
       EXPORT_SURATJALAN:         { grup: 'Export',            label: 'Export Surat Jalan' },
       EXPORT_MOVHISTORY:         { grup: 'Live Movement',     label: 'Export Movement History (Audit Trail)' },
       KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
     };
     const RBAC_URUTAN_GRUP = ['Inbound', 'Open PO', 'QC', 'Outbound', 'Putaway', 'Checking', 'Inventory',
-      'Live Movement', 'Dashboard OB/IB', 'Export', 'Kelola User'];
+      'Live Movement', 'Export', 'Kelola User'];
 
     // Helper: parse field 'akses' (string JSON dari DB, atau sudah array) jadi array kunci
     // fitur RBAC yang valid, atau null kalau memang tidak ada kustomisasi (harus fallback
@@ -7357,6 +7346,10 @@ async function eksekusiAddSkuOutbound() {
       // baris Buat/Upload/Cancel Outbound Request biasa hanya karena grup home-group-outbound
       // ikut ditampilkan.
       document.getElementById('home-subrow-outbound-kelola').style.display = 'none';
+      // FITUR PINDAH: "Data Outbound Request" (dulu "Dashboard Outbound" di modul
+      // Dashboard OB vs IB) juga perlu digating terpisah, sama seperti baris
+      // Kelola Outbound Request di atas -- lihat izin DASHBOARD_OBIB.
+      document.getElementById('home-subrow-dashob-outbound').style.display = 'none';
 
       // Sembunyikan dulu sub-baris & sub-card Putaway (Validate QC / Hasil QC / Barang Return)
       // yang bisa dibatasi per-role. Validasi Hasil QC Sebelum Putaway sekarang bagian dari modul
