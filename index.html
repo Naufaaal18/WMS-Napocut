@@ -1273,13 +1273,21 @@ Object.assign(ENDPOINTS, {
         if (!poMap[r.no_po]) {
           poMap[r.no_po] = {
             noPo: r.no_po, supplier: r.supplier, kategori: r.kategori,
-            tanggal: r.created_date, statusPo: r.status_po, createdBy: r.created_by,
+            // FIX: statusPo TIDAK LAGI diambil dari baris SKU pertama yang kebetulan
+            // ke-load duluan (urutannya tidak menentu). Sekarang dikumpulkan dulu semua
+            // status_po SKU di dalam PO ini ke _statusList, lalu ditentukan di bawah
+            // (setelah forEach selesai) pakai aturan yang SAMA dengan KPI dashboard:
+            // Cancel diabaikan; Active menang kalau ada minimal 1 SKU Active; kalau
+            // tidak ada yang Active, baru dianggap Closed.
+            tanggal: r.created_date, statusPo: r.status_po, _statusList: [],
+            createdBy: r.created_by,
             noSoValidasi: r.no_so_validasi || null, validatedBy: r.validated_by || null, validatedAt: r.validated_at || null,
             items: [], totalQtyOrder: 0, totalQtySisa: 0, totalQtyDiterima: 0
           };
           urutanNoPo.push(r.no_po);
         }
         const po = poMap[r.no_po];
+        po._statusList.push(String(r.status_po || '').toUpperCase());
         po.items.push({
           // FIX: Qty Receiving PO (qtyDiterima) sekarang kolom independen di DB
           // (qty_diterima), TIDAK LAGI dihitung dari qtySisa - qtyOrder, supaya
@@ -1295,6 +1303,24 @@ Object.assign(ENDPOINTS, {
         // FITUR BARU (poin 5&6): kalau ada satu saja baris PO ini yang sudah punya No SO
         // Validasi, anggap seluruh PO ini sudah tervalidasi (di-set serentak oleh validate_po_return).
         if (!po.noSoValidasi && r.no_so_validasi) { po.noSoValidasi = r.no_so_validasi; po.validatedBy = r.validated_by; po.validatedAt = r.validated_at; }
+      });
+      // FIX: tentukan status final tiap PO dari kumpulan status semua SKU-nya, bukan dari
+      // baris pertama yang kebetulan ke-load duluan. Cancel diabaikan sepenuhnya kalau
+      // masih ada SKU lain yang berstatus Active/Closed (persis seperti aturan bottleneck
+      // di KPI dashboard: Cancel/Stockout tidak boleh "menyeret" status keseluruhan dokumen).
+      urutanNoPo.forEach(noPo => {
+        const po = poMap[noPo];
+        const nonCancel = po._statusList.filter(s => s !== 'CANCEL' && s !== 'CANCELLED');
+        if (nonCancel.includes('ACTIVE')) {
+          po.statusPo = 'Active';
+        } else if (nonCancel.length > 0) {
+          // Tidak ada SKU Active lagi, tapi masih ada SKU non-cancel (berarti semuanya Closed).
+          po.statusPo = 'CLOSED';
+        } else {
+          // Semua baris SKU PO ini berstatus Cancel/Cancelled.
+          po.statusPo = 'Cancel';
+        }
+        delete po._statusList;
       });
       // Terbaru duluan (tanggal desc), No PO sebagai tie-breaker.
       const result = urutanNoPo.map(noPo => poMap[noPo]).sort((a, b) => {
