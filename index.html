@@ -2331,6 +2331,37 @@ window.fetch = function (url, options) {
       .inv-stat-box.p-2 { padding: 6px 4px !important; }
       .inv-stat-box .small { font-size: 9.5px !important; }
       .inv-stat-box .fs-5 { font-size: 0.95rem !important; }
+
+      /* --- REDESIGN: kotak ringkasan Dashboard Outbound Request & Data PO --
+         pola sama persis dengan Dashboard Inventory di atas, supaya di HP tetap
+         pas 1 baris tanpa terpotong. --- */
+      #ob-dash-summary .col-4, #ob-dash-summary-stockout .col-4,
+      #pod-summary-cards .col-6, #sub-po-data .justify-content-center .col-6 {
+        padding-left: 4px; padding-right: 4px;
+      }
+      #ob-dash-summary .border.rounded.p-2, #ob-dash-summary-stockout .border.rounded.p-2,
+      #pod-summary-cards .border.rounded.p-2, #sub-po-data .justify-content-center .border.rounded.p-2 {
+        padding: 6px 4px !important;
+      }
+      #ob-dash-summary .small, #ob-dash-summary-stockout .small,
+      #pod-summary-cards .small, #sub-po-data .justify-content-center .small {
+        font-size: 9.5px !important;
+      }
+      #ob-dash-summary .fs-5, #ob-dash-summary-stockout .fs-6,
+      #pod-summary-cards .fs-5, #sub-po-data .justify-content-center .fs-5 {
+        font-size: 0.95rem !important;
+      }
+      #sub-dashob-outbound, #sub-po-data > .card, #sub-inventory-dashboard {
+        padding: 12px !important;
+      }
+      #sub-dashob-outbound > .d-flex h6, #sub-po-data h6, #sub-inventory-dashboard > h6 {
+        font-size: 15.5px !important;
+      }
+      #sub-dashob-outbound > .d-flex h6 i.fa-arrow-up-from-bracket,
+      #sub-po-data h6 i.fa-table-list,
+      #sub-inventory-dashboard > h6 i.fa-table-cells-large {
+        width: 28px; height: 28px; flex: 0 0 28px; font-size: 12.5px; margin-right: 8px !important;
+      }
     }
   </style>
 
@@ -2588,6 +2619,202 @@ window.fetch = function (url, options) {
     #swa-grade{ font-weight:600 !important; }
     #swa-qty{ font-family:'IBM Plex Mono',monospace !important; text-align:center; }
     #swa-sku-baru{ font-family:'IBM Plex Mono',monospace !important; }
+  </style>
+
+  <!-- =========================================================================
+       REDESIGN: 3 Dashboard (Dashboard Outbound Request, Data PO, Dashboard
+       Inventory Stock_FG) -- tema warna & gaya disamakan dengan modul QC di atas
+       (variabel --qcx-* yang sama, cream/putih hangat, kartu accent per-modul).
+       Semua rule di bawah ini di-scope lewat #sub-dashob-outbound, #sub-po-data,
+       #sub-inventory-dashboard sehingga TIDAK menyentuh tampilan modul lain.
+       Tidak ada id, class, atribut on-event, atau struktur HTML yang diubah --
+       murni override tampilan (warna/border/font/spacing) di atas markup asli.
+       ========================================================================= -->
+  <style>
+    /* ---- Aksen per dashboard (pakai token --qcx-* yang sudah didefinisikan di :root) ---- */
+    #sub-dashob-outbound{
+      --qcx-accent:#D2604B;
+      --qcx-accent-soft:rgba(210,96,75,.10);
+      --qcx-accent-glow:rgba(210,96,75,.28);
+    }
+    #sub-po-data{
+      --qcx-accent:#EF6C00;
+      --qcx-accent-soft:rgba(239,108,0,.10);
+      --qcx-accent-glow:rgba(239,108,0,.28);
+    }
+    #sub-inventory-dashboard{
+      --qcx-accent:#00838F;
+      --qcx-accent-soft:rgba(0,131,143,.10);
+      --qcx-accent-glow:rgba(0,131,143,.28);
+    }
+    /* Warna angka "flag" (stockout/shortpick/pending) -- dipakai konsisten di semua 3 dashboard */
+    :root{
+      --qcx-flag-strong:#B8442D;
+      --qcx-flag-mid:#C77B22;
+    }
+
+    /* ---- Kartu utama ---- */
+    #sub-dashob-outbound, #sub-po-data > .card, #sub-inventory-dashboard{
+      background:var(--qcx-surface) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-left:4px solid var(--qcx-accent) !important;
+      border-radius:16px !important;
+      box-shadow:0 1px 2px rgba(44,39,31,.04), 0 16px 32px -18px rgba(44,39,31,.20);
+      padding:20px !important;
+      font-family:'Inter',sans-serif;
+      color:var(--qcx-text);
+    }
+
+    /* ---- Header (icon + judul) ---- */
+    #sub-dashob-outbound > .d-flex h6, #sub-po-data h6, #sub-inventory-dashboard > h6{
+      font-family:'Space Grotesk',sans-serif;
+      font-weight:700 !important;
+      font-size:18px !important;
+      color:var(--qcx-text) !important;
+      display:flex; align-items:center;
+    }
+    #sub-dashob-outbound > .d-flex h6 i.fa-arrow-up-from-bracket,
+    #sub-po-data h6 i.fa-table-list,
+    #sub-inventory-dashboard > h6 i.fa-table-cells-large{
+      width:34px; height:34px; flex:0 0 34px;
+      display:inline-flex; align-items:center; justify-content:center;
+      background:var(--qcx-accent-soft);
+      color:var(--qcx-accent) !important;
+      border-radius:10px;
+      font-size:15px;
+      margin-right:10px !important;
+    }
+    #sub-po-data p.text-muted{
+      color:var(--qcx-text-dim) !important;
+      font-size:12.5px !important;
+      line-height:1.55;
+    }
+
+    /* ---- Kotak KPI (Total Request/SKU/Qty, Total PO, SKU Aktif, dst) ---- */
+    #sub-dashob-outbound #ob-dash-summary .border.rounded.p-2,
+    #sub-dashob-outbound #ob-dash-summary-stockout .border.rounded.p-2,
+    #sub-po-data #pod-summary-cards .border.rounded.p-2,
+    #sub-po-data .row.g-2.mb-3.text-center.justify-content-center .border.rounded.p-2,
+    #sub-inventory-dashboard .inv-stat-box{
+      background:var(--qcx-surface-2) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-radius:12px !important;
+    }
+    #sub-dashob-outbound #ob-dash-summary-stockout .border.border-danger{
+      background:#FBEEEA !important;
+      border-color:#EFD3C9 !important;
+    }
+    #sub-dashob-outbound .fw-bold.fs-5, #sub-dashob-outbound .fw-bold.fs-6,
+    #sub-po-data .fw-bold.fs-5,
+    #sub-inventory-dashboard .fw-bold.fs-5{
+      font-family:'Space Grotesk',sans-serif !important;
+    }
+
+    /* ---- Warna teks kontekstual Bootstrap -> palet hangat qcx ---- */
+    #sub-dashob-outbound .text-danger, #sub-po-data .text-danger{ color:var(--qcx-flag-strong) !important; }
+    #sub-dashob-outbound .text-warning, #sub-po-data .text-warning{ color:var(--qcx-flag-mid) !important; }
+    #sub-dashob-outbound .text-success, #sub-po-data .text-success, #sub-inventory-dashboard .text-success{ color:#2E7A50 !important; }
+    #sub-dashob-outbound .text-info, #sub-po-data .text-info, #sub-inventory-dashboard .text-info{ color:#00707A !important; }
+    #sub-dashob-outbound .text-primary, #sub-po-data .text-primary{ color:var(--qcx-accent) !important; }
+    #sub-dashob-outbound .text-secondary, #sub-po-data .text-secondary, #sub-inventory-dashboard .text-secondary{ color:var(--qcx-text-dim) !important; }
+    #sub-dashob-outbound .text-muted, #sub-po-data .text-muted, #sub-inventory-dashboard .text-muted{ color:var(--qcx-text-faint) !important; }
+
+    /* ---- Tombol ikon (Export Excel / Muat Ulang / dll) ---- */
+    #sub-dashob-outbound .btn-outline-success, #sub-po-data .btn-outline-success, #sub-inventory-dashboard .btn-outline-success,
+    #sub-dashob-outbound .btn-outline-secondary, #sub-po-data .btn-outline-secondary, #sub-inventory-dashboard .btn-outline-secondary{
+      border:1px solid var(--qcx-border) !important;
+      background:var(--qcx-surface) !important;
+      color:var(--qcx-text-dim) !important;
+      border-radius:9px !important;
+    }
+    #sub-dashob-outbound .btn-outline-success:hover, #sub-po-data .btn-outline-success:hover, #sub-inventory-dashboard .btn-outline-success:hover,
+    #sub-dashob-outbound .btn-outline-secondary:hover, #sub-po-data .btn-outline-secondary:hover, #sub-inventory-dashboard .btn-outline-secondary:hover{
+      background:var(--qcx-surface-2) !important;
+      color:var(--qcx-text) !important;
+    }
+
+    /* ---- Input & Select (filter Bulan/Tahun/SKU/Lokasi/Kategori/Pencarian) ---- */
+    #sub-dashob-outbound .form-select, #sub-dashob-outbound .form-control,
+    #sub-po-data .form-select, #sub-po-data .form-control,
+    #sub-inventory-dashboard .form-select, #sub-inventory-dashboard .form-control{
+      border:1px solid var(--qcx-border) !important;
+      background:var(--qcx-surface-2) !important;
+      border-radius:9px !important;
+      color:var(--qcx-text) !important;
+    }
+    #sub-dashob-outbound .form-select:focus, #sub-dashob-outbound .form-control:focus,
+    #sub-po-data .form-select:focus, #sub-po-data .form-control:focus,
+    #sub-inventory-dashboard .form-select:focus, #sub-inventory-dashboard .form-control:focus{
+      border-color:var(--qcx-accent) !important;
+      box-shadow:0 0 0 3px var(--qcx-accent-soft) !important;
+      background:var(--qcx-surface) !important;
+    }
+    #sub-dashob-outbound .form-check-input, #sub-po-data .form-check-input, #sub-inventory-dashboard .form-check-input{
+      accent-color:var(--qcx-accent);
+    }
+    #sub-dashob-outbound .form-label, #sub-po-data .form-label, #sub-inventory-dashboard .form-label{
+      color:var(--qcx-text-dim) !important;
+    }
+
+    /* ---- Tabel ---- */
+    #sub-dashob-outbound .table, #sub-po-data .table, #sub-inventory-dashboard .table{
+      color:var(--qcx-text);
+    }
+    #sub-dashob-outbound thead.table-light th, #sub-po-data thead.table-light th, #sub-inventory-dashboard thead.table-light th{
+      background:var(--qcx-surface-2) !important;
+      color:var(--qcx-text-dim) !important;
+      border-color:var(--qcx-border) !important;
+      text-transform:uppercase;
+      font-size:9.5px !important;
+      letter-spacing:.03em;
+      font-weight:600 !important;
+    }
+    #sub-dashob-outbound table td, #sub-dashob-outbound table th,
+    #sub-po-data table td, #sub-po-data table th,
+    #sub-inventory-dashboard table td, #sub-inventory-dashboard table th{
+      border-color:var(--qcx-border) !important;
+    }
+    #sub-dashob-outbound tbody tr:hover, #sub-po-data tbody tr:hover, #sub-inventory-dashboard tbody tr:hover{
+      background:var(--qcx-surface-2) !important;
+    }
+    #sub-dashob-outbound .table-responsive, #sub-po-data .table-responsive, #sub-inventory-dashboard .table-responsive{
+      border:1px solid var(--qcx-border) !important;
+      border-radius:12px !important;
+    }
+
+    /* ---- Badge status (Data PO: Active/Closed/Cancel, Valid/Pending) ---- */
+    #sub-po-data .badge, #sub-dashob-outbound .badge{
+      font-weight:600 !important;
+      border-radius:999px !important;
+      padding:4px 10px !important;
+      font-size:10.5px !important;
+    }
+    #sub-po-data .badge.bg-success, #sub-dashob-outbound .badge.bg-success{ background:rgba(62,156,103,.14) !important; color:#2E7A50 !important; }
+    #sub-po-data .badge.bg-danger, #sub-dashob-outbound .badge.bg-danger{ background:rgba(184,68,45,.14) !important; color:var(--qcx-flag-strong) !important; }
+    #sub-po-data .badge.bg-warning, #sub-dashob-outbound .badge.bg-warning{ background:rgba(221,162,46,.16) !important; color:#9C6B14 !important; }
+    #sub-po-data .badge.bg-secondary, #sub-dashob-outbound .badge.bg-secondary{ background:var(--qcx-surface-3) !important; color:var(--qcx-text-dim) !important; }
+    #sub-po-data .badge.bg-info, #sub-dashob-outbound .badge.bg-info{ background:rgba(0,131,143,.14) !important; color:#00707A !important; }
+    #sub-po-data .badge.bg-primary, #sub-dashob-outbound .badge.bg-primary{ background:var(--qcx-accent-soft) !important; color:var(--qcx-accent) !important; }
+
+    /* ---- Kartu versi HP (Dashboard Outbound Request -- .ob-mcard, sudah ada di JS) ---- */
+    #sub-dashob-outbound .ob-mcard{
+      background:var(--qcx-surface) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-radius:12px !important;
+    }
+    #sub-dashob-outbound .ob-mcard:active{ background:var(--qcx-surface-2) !important; }
+    #sub-dashob-outbound .ob-mcard-title{ color:var(--qcx-accent) !important; font-family:'Space Grotesk',sans-serif; }
+    #sub-dashob-outbound .ob-mcard-sub{ color:var(--qcx-text-dim) !important; }
+    #sub-dashob-outbound .ob-mcard-grid .lbl{ color:var(--qcx-text-faint) !important; }
+    #sub-dashob-outbound .ob-mcard-status-row{ border-top:1px dashed var(--qcx-border) !important; }
+
+    /* ---- Ringkasan Stockout (alert kuning) & tombol Re-Alokasikan ---- */
+    #sub-dashob-outbound #ob-dash-stockout-box{
+      background:#FBF3E4 !important;
+      border:1px solid #E9D9B0 !important;
+      color:var(--qcx-text-dim) !important;
+      border-radius:12px !important;
+    }
   </style>
 </head>
 
@@ -3447,9 +3674,9 @@ window.fetch = function (url, options) {
              buka Excel/Google Sheet terpisah. Disembunyikan (d-none) sampai dibuka lewat
              sub-modul "Data PO" di Home. -->
         <div id="sub-po-data" class="d-none">
-          <div class="card p-3 mb-3 border-start border-4" style="border-color:#E65100!important;">
+          <div class="card p-3 mb-3 border-start border-4">
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="fw-bold mb-0" style="color:#E65100;"><i class="fa-solid fa-table-list me-2"></i>Data PO</h6>
+              <h6 class="fw-bold mb-0"><i class="fa-solid fa-table-list me-2"></i>Data PO</h6>
               <div class="d-flex gap-1">
                 <button type="button" class="btn btn-outline-success btn-sm" onclick="exportDataPOExcel()" title="Export ke Excel (Ctrl+E)">
                   <i class="fa-solid fa-file-excel"></i>
