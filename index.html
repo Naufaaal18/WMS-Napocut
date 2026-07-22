@@ -1432,7 +1432,8 @@ window.fetch = function (url, options) {
   <style>
     body {
       padding-bottom: 70px;
-      background-color: #f8f9fa;
+      background-color: #F7F3EA;
+      color: #2C271F;
     }
 
     .nav-bottom {
@@ -1441,13 +1442,13 @@ window.fetch = function (url, options) {
       left: 0;
       right: 0;
       background: #ffffff;
-      box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 -2px 10px rgba(44, 39, 31, 0.08);
       z-index: 1030;
     }
 
     .nav-bottom .nav-link {
       text-align: center;
-      color: #6c757d;
+      color: #A69A80;
       font-size: 11px;
       padding: 8px 0;
       flex-grow: 1;
@@ -1455,7 +1456,7 @@ window.fetch = function (url, options) {
 
     /* Tersembunyi default, diatur via JS */
     .nav-bottom .nav-link.active {
-      color: #0d6efd;
+      color: #EF6C00;
       font-weight: bold;
     }
 
@@ -1467,8 +1468,8 @@ window.fetch = function (url, options) {
 
     .card {
       border-radius: 12px;
-      border: none;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+      border: 1px solid #E4DCC7;
+      box-shadow: 0 1px 2px rgba(44,39,31,.04), 0 16px 32px -18px rgba(44,39,31,.14);
     }
 
     .form-section {
@@ -1480,8 +1481,8 @@ window.fetch = function (url, options) {
     }
 
     .header-app {
-      background: linear-gradient(135deg, #0d6efd, #0b5ed7);
-      color: white;
+      background: linear-gradient(135deg, #2C271F, #4A3F2E);
+      color: #F7F3EA;
       padding: 15px;
       border-radius: 0 0 15px 15px;
       margin-bottom: 20px;
@@ -1497,12 +1498,12 @@ window.fetch = function (url, options) {
     /* ===== HOME SCREEN - DAFTAR MODUL ===== */
     #halaman-home {
       display: none;
-      background-color: #f8f9fa;
+      background-color: #F7F3EA;
       min-height: 100vh;
     }
     .home-header {
-      background: linear-gradient(135deg, #0d6efd, #0b5ed7);
-      color: white;
+      background: linear-gradient(135deg, #2C271F, #4A3F2E);
+      color: #F7F3EA;
       padding: 14px 16px 12px;
       display: flex;
       justify-content: space-between;
@@ -1566,19 +1567,19 @@ window.fetch = function (url, options) {
       bottom: 0;
       width: 86%;
       max-width: 340px;
-      background: #f8f9fa;
+      background: #F7F3EA;
       z-index: 1050;
       transform: translateX(-100%);
       transition: transform 0.25s ease;
       overflow-y: auto;
-      box-shadow: 2px 0 16px rgba(0,0,0,0.25);
+      box-shadow: 2px 0 16px rgba(44,39,31,0.25);
     }
     .home-sidebar.open { transform: translateX(0); }
     .home-sidebar-header {
       position: sticky;
       top: 0;
-      background: linear-gradient(135deg, #0d6efd, #0b5ed7);
-      color: #fff;
+      background: linear-gradient(135deg, #2C271F, #4A3F2E);
+      color: #F7F3EA;
       padding: 14px 16px;
       display: flex;
       justify-content: space-between;
@@ -1625,28 +1626,30 @@ window.fetch = function (url, options) {
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: #6c757d;
+      color: #A69A80;
       padding: 14px 16px 6px;
     }
     .module-list-group {
-      background: #fff;
-      border-top: 1px solid #e9ecef;
-      border-bottom: 1px solid #e9ecef;
-      margin-bottom: 8px;
+      background: #FFFFFF;
+      border: 1px solid #E4DCC7;
+      border-radius: 14px;
+      margin: 0 10px 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(44,39,31,.04);
     }
     .module-row {
       display: flex;
       align-items: center;
       padding: 13px 16px;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid #F2EDE1;
       cursor: pointer;
       user-select: none;
-      background: #fff;
+      background: #FFFFFF;
       transition: background 0.1s;
-      -webkit-tap-highlight-color: rgba(0,0,0,0.04);
+      -webkit-tap-highlight-color: rgba(44,39,31,0.04);
     }
     .module-row:last-child { border-bottom: none; }
-    .module-row:active { background: #f8f9fa; }
+    .module-row:active { background: #F2EDE1; }
     .module-icon-wrap {
       width: 40px;
       height: 40px;
@@ -1660,19 +1663,20 @@ window.fetch = function (url, options) {
     }
     .module-row-text { flex: 1; min-width: 0; }
     .module-row-name {
+      font-family: 'Space Grotesk', sans-serif;
       font-size: 15px;
       font-weight: 600;
-      color: #212529;
+      color: #2C271F;
       line-height: 1.2;
     }
     .module-row-desc {
       font-size: 12px;
-      color: #6c757d;
+      color: #A69A80;
       margin-top: 2px;
     }
     .module-row-chevron {
       font-size: 14px;
-      color: #adb5bd;
+      color: #D3C7A8;
       margin-left: 8px;
     }
     .module-row.has-sub .module-row-chevron {
@@ -1684,24 +1688,22 @@ window.fetch = function (url, options) {
     /* Sub-modul list */
     .sub-module-list {
       display: none;
-      background: #f8f9fa;
-      border-top: 1px solid #e9ecef;
-      border-bottom: 1px solid #e9ecef;
-      margin-bottom: 2px;
+      background: #F7F3EA;
+      border-top: 1px solid #E4DCC7;
     }
     .sub-module-list.open { display: block; }
     .sub-module-row {
       display: flex;
       align-items: center;
       padding: 11px 16px 11px 68px;
-      border-bottom: 1px solid #f0f0f0;
+      border-bottom: 1px solid #EFE8D6;
       cursor: pointer;
-      background: #f8f9fa;
+      background: #F7F3EA;
       transition: background 0.1s;
-      -webkit-tap-highlight-color: rgba(0,0,0,0.04);
+      -webkit-tap-highlight-color: rgba(44,39,31,0.04);
     }
     .sub-module-row:last-child { border-bottom: none; }
-    .sub-module-row:active { background: #eef0f2; }
+    .sub-module-row:active { background: #EFE8D6; }
     .sub-dot {
       width: 7px;
       height: 7px;
@@ -1711,12 +1713,12 @@ window.fetch = function (url, options) {
     }
     .sub-module-name {
       font-size: 14px;
-      color: #343a40;
+      color: #4A3F2E;
       flex: 1;
     }
     .sub-module-arrow {
       font-size: 13px;
-      color: #ced4da;
+      color: #D3C7A8;
     }
     /* Warna ikon per modul */
     .icon-inbound  { background: #E3F2FD; color: #1565C0; }
@@ -1987,6 +1989,83 @@ window.fetch = function (url, options) {
     .ob-mcard-status-row { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #dee2e6; font-size: 11px; }
 
     /* =========================================================================
+       REDESIGN GLOBAL: ganti "biru Bootstrap" (--bs-primary/.btn-primary/dst)
+       jadi aksen warm/cream (oranye #EF6C00) di SELURUH modul yang belum
+       punya tema qcx tersendiri (Inbound, Putaway, Checking, Kelola Outbound
+       Request, Request QC Ulang, Movement History, Export, Kelola User, dll).
+       Ini murni override warna token Bootstrap 5.3 -- tidak ada class/HTML yang
+       diubah, jadi semua tombol/badge/focus-ring "primary" otomatis ikut tema
+       baru tanpa perlu menyentuh tiap modul satu-satu.
+       ========================================================================= */
+    :root {
+      --bs-primary: #EF6C00;
+      --bs-primary-rgb: 239, 108, 0;
+      --bs-link-color: #EF6C00;
+      --bs-link-color-rgb: 239, 108, 0;
+      --bs-link-hover-color: #C77B22;
+      --bs-link-hover-color-rgb: 199, 123, 34;
+    }
+    .btn-primary {
+      --bs-btn-color: #fff;
+      --bs-btn-bg: #EF6C00;
+      --bs-btn-border-color: #EF6C00;
+      --bs-btn-hover-color: #fff;
+      --bs-btn-hover-bg: #C75A00;
+      --bs-btn-hover-border-color: #C75A00;
+      --bs-btn-focus-shadow-rgb: 239, 108, 0;
+      --bs-btn-active-color: #fff;
+      --bs-btn-active-bg: #B85200;
+      --bs-btn-active-border-color: #B85200;
+      --bs-btn-disabled-bg: #EF6C00;
+      --bs-btn-disabled-border-color: #EF6C00;
+    }
+    .btn-outline-primary {
+      --bs-btn-color: #EF6C00;
+      --bs-btn-border-color: #EF6C00;
+      --bs-btn-hover-bg: #EF6C00;
+      --bs-btn-hover-border-color: #EF6C00;
+      --bs-btn-active-bg: #EF6C00;
+      --bs-btn-active-border-color: #EF6C00;
+      --bs-gradient: none;
+    }
+    .bg-primary { background-color: #EF6C00 !important; }
+    .text-primary { color: #EF6C00 !important; }
+    .border-primary { border-color: #EF6C00 !important; }
+    .badge.bg-primary { background-color: #EF6C00 !important; }
+    .form-check-input:checked { background-color: #EF6C00; border-color: #EF6C00; }
+    .form-check-input:focus { border-color: #EF6C00; }
+    .form-range::-webkit-slider-thumb { background-color: #EF6C00; }
+    .spinner-border.text-primary, .spinner-grow.text-primary { color: #EF6C00 !important; }
+    a { color: #EF6C00; }
+    a:hover { color: #C77B22; }
+
+    /* =========================================================================
+       REDESIGN GLOBAL: kartu/form section modul lama disamakan gaya "cream" nya
+       (background krem-putih, border tipis warna hangat, judul modul pakai
+       Space Grotesk) supaya konsisten dengan modul QC/Data PO yang sudah
+       di-redesign, TANPA mengubah struktur/ID/class yang sudah ada.
+       ========================================================================= */
+    .form-section > .card,
+    .form-section > .d-flex + .card {
+      border-radius: 16px !important;
+    }
+    .form-section h6 {
+      font-family: 'Space Grotesk', sans-serif;
+    }
+    .form-control, .form-select {
+      background-color: #F2EDE1;
+      border-color: #E4DCC7;
+      color: #2C271F;
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #FFFFFF;
+      border-color: #EF6C00;
+    }
+    .form-control::placeholder { color: #A69A80; }
+    .table { --bs-table-color: #2C271F; }
+    .table thead.table-light th, thead.table-light th { background-color: #F2EDE1 !important; color: #4A3F2E; }
+
+    /* =========================================================================
        FITUR BARU: WAREHOUSE DASHBOARD (widget di halaman Home, di atas Menu Utama)
        Tema gelap terpisah dari sisa halaman Home yang terang, dibungkus dalam
        #whdash-root supaya style-nya tidak bocor ke elemen lain.
@@ -1996,16 +2075,17 @@ window.fetch = function (url, options) {
          inisialisasiAplikasi) untuk role setingkat Admin ke atas -- supaya
          role lain tidak sempat melihat widget ini "berkedip" sebelum RBAC jalan. */
       display: none;
-      background: #12182b;
-      color: #e7ebf5;
+      background: var(--qcx-bg, #F7F3EA);
+      color: var(--qcx-text, #2C271F);
       padding: 10px 12px 4px;
+      font-family: 'Inter', sans-serif;
     }
     .whdash-toggle-row {
       display: flex;
       justify-content: center;
       padding: 2px 0 6px;
       cursor: pointer;
-      color: #9aa6c7;
+      color: var(--qcx-text-dim, #786D5A);
     }
     .whdash-toggle-row i { transition: transform .2s ease; }
     #whdash-root.whdash-collapsed .whdash-swipe-viewport,
@@ -2040,11 +2120,11 @@ window.fetch = function (url, options) {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #333e63;
+      background: var(--qcx-border-strong, #D3C7A8);
       cursor: pointer;
       transition: background .2s ease, transform .2s ease;
     }
-    .whdash-dot.active { background: #4c8dff; transform: scale(1.3); }
+    .whdash-dot.active { background: var(--qcx-accent, #EF6C00); transform: scale(1.3); }
 
     .whdash-kpi-strip {
       display: grid;
@@ -2053,14 +2133,18 @@ window.fetch = function (url, options) {
       margin-bottom: 10px;
     }
     .whdash-kpi-tile {
-      background: #2f6fb0;
-      border-radius: 6px;
+      background: var(--qcx-surface, #FFFFFF);
+      border: 1px solid var(--qcx-border, #E4DCC7);
+      border-left: 3px solid var(--qcx-accent, #EF6C00);
+      border-radius: 8px;
       padding: 8px 6px;
       text-align: center;
+      box-shadow: 0 1px 2px rgba(44,39,31,.04);
     }
     .whdash-kpi-tile .whdash-kpi-label {
       font-size: 9.5px;
-      opacity: 0.9;
+      color: var(--qcx-text-dim, #786D5A);
+      opacity: 1;
       line-height: 1.2;
       min-height: 22px;
       display: flex;
@@ -2068,33 +2152,38 @@ window.fetch = function (url, options) {
       justify-content: center;
     }
     .whdash-kpi-tile .whdash-kpi-value {
+      font-family: 'Space Grotesk', sans-serif;
       font-size: 20px;
       font-weight: 700;
+      color: var(--qcx-text, #2C271F);
       margin-top: 2px;
     }
     .whdash-kpi-tile.whdash-kpi-clickable {
       cursor: pointer;
       transition: transform .12s ease, filter .12s ease;
     }
-    .whdash-kpi-tile.whdash-kpi-clickable:hover { filter: brightness(1.15); }
-    .whdash-kpi-tile.whdash-kpi-clickable:active { transform: scale(0.95); }
+    .whdash-kpi-tile.whdash-kpi-clickable:hover { filter: brightness(1.04); border-color: var(--qcx-accent, #EF6C00); }
+    .whdash-kpi-tile.whdash-kpi-clickable:active { transform: scale(0.96); }
 
     .whdash-section {
-      background: #1c2440;
-      border-radius: 6px;
+      background: var(--qcx-surface, #FFFFFF);
+      border: 1px solid var(--qcx-border, #E4DCC7);
+      border-radius: 12px;
       margin-bottom: 8px;
       overflow: hidden;
     }
     .whdash-section-title {
-      background: #262f52;
+      background: var(--qcx-surface-2, #F2EDE1);
+      color: var(--qcx-text, #2C271F);
       padding: 7px 12px;
       font-weight: 700;
       font-size: 13px;
+      font-family: 'Space Grotesk', sans-serif;
     }
     .whdash-section-body { padding: 10px 12px 14px; }
     .whdash-subtitle {
       font-size: 11px;
-      color: #9aa6c7;
+      color: var(--qcx-text-dim, #786D5A);
       font-weight: 600;
       margin-bottom: 6px;
     }
@@ -2113,8 +2202,8 @@ window.fetch = function (url, options) {
       display: flex; align-items: center; justify-content: center;
       font-size: 15px; font-weight: 700;
     }
-    .whdash-donut-title { font-size: 10.5px; color: #9aa6c7; margin-bottom: 2px; }
-    .whdash-donut-legend { margin-top: 4px; font-size: 8.5px; text-align: left; }
+    .whdash-donut-title { font-size: 10.5px; color: var(--qcx-text-dim, #786D5A); margin-bottom: 2px; }
+    .whdash-donut-legend { margin-top: 4px; font-size: 8.5px; text-align: left; color: var(--qcx-text-dim, #786D5A); }
     .whdash-donut-legend div { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .whdash-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
@@ -2130,43 +2219,43 @@ window.fetch = function (url, options) {
     .whdash-gauge-box { text-align: center; }
     .whdash-gauge-box canvas { max-height: 110px; }
     .whdash-gauge-value { font-size: 20px; font-weight: 700; margin-top: -34px; }
-    .whdash-gauge-caption { font-size: 10.5px; color: #9aa6c7; margin-top: 6px; }
+    .whdash-gauge-caption { font-size: 10.5px; color: var(--qcx-text-dim, #786D5A); margin-top: 6px; }
 
     .whdash-status-legend { font-size: 10.5px; }
     .whdash-status-legend .whdash-status-row {
       display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
     }
-    .whdash-status-bar { flex: 1; height: 7px; border-radius: 4px; background: #333e63; overflow: hidden; }
+    .whdash-status-bar { flex: 1; height: 7px; border-radius: 4px; background: var(--qcx-surface-3, #E9E1CF); overflow: hidden; }
     .whdash-status-bar-fill { height: 100%; border-radius: 4px; }
     .whdash-status-count { min-width: 42px; text-align: right; font-weight: 700; }
-    .whdash-status-throughput { text-align: center; margin-top: 8px; font-size: 11px; color: #9aa6c7; }
-    .whdash-status-throughput b { color: #e7ebf5; font-size: 15px; }
+    .whdash-status-throughput { text-align: center; margin-top: 8px; font-size: 11px; color: var(--qcx-text-dim, #786D5A); }
+    .whdash-status-throughput b { color: var(--qcx-text, #2C271F); font-size: 15px; }
 
     .whdash-work-row { margin-bottom: 10px; }
     .whdash-work-label { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
-    .whdash-work-bar { height: 8px; border-radius: 4px; background: #333e63; overflow: hidden; }
-    .whdash-work-bar-fill { height: 100%; border-radius: 4px; background: #4c8dff; }
-    .whdash-work-sub { font-size: 10.5px; color: #9aa6c7; margin-top: 2px; }
+    .whdash-work-bar { height: 8px; border-radius: 4px; background: var(--qcx-surface-3, #E9E1CF); overflow: hidden; }
+    .whdash-work-bar-fill { height: 100%; border-radius: 4px; background: var(--qcx-accent, #EF6C00); }
+    .whdash-work-sub { font-size: 10.5px; color: var(--qcx-text-dim, #786D5A); margin-top: 2px; }
 
     .whdash-emp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: 12px; }
-    .whdash-emp-role { width: 84px; flex: 0 0 auto; color: #cfd6ec; }
+    .whdash-emp-role { width: 84px; flex: 0 0 auto; color: var(--qcx-text, #2C271F); }
     .whdash-emp-bar-wrap { flex: 1; }
-    .whdash-emp-bar { height: 14px; border-radius: 3px; background: #8b6fd6; }
+    .whdash-emp-bar { height: 14px; border-radius: 3px; background: #6E74C9; }
     .whdash-emp-count { width: 24px; text-align: right; font-weight: 700; flex: 0 0 auto; }
 
     .whdash-inv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .whdash-inv-tile {
-      background: rgba(255,255,255,0.05);
-      border-left: 3px solid var(--inv-color, #4c8dff);
-      border-radius: 5px;
+      background: var(--qcx-surface-2, #F2EDE1);
+      border-left: 3px solid var(--inv-color, #EF6C00);
+      border-radius: 8px;
       padding: 7px 9px;
     }
-    .whdash-inv-cat { font-size: 11px; font-weight: 700; color: #cfd6ec; margin-bottom: 3px; }
-    .whdash-inv-qty { font-size: 16px; font-weight: 700; color: #e7ebf5; line-height: 1.1; }
-    .whdash-inv-sku { font-size: 10px; color: #9aa6c7; margin-top: 1px; }
+    .whdash-inv-cat { font-size: 11px; font-weight: 700; color: var(--qcx-text, #2C271F); margin-bottom: 3px; }
+    .whdash-inv-qty { font-size: 16px; font-weight: 700; color: var(--qcx-text, #2C271F); line-height: 1.1; }
+    .whdash-inv-sku { font-size: 10px; color: var(--qcx-text-dim, #786D5A); margin-top: 1px; }
 
-    .whdash-loading, .whdash-error { text-align: center; padding: 20px 8px; font-size: 12px; color: #9aa6c7; }
-    .whdash-error { color: #ff9d9d; }
+    .whdash-loading, .whdash-error { text-align: center; padding: 20px 8px; font-size: 12px; color: var(--qcx-text-dim, #786D5A); }
+    .whdash-error { color: #B8442D; }
 
     @media (min-width: 640px) {
       .whdash-kpi-strip { grid-template-columns: repeat(7, 1fr); }
@@ -7765,10 +7854,10 @@ async function eksekusiAddSkuOutbound() {
       if (WHDASH_CHARTS[key]) { WHDASH_CHARTS[key].destroy(); delete WHDASH_CHARTS[key]; }
     }
 
-    // Warna konsisten dipakai di semua donut/legend
+    // Warna konsisten dipakai di semua donut/legend (disamakan dgn palet --qcx-* warm/cream)
     const WHDASH_COLORS = {
-      biru: '#4c8dff', hijau: '#2ecc8f', abu: '#4b5578', merah: '#ff5d5d',
-      kuning: '#ffcc4d', ungu: '#8b6fd6', oranye: '#ff9f43'
+      biru: '#3E7C9C', hijau: '#3E9C67', abu: '#A69A80', merah: '#B8442D',
+      kuning: '#DDA22E', ungu: '#6E74C9', oranye: '#EF6C00'
     };
 
     // FITUR BARU: klik tile KPI strip di Home -> langsung buka modul terkait.
@@ -7845,8 +7934,8 @@ async function eksekusiAddSkuOutbound() {
           animation: false, responsive: true, maintainAspectRatio: false,
           plugins: { legend: { display: false } },
           scales: {
-            x: { ticks: { color: '#9aa6c7', maxTicksLimit: 6, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { ticks: { color: '#9aa6c7', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+            x: { ticks: { color: '#786D5A', maxTicksLimit: 6, font: { size: 9 } }, grid: { color: 'rgba(44,39,31,0.08)' } },
+            y: { ticks: { color: '#786D5A', font: { size: 9 } }, grid: { color: 'rgba(44,39,31,0.08)' } }
           }
         }
       });
