@@ -1430,6 +1430,9 @@ window.fetch = function (url, options) {
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     body {
       padding-bottom: 70px;
@@ -2318,6 +2321,262 @@ window.fetch = function (url, options) {
       .inv-stat-box .small { font-size: 9.5px !important; }
       .inv-stat-box .fs-5 { font-size: 0.95rem !important; }
     }
+  </style>
+
+  <!-- =========================================================================
+       REDESIGN: 3 Modul QC (QC Finish Good / Re-Check QC / QC Swarovski)
+       Semua rule di bawah ini di-scope lewat #sub-qc-finishgood, #sub-recheck-qc,
+       #sub-qc-swarovski sehingga TIDAK menyentuh tampilan modul lain di aplikasi.
+       Tidak ada id, class, atau atribut on-event yang diubah/dihapus dari HTML asli.
+       ========================================================================= -->
+  <style>
+    :root{
+      --qcx-bg:#F7F3EA;
+      --qcx-surface:#FFFFFF;
+      --qcx-surface-2:#F2EDE1;
+      --qcx-surface-3:#E9E1CF;
+      --qcx-border:#E4DCC7;
+      --qcx-border-strong:#D3C7A8;
+      --qcx-text:#2C271F;
+      --qcx-text-dim:#786D5A;
+      --qcx-text-faint:#A69A80;
+
+      --qcx-grade-bagus:#3E9C67;
+      --qcx-grade-minor:#DDA22E;
+      --qcx-grade-reject:#D2604B;
+      --qcx-grade-kotor:#A97C4C;
+      --qcx-grade-perbaikan:#6E74C9;
+    }
+
+    #sub-qc-finishgood, #sub-recheck-qc, #sub-qc-swarovski{
+      --qcx-accent:#198754;
+      --qcx-accent-soft:rgba(25,135,84,.10);
+      --qcx-accent-glow:rgba(25,135,84,.28);
+    }
+    #sub-recheck-qc{
+      --qcx-accent:#EF6C00;
+      --qcx-accent-soft:rgba(239,108,0,.10);
+      --qcx-accent-glow:rgba(239,108,0,.28);
+    }
+    #sub-qc-swarovski{
+      --qcx-accent:#00838F;
+      --qcx-accent-soft:rgba(0,131,143,.10);
+      --qcx-accent-glow:rgba(0,131,143,.28);
+    }
+
+    #sub-qc-finishgood, #sub-recheck-qc, #sub-qc-swarovski{
+      background:var(--qcx-surface) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-left:4px solid var(--qcx-accent) !important;
+      border-radius:16px !important;
+      box-shadow:0 1px 2px rgba(44,39,31,.04), 0 16px 32px -18px rgba(44,39,31,.20);
+      padding:20px !important;
+      font-family:'Inter',sans-serif;
+      color:var(--qcx-text);
+    }
+
+    /* ---- Header (icon + judul + deskripsi) ---- */
+    #sub-qc-finishgood h6, #sub-recheck-qc h6, #sub-qc-swarovski h6{
+      font-family:'Space Grotesk',sans-serif;
+      font-weight:700 !important;
+      font-size:19px !important;
+      color:var(--qcx-text) !important;
+      display:flex; align-items:center;
+      margin-bottom:6px !important;
+    }
+    #sub-qc-finishgood h6 i, #sub-recheck-qc h6 i, #sub-qc-swarovski h6 i{
+      width:34px; height:34px; flex:0 0 34px;
+      display:inline-flex; align-items:center; justify-content:center;
+      background:var(--qcx-accent-soft);
+      color:var(--qcx-accent) !important;
+      border-radius:10px;
+      font-size:15px;
+      margin-right:10px !important;
+    }
+    #sub-qc-finishgood > p.text-muted, #sub-recheck-qc > p.text-muted, #sub-qc-swarovski > p.text-muted{
+      color:var(--qcx-text-dim) !important;
+      font-size:12.5px !important;
+      line-height:1.55;
+      max-width:60ch;
+    }
+    /* kotak catatan info (ikon lingkaran-i) */
+    #sub-qc-finishgood > p.text-muted:has(.fa-circle-info){
+      background:var(--qcx-surface-2);
+      border:1px solid var(--qcx-border);
+      border-radius:10px;
+      padding:8px 12px !important;
+      display:inline-block;
+    }
+
+    /* ---- Label & field umum ---- */
+    #sub-qc-finishgood .form-label, #sub-recheck-qc .form-label, #sub-qc-swarovski .form-label{
+      font-size:12.5px !important;
+      font-weight:600 !important;
+      color:var(--qcx-text-dim) !important;
+      margin-bottom:6px !important;
+    }
+    #sub-qc-finishgood .form-select, #sub-qc-finishgood .form-control,
+    #sub-recheck-qc .form-select, #sub-recheck-qc .form-control,
+    #sub-qc-swarovski .form-select, #sub-qc-swarovski .form-control{
+      background:var(--qcx-surface-2) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-radius:10px !important;
+      color:var(--qcx-text) !important;
+      font-size:13.5px !important;
+      padding:9px 12px !important;
+      box-shadow:none !important;
+    }
+    #sub-qc-finishgood .form-select:focus, #sub-qc-finishgood .form-control:focus,
+    #sub-recheck-qc .form-select:focus, #sub-recheck-qc .form-control:focus,
+    #sub-qc-swarovski .form-select:focus, #sub-qc-swarovski .form-control:focus{
+      border-color:var(--qcx-accent) !important;
+      box-shadow:0 0 0 3px var(--qcx-accent-soft) !important;
+    }
+    #sub-qc-finishgood .form-control[readonly], #sub-recheck-qc .form-control[readonly], #sub-qc-swarovski .form-control[readonly]{
+      background:var(--qcx-surface) !important;
+      color:var(--qcx-text-dim) !important;
+      font-family:'IBM Plex Mono',monospace;
+    }
+    #sub-qc-finishgood .form-control::placeholder, #sub-recheck-qc .form-control::placeholder, #sub-qc-swarovski .form-control::placeholder{
+      color:var(--qcx-text-faint) !important;
+    }
+    #sub-qc-finishgood .input-group .btn, #sub-recheck-qc .input-group .btn, #sub-qc-swarovski .input-group .btn{
+      border:1px solid var(--qcx-border) !important;
+      background:var(--qcx-surface-2) !important;
+      color:var(--qcx-text-dim) !important;
+      border-radius:10px !important;
+      margin-left:6px;
+    }
+
+    /* ---- Field scan/konfirmasi SKU: aksen barcode ---- */
+    #qc-confirm-sku, #rqc-confirm-sku{
+      font-family:'IBM Plex Mono',monospace !important;
+      letter-spacing:.02em;
+      background:
+        var(--qcx-surface)
+        repeating-linear-gradient(90deg, rgba(44,39,31,.06) 0 1.5px, transparent 1.5px 7px) !important;
+      border:1.5px dashed var(--qcx-accent) !important;
+    }
+    #qc-confirm-sku::placeholder, #rqc-confirm-sku::placeholder{
+      font-family:'Inter',sans-serif !important; letter-spacing:0;
+    }
+    #sub-qc-finishgood label:has(+ .input-group #qc-confirm-sku),
+    #sub-recheck-qc label:has(+ .input-group #rqc-confirm-sku){
+      color:var(--qcx-accent) !important;
+    }
+    #sub-qc-finishgood .input-group:has(#qc-confirm-sku) .btn,
+    #sub-recheck-qc .input-group:has(#rqc-confirm-sku) .btn{
+      background:var(--qcx-accent) !important;
+      color:#fff !important;
+      border-color:var(--qcx-accent) !important;
+    }
+
+    /* ---- Kotak breakdown grade: ubah grid bootstrap jadi list baris tactile ---- */
+    #sub-qc-finishgood .bg-light, #sub-recheck-qc .bg-light{
+      background:var(--qcx-surface-2) !important;
+      border:1px solid var(--qcx-border) !important;
+      border-radius:14px !important;
+      padding:14px !important;
+    }
+    #sub-qc-finishgood .bg-light .small.fw-bold, #sub-recheck-qc .bg-light .small.fw-bold{
+      font-family:'Space Grotesk',sans-serif;
+      color:var(--qcx-text-dim) !important;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      font-size:11px !important;
+    }
+    #sub-qc-finishgood .bg-light .row, #sub-recheck-qc .bg-light .row{
+      display:flex; flex-direction:column; gap:8px;
+      margin:0;
+    }
+    #sub-qc-finishgood .bg-light .row > div, #sub-recheck-qc .bg-light .row > div{
+      width:100%; max-width:100%; flex:none;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background:var(--qcx-surface);
+      border:1px solid var(--qcx-border);
+      border-radius:10px;
+      padding:8px 10px;
+      margin:0 !important;
+    }
+    #sub-qc-finishgood .bg-light .row > div .form-label, #sub-recheck-qc .bg-light .row > div .form-label{
+      margin:0 !important; flex:1; font-size:13px !important;
+    }
+    #sub-qc-finishgood .bg-light .row > div .form-control, #sub-recheck-qc .bg-light .row > div .form-control{
+      width:78px; flex:0 0 auto; text-align:center;
+      font-family:'IBM Plex Mono',monospace !important;
+      background:var(--qcx-surface-2) !important;
+    }
+    /* swatch warna per grade (border kiri + dot di depan label bila browser dukung :has) */
+    #g-bagus, #rg-bagus{ border-left:3px solid var(--qcx-grade-bagus) !important; }
+    #g-minor, #rg-minor{ border-left:3px solid var(--qcx-grade-minor) !important; }
+    #g-reject, #rg-reject{ border-left:3px solid var(--qcx-grade-reject) !important; }
+    #g-kotor, #rg-kotor{ border-left:3px solid var(--qcx-grade-kotor) !important; }
+    #g-perbaikan, #rg-perbaikan{ border-left:3px solid var(--qcx-grade-perbaikan) !important; }
+    #sub-qc-finishgood .row > div:has(#g-bagus) .form-label::before,
+    #sub-recheck-qc .row > div:has(#rg-bagus) .form-label::before{ content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; background:var(--qcx-grade-bagus); }
+    #sub-qc-finishgood .row > div:has(#g-minor) .form-label::before,
+    #sub-recheck-qc .row > div:has(#rg-minor) .form-label::before{ content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; background:var(--qcx-grade-minor); }
+    #sub-qc-finishgood .row > div:has(#g-reject) .form-label::before,
+    #sub-recheck-qc .row > div:has(#rg-reject) .form-label::before{ content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; background:var(--qcx-grade-reject); }
+    #sub-qc-finishgood .row > div:has(#g-kotor) .form-label::before,
+    #sub-recheck-qc .row > div:has(#rg-kotor) .form-label::before{ content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; background:var(--qcx-grade-kotor); }
+    #sub-qc-finishgood .row > div:has(#g-perbaikan) .form-label::before,
+    #sub-recheck-qc .row > div:has(#rg-perbaikan) .form-label::before{ content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:7px; background:var(--qcx-grade-perbaikan); }
+
+    /* ---- Stepper +/- (elemen disuntik lewat JS, lihat script sebelum </body>) ---- */
+    .qcx-stepper{ display:flex; align-items:center; background:var(--qcx-surface); border:1px solid var(--qcx-border); border-radius:9px; overflow:hidden; flex:0 0 auto; }
+    .qcx-stepper button{ width:26px; height:28px; border:none; background:transparent; color:var(--qcx-text-dim); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .qcx-stepper button:hover{ background:var(--qcx-surface-3); color:var(--qcx-text); }
+    .qcx-stepper:has(input:disabled) button{ opacity:.35; pointer-events:none; }
+    .qcx-stepper input.form-control{ width:52px !important; border:none !important; border-left:1px solid var(--qcx-border) !important; border-right:1px solid var(--qcx-border) !important; border-radius:0 !important; }
+
+    /* ---- Donut distribusi (disuntik via JS) ---- */
+    .qcx-donut-card{ margin-top:10px; padding:14px; background:var(--qcx-surface); border:1px solid var(--qcx-border); border-radius:14px; }
+    .qcx-donut-title{ font-family:'Space Grotesk',sans-serif; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--qcx-text-dim); margin-bottom:10px; }
+    .qcx-donut-wrap{ display:flex; align-items:center; gap:16px; }
+    .qcx-donut{ width:76px; height:76px; border-radius:50%; flex:0 0 76px; position:relative; background:conic-gradient(var(--qcx-surface-3) 0deg 360deg); box-shadow:inset 0 0 0 6px var(--qcx-surface), 0 0 0 1px var(--qcx-border); }
+    .qcx-donut::after{ content:""; position:absolute; inset:13px; border-radius:50%; background:var(--qcx-surface); border:1px solid var(--qcx-border); }
+    .qcx-donut-center{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:2; }
+    .qcx-donut-center .val{ font-family:'Space Grotesk',sans-serif; font-size:15px; font-weight:700; color:var(--qcx-text); line-height:1; }
+    .qcx-donut-center .lbl{ font-size:8px; color:var(--qcx-text-faint); text-transform:uppercase; }
+    .qcx-legend{ flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .qcx-legend-row{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--qcx-text-dim); }
+    .qcx-legend-row .sw{ width:7px; height:7px; border-radius:2px; flex:0 0 7px; }
+    .qcx-legend-row .pct{ margin-left:auto; font-family:'IBM Plex Mono',monospace; color:var(--qcx-text-faint); font-size:11px; }
+    .qcx-legend-empty{ font-size:11.5px; color:var(--qcx-text-faint); }
+
+    /* ---- Swarovski: flow konversi SKU ---- */
+    .qcx-conv-flow{ display:flex; align-items:center; gap:8px; background:var(--qcx-surface-2); border:1px solid var(--qcx-border); border-radius:12px; padding:12px; margin:10px 0 16px; }
+    .qcx-conv-chip{ flex:1; min-width:0; background:var(--qcx-surface); border:1px solid var(--qcx-border-strong); border-radius:9px; padding:8px 10px; }
+    .qcx-conv-chip .k{ font-size:9.5px; color:var(--qcx-text-faint); text-transform:uppercase; letter-spacing:.06em; margin-bottom:3px; }
+    .qcx-conv-chip .v{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--qcx-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .qcx-conv-chip.new{ border-color:var(--qcx-accent); }
+    .qcx-conv-arrow{ flex:0 0 auto; color:var(--qcx-accent); }
+
+    /* ---- Tombol kirim ---- */
+    #sub-qc-finishgood button[onclick^="submitFormQC"],
+    #sub-recheck-qc button[onclick^="submitFormRecheckQC"],
+    #sub-qc-swarovski button[onclick^="submitFormQCSwarovski"]{
+      background:var(--qcx-accent) !important;
+      border:none !important;
+      border-radius:11px !important;
+      padding:12px 16px !important;
+      font-family:'Space Grotesk',sans-serif;
+      font-weight:700 !important;
+      font-size:13.5px !important;
+      letter-spacing:.01em;
+      box-shadow:0 6px 18px -6px var(--qcx-accent-glow);
+    }
+    #sub-qc-finishgood button[onclick^="submitFormQC"]:disabled,
+    #sub-recheck-qc button[onclick^="submitFormRecheckQC"]:disabled,
+    #sub-qc-swarovski button[onclick^="submitFormQCSwarovski"]:disabled{
+      opacity:.4; box-shadow:none;
+    }
+
+    /* ---- Swarovski: select grade & qty ---- */
+    #swa-grade{ font-weight:600 !important; }
+    #swa-qty{ font-family:'IBM Plex Mono',monospace !important; text-align:center; }
+    #swa-sku-baru{ font-family:'IBM Plex Mono',monospace !important; }
   </style>
 </head>
 
@@ -16182,6 +16441,135 @@ async function eksekusiCancelOutbound() {
       }
     }
 
+  </script>
+
+  <!-- =========================================================================
+       REDESIGN: enhancement visual untuk 3 modul QC (stepper qty, donut
+       distribusi grade, preview konversi SKU Swarovski). Semua murni tambahan
+       elemen DOM baru + event listener tambahan -- tidak mengubah, menghapus,
+       atau menimpa fungsi/atribut on-event yang sudah ada.
+       ========================================================================= -->
+  <script>
+  (function(){
+    const QCX_GRADES = [
+      {key:'bagus',      label:'Bagus',      hex:'#3E9C67'},
+      {key:'minor',      label:'Minor',      hex:'#DDA22E'},
+      {key:'reject',     label:'Reject',     hex:'#D2604B'},
+      {key:'kotor',      label:'Kotor',      hex:'#A97C4C'},
+      {key:'perbaikan',  label:'Perbaikan',  hex:'#6E74C9'},
+    ];
+
+    function qcxAddStepper(input){
+      if (!input || input.dataset.qcxStepper) return;
+      input.dataset.qcxStepper = '1';
+      const wrap = document.createElement('div');
+      wrap.className = 'qcx-stepper';
+      const minus = document.createElement('button');
+      minus.type = 'button'; minus.textContent = '\u2212';
+      const plus = document.createElement('button');
+      plus.type = 'button'; plus.textContent = '+';
+      input.parentNode.insertBefore(wrap, input);
+      wrap.appendChild(minus);
+      wrap.appendChild(input);
+      wrap.appendChild(plus);
+      function step(delta){
+        if (input.disabled) return;
+        let v = (parseInt(input.value, 10) || 0) + delta;
+        if (v < 0) v = 0;
+        input.value = v;
+        input.dispatchEvent(new Event('input', {bubbles:true}));
+      }
+      minus.addEventListener('click', function(){ step(-1); });
+      plus.addEventListener('click', function(){ step(1); });
+    }
+
+    function qcxSetupBreakdown(prefix, panelId){
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      const inputs = QCX_GRADES.map(function(g){ return document.getElementById(prefix + '-' + g.key); });
+      inputs.forEach(qcxAddStepper);
+
+      const gradeBox = panel.querySelector('.bg-light');
+      if (!gradeBox || gradeBox.querySelector('.qcx-donut-card')) return;
+
+      const card = document.createElement('div');
+      card.className = 'qcx-donut-card';
+      card.innerHTML =
+        '<div class="qcx-donut-title">Distribusi Hasil</div>' +
+        '<div class="qcx-donut-wrap">' +
+          '<div class="qcx-donut" id="' + prefix + '-qcx-donut"><div class="qcx-donut-center"><span class="val" id="' + prefix + '-qcx-donut-total">0</span><span class="lbl">pcs</span></div></div>' +
+          '<div class="qcx-legend" id="' + prefix + '-qcx-legend"><div class="qcx-legend-empty">Isi qty untuk melihat distribusi</div></div>' +
+        '</div>';
+      const submitBtn = gradeBox.querySelector('button');
+      if (submitBtn) gradeBox.insertBefore(card, submitBtn); else gradeBox.appendChild(card);
+
+      function update(){
+        const vals = QCX_GRADES.map(function(g){
+          const el = document.getElementById(prefix + '-' + g.key);
+          return {key:g.key, label:g.label, hex:g.hex, qty: parseInt((el && el.value) || '0', 10) || 0};
+        });
+        const total = vals.reduce(function(s,v){ return s + v.qty; }, 0);
+        const donut = document.getElementById(prefix + '-qcx-donut');
+        const totalEl = document.getElementById(prefix + '-qcx-donut-total');
+        const legend = document.getElementById(prefix + '-qcx-legend');
+        if (totalEl) totalEl.textContent = total;
+        if (!donut || !legend) return;
+        if (total === 0){
+          donut.style.background = 'conic-gradient(var(--qcx-surface-3) 0deg 360deg)';
+          legend.innerHTML = '<div class="qcx-legend-empty">Isi qty untuk melihat distribusi</div>';
+          return;
+        }
+        let cursor = 0; const stops = [];
+        vals.forEach(function(v){
+          if (v.qty <= 0) return;
+          const deg = (v.qty/total)*360;
+          stops.push(v.hex + ' ' + cursor + 'deg ' + (cursor+deg) + 'deg');
+          cursor += deg;
+        });
+        donut.style.background = 'conic-gradient(' + stops.join(', ') + ')';
+        legend.innerHTML = vals.filter(function(v){ return v.qty > 0; }).map(function(v){
+          return '<div class="qcx-legend-row"><span class="sw" style="background:' + v.hex + '"></span><span>' + v.label + '</span><span class="pct">' + v.qty + ' \u00b7 ' + Math.round((v.qty/total)*100) + '%</span></div>';
+        }).join('');
+      }
+      inputs.forEach(function(inp){ if (inp) inp.addEventListener('input', update); });
+      update();
+      // jaring pengaman: beberapa fungsi aplikasi mereset value lewat properti JS
+      // langsung (tanpa event 'input'), jadi disinkronkan berkala juga.
+      setInterval(update, 900);
+    }
+
+    qcxSetupBreakdown('g', 'sub-qc-finishgood');
+    qcxSetupBreakdown('rg', 'sub-recheck-qc');
+
+    // ---- Swarovski: stepper qty + preview alur konversi SKU ----
+    qcxAddStepper(document.getElementById('swa-qty'));
+
+    const swaSkuBaruField = document.getElementById('swa-sku-baru');
+    if (swaSkuBaruField && !document.getElementById('sw-qcx-flow')){
+      const wrapDiv = swaSkuBaruField.closest('.mb-3') || swaSkuBaruField.parentNode;
+      const flow = document.createElement('div');
+      flow.className = 'qcx-conv-flow';
+      flow.id = 'sw-qcx-flow';
+      flow.innerHTML =
+        '<div class="qcx-conv-chip"><div class="k">SKU Awal</div><div class="v" id="sw-qcx-chip-awal">\u2014</div></div>' +
+        '<div class="qcx-conv-arrow"><i class="fa-solid fa-arrow-right"></i></div>' +
+        '<div class="qcx-conv-chip new"><div class="k">SKU Baru</div><div class="v" id="sw-qcx-chip-baru">\u2014</div></div>';
+      wrapDiv.insertAdjacentElement('afterend', flow);
+
+      const skuAsalSel = document.getElementById('swa-sku-asal');
+      function updateFlow(){
+        const a = skuAsalSel ? skuAsalSel.value : '';
+        const b = swaSkuBaruField.value;
+        const chipA = document.getElementById('sw-qcx-chip-awal');
+        const chipB = document.getElementById('sw-qcx-chip-baru');
+        if (chipA) chipA.textContent = a || '\u2014';
+        if (chipB) chipB.textContent = b || '\u2014';
+      }
+      if (skuAsalSel) skuAsalSel.addEventListener('change', updateFlow);
+      swaSkuBaruField.addEventListener('input', updateFlow);
+      setInterval(updateFlow, 900);
+    }
+  })();
   </script>
 
 </body>
