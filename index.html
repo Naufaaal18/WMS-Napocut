@@ -7389,6 +7389,20 @@ async function eksekusiAddSkuOutbound() {
     // dipakai renderInventoryTable() untuk menentukan kolom/tombol Aksi mana yang muncul di
     // popup pilihan (Transfer / Adjustment) saat baris tabel Dashboard Inventory diklik.
     let USER_PUNYA_AKSES_ADJUSTMENT = false;
+    // PERBAIKAN BUG: daftar LENGKAP fitur RBAC yang aktif untuk user yang sedang login,
+    // diisi di inisialisasiAplikasi() (sumbernya sama seperti logic yang dipakai untuk
+    // menampilkan/menyembunyikan menu -- kustomisasi per-user kalau ada, atau RBAC_DEFAULT_CHECKER
+    // khusus role Checker, atau RBAC_PER_ROLE sesuai role). Dipakai oleh userPunyaAkses() supaya
+    // proses refresh data per-tab (refreshDataForModul) tidak lagi memanggil loader untuk
+    // sub-modul yang memang tidak diberi akses ke role ybs -- sebelumnya ini menyebabkan pesan
+    // error "Akses ditolak" muncul ke user padahal mereka sedang memakai sub-modul LAIN yang
+    // sebenarnya mereka punya izin (mis. Checker kena banner error dari Picking QC Ulang saat
+    // hanya membuka Dashboard Checker miliknya sendiri).
+    let USER_FITUR_AKTIF = [];
+    function userPunyaAkses(fitur) {
+      if (!fitur) return true; // loader tanpa fitur spesifik (mis. gerbang generik) selalu dipanggil
+      return Array.isArray(USER_FITUR_AKTIF) && USER_FITUR_AKTIF.includes(fitur);
+    }
 
     // KETIKA HALAMAN DIBUKA: Periksa status Sesi Simpanan
     document.addEventListener("DOMContentLoaded", function() {
@@ -7732,6 +7746,12 @@ async function eksekusiAddSkuOutbound() {
       USER_PUNYA_AKSES_ADJUSTMENT = FITUR_AKTIF_USER
         ? FITUR_AKTIF_USER.includes('INV_ADJUSTMENT')
         : ((r !== "Checker") && !!(RBAC_PER_ROLE[r] && RBAC_PER_ROLE[r].includes('INV_ADJUSTMENT')));
+
+      // PERBAIKAN BUG: simpan daftar fitur efektif user ini (dipakai userPunyaAkses() di
+      // refreshDataForModul supaya loader sub-modul yang tidak diizinkan tidak lagi dipanggil).
+      USER_FITUR_AKTIF = FITUR_AKTIF_USER
+        ? FITUR_AKTIF_USER
+        : (r === "Checker" ? RBAC_DEFAULT_CHECKER : (RBAC_PER_ROLE[r] || []));
 
       if (FITUR_AKTIF_USER) {
         // Kustomisasi per-user aktif dari checklist akses modul Kelola User: terapkan
@@ -8526,21 +8546,61 @@ async function eksekusiAddSkuOutbound() {
     // Memanggil ulang fungsi loadX yang relevan untuk modul tujuan saat pindah tab.
     // Dibungkus try/catch per fungsi supaya 1 kegagalan tidak menghentikan refresh fungsi lain.
     function refreshDataForModul(modulId) {
+      // PERBAIKAN BUG: setiap loader sekarang dipasangkan dengan kode fitur RBAC (fitur:...)
+      // yang jadi syarat sub-modul itu tampil (persis kode yang dipakai di RBAC_FITUR/
+      // RBAC_PER_ROLE). Sebelumnya SEMUA loader dalam 1 grup tab dipanggil sekaligus tanpa
+      // peduli role user punya akses atau tidak ke sub-modul itu -- kalau RPC di baliknya
+      // mewajibkan akses tertentu (require_akses di server) dan role user TIDAK punya akses
+      // itu, muncul banner error "Akses ditolak" yang membingungkan, padahal user hanya
+      // sedang memakai sub-modul LAIN yang memang jadi haknya (contoh nyata: role Checker
+      // buka Dashboard Checker miliknya sendiri, tapi ikut kena error dari loader Picking QC
+      // Ulang yang menunya sendiri memang disembunyikan untuk Checker). fn tanpa `fitur`
+      // berarti loader generik yang boleh selalu jalan (tidak spesifik ke 1 sub-modul).
       const mapRefresh = {
-        'modul-inbound': [loadOpenPOToInboundDropdown, loadValidasiInboundData],
-        'modul-qc': [loadStagingInboundToDropdown, loadStockFGToRequestQcDropdown, loadStagingQCToRecheckDropdown, loadStagingQCSwarovskiDropdown, loadDataQCFilterUserDropdown],
-        'modul-ops': [loadQCFGToPutawayDropdown, loadStockReturnToDropdown, loadQCFGToValidateDropdown, loadAdminValidateQC],
-        'modul-checking': [loadPickingPendingRequests, loadDashboardCheckerRequests, loadPickingQcUlangPendingRequests, loadListNoRequestSuratJalan],
-        'modul-inventory': [loadInventoryDashboard],
-        'modul-dashob'   : [function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }],
-        'modul-livemovement' : [startLiveMovementPolling, preloadMovementHistoryFilters],
-        'modul-kelolauser' : [loadKelolaUserData]
+        'modul-inbound': [
+          { fn: loadOpenPOToInboundDropdown, fitur: 'INBOUND_RECEIVING' },
+          { fn: loadValidasiInboundData,     fitur: 'INBOUND_VALIDASI' }
+        ],
+        'modul-qc': [
+          { fn: loadStagingInboundToDropdown,   fitur: 'QC_FINISHGOOD' },
+          { fn: loadStockFGToRequestQcDropdown, fitur: 'QC_REQUESTULANG_V2' },
+          { fn: loadStagingQCToRecheckDropdown, fitur: 'QC_RECHECK' },
+          { fn: loadStagingQCSwarovskiDropdown, fitur: 'QC_SWAROVSKI' },
+          { fn: loadDataQCFilterUserDropdown,   fitur: 'QC_DATALIST' }
+        ],
+        'modul-ops': [
+          { fn: loadQCFGToPutawayDropdown, fitur: 'OPS_PUTAWAY' },
+          { fn: loadStockReturnToDropdown, fitur: 'OPS_PUTAWAYRETURN' },
+          { fn: loadQCFGToValidateDropdown, fitur: 'OPS_VALIDATE' },
+          { fn: loadAdminValidateQC,        fitur: 'OPS_ADMINVALIDATEQC' }
+        ],
+        'modul-checking': [
+          { fn: loadPickingPendingRequests,        fitur: 'CHECKING_PICKING' },
+          { fn: loadDashboardCheckerRequests,       fitur: 'CHECKING_DASHBOARD' },
+          { fn: loadPickingQcUlangPendingRequests,  fitur: 'CHECKING_PICKING_QCULANG' },
+          { fn: loadListNoRequestSuratJalan,        fitur: 'EXPORT_SURATJALAN' }
+        ],
+        'modul-inventory': [
+          { fn: loadInventoryDashboard, fitur: 'INV_DASHBOARD' }
+        ],
+        'modul-dashob'   : [
+          { fn: function(){ initDashOBFilter(); loadDashboardOutbound(); loadDashboardInbound(); }, fitur: 'DASHBOARD_OBIB' }
+        ],
+        'modul-livemovement' : [
+          { fn: startLiveMovementPolling,        fitur: 'LIVE_MOVEMENT' },
+          { fn: preloadMovementHistoryFilters,   fitur: 'EXPORT_MOVHISTORY' }
+        ],
+        'modul-kelolauser' : [
+          { fn: loadKelolaUserData, fitur: 'KELOLA_USER' }
+        ]
       };
 
-      const daftarFungsi = mapRefresh[modulId];
-      if (!daftarFungsi) return; // Modul tujuan tidak punya dropdown server yang perlu di-refresh (mis. Outbound, Master PO)
+      const daftarEntri = mapRefresh[modulId];
+      if (!daftarEntri) return; // Modul tujuan tidak punya dropdown server yang perlu di-refresh (mis. Outbound, Master PO)
 
-      daftarFungsi.forEach(fn => {
+      daftarEntri.forEach(entri => {
+        const fn = entri.fn;
+        if (!userPunyaAkses(entri.fitur)) return; // role tidak punya akses ke sub-modul ini -- skip, jangan panggil loadernya sama sekali
         try {
           if (typeof fn === 'function') fn();
         } catch (e) {
