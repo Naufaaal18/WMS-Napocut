@@ -6678,7 +6678,7 @@ async function eksekusiAddSkuOutbound() {
               <i class="fa-solid fa-rotate"></i>
             </button>
           </div>
-          <p class="small text-muted mb-2">Daftar transfer lokasi &amp; downgrade grade dari <strong>Movement_History</strong> yang belum dicocokkan ke Odoo. Centang baris yang sudah dipindahkan di Odoo, isi nomor transfer Odoo-nya, lalu klik <b>Simpan Validasi</b> — baris yang tervalidasi otomatis hilang dari daftar Pending.</p>
+          <p class="small text-muted mb-2">Daftar histori <strong>perubahan Grade</strong> (downgrade/reject/dsb, dengan atau tanpa pindah lokasi) dari <strong>Movement_History</strong> yang belum dicocokkan ke Odoo — transfer lokasi biasa yang gradenya tetap sama TIDAK ditampilkan. Centang baris yang sudah dipindahkan di Odoo, isi 1 nomor transfer Odoo untuk semua baris tercentang, lalu klik <b>Simpan Validasi</b> — baris yang tervalidasi otomatis hilang dari daftar Pending. Sumber data tetap dibaca langsung dari Movement_History (read-only), tidak menambah/mengubah baris apa pun di sana.</p>
 
           <ul class="nav nav-tabs nav-tabs-sm mb-2" style="font-size:12px;">
             <li class="nav-item">
@@ -6696,15 +6696,19 @@ async function eksekusiAddSkuOutbound() {
           <!-- TAB: PENDING -->
           <div id="oov-tab-pending">
             <div class="row g-2 mb-2">
-              <div class="col-8">
+              <div class="col-12 col-md-5">
                 <input type="text" id="oov-filter" class="form-control form-control-sm" placeholder="Cari SKU / No Referensi / Lokasi..." oninput="oovRenderPending()">
               </div>
-              <div class="col-4">
+              <div class="col-7 col-md-4">
+                <input type="text" id="oov-no-odoo-global" class="form-control form-control-sm fw-bold" placeholder="No. Transfer Odoo (untuk semua baris tercentang)">
+              </div>
+              <div class="col-5 col-md-3">
                 <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background:#6A1B9A;" onclick="oovSubmitBatch()">
                   <i class="fa-solid fa-floppy-disk me-1"></i>Simpan Validasi
                 </button>
               </div>
             </div>
+            <p class="small text-muted mb-2"><i class="fa-solid fa-circle-info me-1"></i>Centang beberapa SKU sekaligus (bisa beda-beda SKU) lalu isi <b>1 nomor Odoo</b> di atas kalau memang 1 dokumen transfer Odoo mencakup semuanya.</p>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
               <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
                 <thead class="table-light" style="position:sticky; top:0; z-index:1;">
@@ -6716,11 +6720,10 @@ async function eksekusiAddSkuOutbound() {
                     <th>SKU</th>
                     <th>Grade</th>
                     <th style="text-align:right;">Qty</th>
-                    <th style="min-width:150px;">No. Odoo</th>
                   </tr>
                 </thead>
                 <tbody id="oov-tbody-pending">
-                  <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+                  <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -16242,7 +16245,8 @@ async function eksekusiCancelOutbound() {
     let OOV_RIWAYAT_SUDAH_DIMUAT = false;
     const OOV_TIPE_LABEL = {
       TRANSFER_LOKASI_FG: 'Transfer Lokasi',
-      TRANSFER_DOWNGRADE_FG: 'Transfer/Downgrade Grade'
+      TRANSFER_DOWNGRADE_FG: 'Transfer/Downgrade Grade',
+      DOWNGRADE_GRADE_FG: 'Downgrade Grade'
     };
 
     function oovSwitchTab(tab) {
@@ -16291,7 +16295,7 @@ async function eksekusiCancelOutbound() {
       if (countBadge) countBadge.textContent = OOV_PENDING_DATA.length;
 
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada transfer yang menunggu validasi.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada transfer perubahan grade yang menunggu validasi.</td></tr>';
         return;
       }
 
@@ -16312,9 +16316,6 @@ async function eksekusiCancelOutbound() {
           <td class="fw-bold">${skuTxt}</td>
           <td>${escapeHtmlAttr(r.grade_asal || '-')}</td>
           <td class="text-end">${(-Math.abs(qty)).toLocaleString('id-ID')}</td>
-          <td rowspan="2" class="align-middle">
-            <input type="text" class="form-control form-control-sm oov-input-odoo" data-id="${idAttr}" placeholder="No. Transfer Odoo">
-          </td>
         </tr>
         <tr>
           <td class="text-nowrap">${waktu}</td>
@@ -16331,52 +16332,39 @@ async function eksekusiCancelOutbound() {
       document.querySelectorAll('.oov-row-check').forEach(cb => { cb.checked = masterEl.checked; });
     }
 
-    // Simpan validasi untuk semua baris yang DICENTANG & sudah diisi No. Odoo.
-    // Dikirim satu-per-satu (bukan bulk RPC) supaya kalau 1 gagal, sisanya tetap tersimpan
-    // dan operator tahu persis baris mana yang gagal.
+    // Simpan validasi untuk semua baris yang DICENTANG, pakai SATU nomor Odoo yang diisi
+    // di 1 kolom saja (mendukung 1 dokumen transfer Odoo yang mencakup banyak SKU sekaligus).
     async function oovSubmitBatch() {
       const alertEl = document.getElementById('oov-alert');
+      const noOdooEl = document.getElementById('oov-no-odoo-global');
+      const noOdoo = (noOdooEl.value || '').trim();
       const checked = Array.from(document.querySelectorAll('.oov-row-check:checked'));
+
       if (!checked.length) {
         alertEl.innerHTML = '<div class="alert alert-warning small py-2">Centang minimal 1 baris transfer yang mau divalidasi.</div>';
         return;
       }
-
-      const tugas = checked.map(cb => {
-        const id = cb.dataset.id;
-        const inputEl = document.querySelector(`.oov-input-odoo[data-id="${id}"]`);
-        const noOdoo = (inputEl ? inputEl.value : '').trim();
-        return { id, noOdoo };
-      });
-
-      const kosong = tugas.filter(t => !t.noOdoo);
-      if (kosong.length) {
-        alertEl.innerHTML = `<div class="alert alert-warning small py-2">${kosong.length} baris yang dicentang belum diisi No. Odoo. Isi dulu semua No. Odoo sebelum menyimpan.</div>`;
+      if (!noOdoo) {
+        alertEl.innerHTML = '<div class="alert alert-warning small py-2">Isi dulu No. Transfer Odoo (berlaku untuk semua baris yang dicentang).</div>';
+        noOdooEl.focus();
         return;
       }
 
-      alertEl.innerHTML = `<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan ${tugas.length} validasi...</div>`;
+      const ids = [...new Set(checked.map(cb => Number(cb.dataset.id)))];
+      alertEl.innerHTML = `<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan ${ids.length} transfer dengan No. Odoo "${escapeHtmlAttr(noOdoo)}"...</div>`;
 
-      let sukses = 0;
-      const gagal = [];
-      for (const t of tugas) {
-        try {
-          await _callRpc('submit_odoo_validasi', {
-            p_session_token: _sessTok(),
-            p_movement_history_id: Number(t.id),
-            p_no_odoo: t.noOdoo
-          });
-          sukses++;
-        } catch (err) {
-          gagal.push(`#${t.id}: ${err.message}`);
-        }
+      try {
+        const res = await _callRpc('submit_odoo_validasi_batch', {
+          p_session_token: _sessTok(),
+          p_movement_history_ids: ids,
+          p_no_odoo: noOdoo
+        });
+        alertEl.innerHTML = `<div class="alert alert-success small py-2"><i class="fa-solid fa-check me-1"></i>${(res && res.count) || ids.length} transfer berhasil divalidasi dengan No. Odoo ${escapeHtmlAttr(noOdoo)}.</div>`;
+        noOdooEl.value = '';
+      } catch (err) {
+        alertEl.innerHTML = `<div class="alert alert-danger small py-2">Gagal menyimpan: ${escapeHtmlAttr(err.message)}</div>`;
       }
 
-      if (gagal.length) {
-        alertEl.innerHTML = `<div class="alert alert-warning small py-2">${sukses} validasi tersimpan, ${gagal.length} gagal:<br>${gagal.map(escapeHtmlAttr).join('<br>')}</div>`;
-      } else {
-        alertEl.innerHTML = `<div class="alert alert-success small py-2"><i class="fa-solid fa-check me-1"></i>${sukses} validasi berhasil disimpan.</div>`;
-      }
       OOV_RIWAYAT_SUDAH_DIMUAT = false; // paksa reload riwayat berikutnya kali tab dibuka
       loadOdooValidasiPending();
     }
