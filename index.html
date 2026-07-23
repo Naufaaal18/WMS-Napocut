@@ -1420,7 +1420,7 @@ window.fetch = function (url, options) {
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0d6efd">
+  <meta name="theme-color" content="#4A3F2E">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Napocut">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1502,7 +1502,7 @@ window.fetch = function (url, options) {
       min-height: 100vh;
     }
     .home-header {
-      background: linear-gradient(135deg, #2C271F, #4A3F2E);
+      background: linear-gradient(135deg, #423A2C, #5C4F3A);
       color: #F7F3EA;
       padding: 14px 16px 12px;
       display: flex;
@@ -2194,7 +2194,7 @@ window.fetch = function (url, options) {
       gap: 6px;
       margin-bottom: 12px;
     }
-    .whdash-donut-box { text-align: center; }
+    .whdash-donut-box { text-align: center; display: flex; flex-direction: column; align-items: center; }
     .whdash-donut-box canvas { max-width: 100%; }
     .whdash-donut-wrap { position: relative; width: 90px; height: 90px; margin: 0 auto; }
     .whdash-donut-center {
@@ -2203,8 +2203,8 @@ window.fetch = function (url, options) {
       font-size: 15px; font-weight: 700;
     }
     .whdash-donut-title { font-size: 10.5px; color: var(--qcx-text-dim, #786D5A); margin-bottom: 2px; }
-    .whdash-donut-legend { margin-top: 4px; font-size: 8.5px; text-align: left; color: var(--qcx-text-dim, #786D5A); }
-    .whdash-donut-legend div { display: flex; align-items: center; gap: 4px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .whdash-donut-legend { margin-top: 4px; font-size: 8.5px; text-align: center; color: var(--qcx-text-dim, #786D5A); width: 100%; }
+    .whdash-donut-legend div { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .whdash-legend-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
 
     .whdash-mid-row {
@@ -6951,6 +6951,29 @@ async function eksekusiAddSkuOutbound() {
     </div>
   </div>
 
+  <!-- MODAL: PROMPT KUSTOM (PENGGANTI window.prompt() BAWAAN BROWSER) -->
+  <!-- Sama seperti modal-custom-confirm: menghindari bungkus browser
+       "An embedded page at ... says" yang membingungkan user. Menampilkan 1 input teks,
+       lalu tombol OK/Batal mengembalikan value-nya (atau null jika dibatalkan). -->
+  <div class="modal fade" id="modal-custom-prompt" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold mb-0" id="custom-prompt-title"><i class="fa-solid fa-circle-question me-2 text-warning"></i>Konfirmasi</h6>
+          <button type="button" class="btn-close" onclick="customPromptResolve(null)"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="mb-2 small" id="custom-prompt-message" style="white-space: pre-line;"></p>
+          <input type="text" class="form-control form-control-sm fw-bold" id="custom-prompt-input">
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="customPromptResolve(null)">Batal</button>
+          <button type="button" class="btn btn-primary btn-sm fw-bold" id="custom-prompt-ok-btn" onclick="customPromptResolve(document.getElementById('custom-prompt-input').value)">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: ALERT KUSTOM (PENGGANTI window.customAlert() BAWAAN BROWSER) -->
   <!-- Sama seperti modal-custom-confirm: menghindari bungkus browser
        "An embedded page at ...script.googleusercontent.com says" yang membingungkan user.
@@ -7046,6 +7069,47 @@ async function eksekusiAddSkuOutbound() {
       if (_customConfirmResolver) {
         _customConfirmResolver(hasil);
         _customConfirmResolver = null;
+      }
+    }
+
+    // =========================================================================
+    // PROMPT KUSTOM (PENGGANTI window.prompt() BAWAAN BROWSER)
+    // window.prompt() bawaan menampilkan wrapper "An embedded page at ... says"
+    // yang membingungkan user karena menampilkan URL internal. customPrompt()
+    // menampilkan pesan & input yang SAMA persis, tapi dengan modal bergaya
+    // aplikasi sendiri (tanpa wrapper/URL apapun).
+    // Dipakai dengan: const val = await customPrompt("Pesan...", "nilai default");
+    // Mengembalikan string (boleh kosong) jika OK ditekan, atau null jika dibatalkan.
+    // =========================================================================
+    let _customPromptResolver = null;
+
+    function customPrompt(message, defaultValue, title) {
+      return new Promise(resolve => {
+        _customPromptResolver = resolve;
+        document.getElementById('custom-prompt-title').innerHTML =
+          `<i class="fa-solid fa-circle-question me-2 text-warning"></i>${title || 'Konfirmasi'}`;
+        document.getElementById('custom-prompt-message').innerText = message;
+        const inputEl = document.getElementById('custom-prompt-input');
+        inputEl.value = (defaultValue === null || defaultValue === undefined) ? '' : defaultValue;
+        const modalEl = document.getElementById('modal-custom-prompt');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        setTimeout(() => { inputEl.focus(); inputEl.select(); }, 300);
+        // Tekan Enter di dalam input = sama seperti klik OK
+        inputEl.onkeydown = (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); customPromptResolve(inputEl.value); }
+        };
+      });
+    }
+
+    // Dipanggil oleh tombol OK / Batal / tombol close (X) pada modal prompt kustom
+    function customPromptResolve(hasil) {
+      const modalEl = document.getElementById('modal-custom-prompt');
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.hide();
+      if (_customPromptResolver) {
+        _customPromptResolver(hasil);
+        _customPromptResolver = null;
       }
     }
 
@@ -8994,7 +9058,7 @@ async function eksekusiAddSkuOutbound() {
       const noRequest = PC_CURRENT_REQUEST;
       if (!noRequest) return;
 
-      const inputQty = prompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
+      const inputQty = await customPrompt(`Short Pick SKU '${kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
       if (inputQty === null) return;
 
       const qtyKetemu = parseInt(inputQty);
@@ -9310,7 +9374,7 @@ async function eksekusiAddSkuOutbound() {
     }
 
     // Validasi blind count untuk Dashboard Checker: submit qty + plastik ID, lalu tampilkan label besar
-    function submitDashboardChecker() {
+    async function submitDashboardChecker() {
       const noRequest = document.getElementById('dc-req').value;
       const skuInput = document.getElementById('dc-sku');
       const kodeSku = skuInput.value.trim();
@@ -9349,6 +9413,9 @@ async function eksekusiAddSkuOutbound() {
         return;
       }
       plastikInput.classList.remove('border-danger');
+
+      const konfirmasiDC = await customConfirm(`Kirim hasil checking SKU "${kodeSku}" (Qty ${qtyChecker} Pcs, Plastik ID "${plastikId}") sekarang?`);
+      if (!konfirmasiDC) return;
 
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Memvalidasi...';
@@ -10199,7 +10266,7 @@ function tutupDetailPO() {
 }
 
 // FITUR BARU (poin 5&6): tombol Validate di modal Detail PO -- minta input No SO, lalu submit.
-function validatePOReturnPrompt() {
+async function validatePOReturnPrompt() {
   if (!PO_DETAIL_TERBUKA) return;
   const po = PO_DATA_LIST.find(p => p.noPo === PO_DETAIL_TERBUKA);
   if (!po) return;
@@ -10208,9 +10275,12 @@ function validatePOReturnPrompt() {
     customAlert('PO ini masih berstatus Active. Validate SO hanya bisa dilakukan setelah PO berstatus CLOSED (barang sudah diterima penuh).');
     return;
   }
-  const noSo = prompt(`Masukkan Nomor SO untuk validasi PO Return "${po.noPo}":`, po.noSoValidasi || '');
+  const noSo = await customPrompt(`Masukkan Nomor SO untuk validasi PO Return "${po.noPo}":`, po.noSoValidasi || '');
   if (noSo === null) return; // dibatalkan
   if (!noSo.trim()) { customAlert('Nomor SO wajib diisi.'); return; }
+
+  const yakin = await customConfirm(`Validasi PO Return "${po.noPo}" dengan Nomor SO "${noSo.trim()}" sekarang?`);
+  if (!yakin) return;
 
   const btn = document.getElementById('dpo-btn-validate-return');
   btn.disabled = true;
@@ -10758,7 +10828,7 @@ function onReturnConfirmSkuChanged() {
 }
 
 // Submit Data Putaway Return ke Server
-function submitPutawayReturn(event) {
+async function submitPutawayReturn(event) {
   event.preventDefault();
   
   let poSelected = document.getElementById("pwr-nopo").value;
@@ -10802,6 +10872,9 @@ function submitPutawayReturn(event) {
     lokasiBaru: locVal,
     userLogin: DEKLARASI_USER.nama || "Operator Return"
   };
+
+  const konfirmasiPWR = await customConfirm(`Simpan Putaway Return SKU "${skuSelected}" (${qtyVal} PCS) ke Lokasi "${locVal}" sekarang?`);
+  if (!konfirmasiPWR) return;
 
   google.script.run
     .withSuccessHandler(function(response) {
@@ -10994,7 +11067,7 @@ window.addEventListener("load", function() {
   loadQCFGToValidateDropdown();
 });
 
-function submitFormQC(e) {
+async function submitFormQC(e) {
   // Mencegah form melakukan reload halaman bawaan browser
   if (e) e.preventDefault(); 
   
@@ -11040,6 +11113,9 @@ function submitFormQC(e) {
     perbaikan: perbaikan,
     petugasQc: document.getElementById("qc-petugas") ? document.getElementById("qc-petugas").value : DEKLARASI_USER.nama
   };
+
+  const konfirmasiQC = await customConfirm(`Kirim data hasil QC untuk SKU "${payload.kodeSku}" (Total ${totalQCInput} PCS) sekarang?`);
+  if (!konfirmasiQC) return;
 
   // Eksekusi pengiriman data ke Backend (submitQCFG)
   google.script.run
@@ -11302,7 +11378,7 @@ function resetValidateQCForm(resetSkuJuga) {
   }
 }
 
-function submitFormValidateQC(event) {
+async function submitFormValidateQC(event) {
   if (event) event.preventDefault();
 
   let poSelected = document.getElementById("vq-nopo").value;
@@ -11337,6 +11413,9 @@ function submitFormValidateQC(event) {
     petugasValidasi: DEKLARASI_USER.nama || "Operator Gudang",
     userLogin: DEKLARASI_USER.nama || "Operator Gudang"
   };
+
+  const konfirmasiVQ = await customConfirm(`Validasi hasil hitung fisik SKU "${skuSelected}" (${totalFisik} PCS) sekarang?`);
+  if (!konfirmasiVQ) return;
 
   google.script.run
     .withSuccessHandler(function(response) {
@@ -11768,7 +11847,7 @@ function hitungOtomatisTotalRecheck() {
   if (totalInput) totalInput.value = totalAkumulasi;
 }
 
-function submitFormRecheckQC(e) {
+async function submitFormRecheckQC(e) {
   if (e) e.preventDefault();
 
   let noReqSelected = document.getElementById("rqc-noreq").value;
@@ -11824,6 +11903,9 @@ function submitFormRecheckQC(e) {
     petugasQc: DEKLARASI_USER.nama,
     userLogin: DEKLARASI_USER.nama || "Operator Gudang"
   };
+
+  const konfirmasiRQC = await customConfirm(`Kirim hasil Re-Check QC untuk SKU "${payload.kodeSku}" (Total ${totalRecheckInput} PCS) sekarang?`);
+  if (!konfirmasiRQC) return;
 
   google.script.run
     .withSuccessHandler(function(response) {
@@ -12245,7 +12327,7 @@ function onPutawayConfirmSkuChanged() {
 }
 
 // Proses submit form
-function submitPutawayFG(event) {
+async function submitPutawayFG(event) {
   event.preventDefault();
   
   let poSelected = document.getElementById("pw-nopo").value;
@@ -12282,6 +12364,9 @@ function submitPutawayFG(event) {
     lokasiBaru: locVal,
     userLogin: DEKLARASI_USER.nama || "Operator"
   };
+
+  const konfirmasiPW = await customConfirm(`Kirim data Putaway SKU "${skuSelected}" (${qtyVal} PCS) ke Lokasi "${locVal}" sekarang?`);
+  if (!konfirmasiPW) return;
 
   google.script.run
     .withSuccessHandler(function(response) {
@@ -12743,19 +12828,21 @@ async function submitInboundReceivingList() {
     return;
   }
 
-  // Konfirmasi khusus untuk baris Short Putaway (menutup paksa sisa PO SKU tersebut).
-  // FITUR BARU: pesan dibedakan untuk SKU yang Qty-nya 0 (sama sekali tidak diterima)
+  // FITUR BARU: konfirmasi Ya/Tidak SELALU ditampilkan sebelum data receiving dikirim,
+  // supaya operator benar-benar yakin sebelum eksekusi -- bukan cuma untuk baris Short Putaway.
+  // Pesan dibedakan untuk SKU yang Qty-nya 0 (sama sekali tidak diterima) pada baris Short
   // supaya operator benar-benar sadar PO akan ditutup TANPA ada barang masuk sama sekali.
+  const totalItemKirim = itemsNormal.length + itemsShort.length + itemsExtra.length;
+  let pesanKonfirmasi = `Kirim data receiving untuk ${totalItemKirim} SKU pada PO "${poSelected}" sekarang?`;
   if (itemsShort.length > 0) {
     const shortNihil = itemsShort.filter(it => it.qty === 0).map(it => it.kodeSku);
     const shortSebagian = itemsShort.filter(it => it.qty > 0).map(it => `${it.kodeSku} (${it.qty} pcs)`);
-    let pesanKonfirmasi = "PO akan ditutup paksa (Short Putaway), sisa qty dianggap TIDAK akan dikirim vendor.\n";
+    pesanKonfirmasi += "\n\nPO akan ditutup paksa (Short Putaway) untuk sebagian SKU, sisa qty dianggap TIDAK akan dikirim vendor.";
     if (shortNihil.length > 0) pesanKonfirmasi += `\nSKU TIDAK diterima sama sekali (0 pcs): ${shortNihil.join(', ')}`;
     if (shortSebagian.length > 0) pesanKonfirmasi += `\nSKU diterima sebagian: ${shortSebagian.join(', ')}`;
-    pesanKonfirmasi += "\n\nLanjutkan?";
-    const konfirmasi = await customConfirm(pesanKonfirmasi);
-    if (!konfirmasi) return;
   }
+  const konfirmasi = await customConfirm(pesanKonfirmasi);
+  if (!konfirmasi) return;
 
   const userLogin = DEKLARASI_USER.nama || "Operator Inbound";
   let pesanGabungan = [];
@@ -15457,7 +15544,7 @@ async function eksekusiCancelOutbound() {
       document.getElementById('ku-form-wrapper').style.display = 'none';
     }
 
-    function submitFormUser() {
+    async function submitFormUser() {
       const mode = document.getElementById('ku-form-mode').value;
       const username = document.getElementById('ku-username').value.trim();
       const nama = document.getElementById('ku-nama').value.trim();
@@ -15481,6 +15568,9 @@ async function eksekusiCancelOutbound() {
         ? (mode === 'tambah' ? null : '')
         : JSON.stringify(aksesTerpilih);
 
+      const konfirmasiUser = await customConfirm(`${mode === 'tambah' ? 'Tambah' : 'Perbarui'} user "${username}" sekarang?`);
+      if (!konfirmasiUser) return;
+
       alertBox.innerHTML = '<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan...</div>';
 
       const aksi = mode === 'tambah'
@@ -15498,7 +15588,7 @@ async function eksekusiCancelOutbound() {
     }
 
     async function resetPasswordUser(username) {
-      const passwordBaru = prompt(`Masukkan password baru untuk user "${username}" (minimal 6 karakter):`);
+      const passwordBaru = await customPrompt(`Masukkan password baru untuk user "${username}" (minimal 6 karakter):`);
       if (passwordBaru === null) return; // dibatalkan
       if (passwordBaru.length < 6) { customAlert('Password minimal 6 karakter. Reset dibatalkan.', 'danger'); return; }
 
@@ -15942,6 +16032,9 @@ async function eksekusiCancelOutbound() {
       });
       const validator = DEKLARASI_USER.nama || "Admin";
 
+      const konfirmasiAV = await customConfirm(`Validasi ${items.length} baris hasil QC dengan Nomor SO "${noSo}" sekarang?`);
+      if (!konfirmasiAV) return;
+
       try {
         const res = await new Promise((resolve, reject) => {
           google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)
@@ -16377,7 +16470,7 @@ async function eksekusiCancelOutbound() {
       const qtyDiLokasi = item.qtyDiLokasi;
       const picker = (DEKLARASI_USER && DEKLARASI_USER.nama) || 'Operator Picking';
 
-      const inputQty = prompt(`Short Pick SKU '${item.kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
+      const inputQty = await customPrompt(`Short Pick SKU '${item.kodeSku}' dari Lokasi '${lokasi}'\n(Qty seharusnya di lokasi ini: ${qtyDiLokasi} Pcs)\n\nMasukkan Qty yang BENAR-BENAR ketemu secara fisik di lokasi ini (boleh 0 jika barang sama sekali tidak ada, harus kurang dari ${qtyDiLokasi}):`);
       if (inputQty === null) return;
 
       const qtyKetemu = parseInt(inputQty);
@@ -16608,6 +16701,9 @@ async function eksekusiCancelOutbound() {
         showAVAlert2('swa-alert', `Qty (${qty} Pcs) melebihi sisa stok di Staging QC Swarovski (${maxQty} Pcs).`, 'danger');
         return;
       }
+
+      const konfirmasiSwa = await customConfirm(`Konversi SKU "${kodeSkuAsal}" menjadi "${kodeSkuBaru}" (Grade ${grade}, Qty ${qty} Pcs) sekarang?`);
+      if (!konfirmasiSwa) return;
 
       try {
         const res = await new Promise((resolve, reject) => {
