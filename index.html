@@ -95,15 +95,21 @@ const ENDPOINTS = {
     p_extra_sku: !!data.extraSku
   }),
 
+  // PERBAIKAN KEAMANAN: submit_qc_fg sekarang WAJIB session_token & mengecek akses
+  // QC_FINISHGOOD di server.
   submitQCFG: (data) => _callRpc('submit_qc_fg', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_kode_sku: data.kodeSku, p_no_po: data.noPo, p_total_qc: Number(data.totalQC),
     p_bagus: Number(data.bagus || 0), p_minor: Number(data.minor || 0), p_reject: Number(data.reject || 0),
     p_kotor: Number(data.kotor || 0), p_perbaikan: Number(data.perbaikan || 0), p_petugas_qc: data.petugasQc
   }),
 
+  // PERBAIKAN KEAMANAN: submit_validate_qc sekarang WAJIB session_token & mengecek
+  // akses OPS_VALIDATE di server (p_user_login lama sudah dihapus dari signature DB).
   submitValidateQC: (data) => _callRpc('submit_validate_qc', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_po: data.noPo, p_kode_sku: data.kodeSku, p_tanggal_qc: data.tanggalQc,
-    p_total_hitung_ulang: Number(data.totalHitungUlang), p_user_login: data.userLogin,
+    p_total_hitung_ulang: Number(data.totalHitungUlang),
     p_petugas_validasi: data.petugasValidasi || null, p_keterangan: data.keterangan || null
   }),
 
@@ -122,29 +128,38 @@ const ENDPOINTS = {
     p_grade_final: data.gradeFinal || data.grade
   }),
 
+  // PERBAIKAN KEAMANAN: process_picking_sku sekarang WAJIB session_token & mengecek
+  // akses CHECKING_PICKING di server.
   processPickingSKU: (data) => _callRpc('process_picking_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: data.noRequest, p_kode_sku: data.kodeSku, p_picker: data.picker,
     p_lokasi_target: data.lokasiTarget, p_short_pick: !!data.shortPick,
     p_qty_ketemu: data.qtyKetemu != null ? Number(data.qtyKetemu) : null,
-    p_override_lokasi: !!data.overrideLokasi, p_lokasi_asli_allocated: data.lokasiAsliAllocated || null,
-    p_user_login: data.picker
+    p_override_lokasi: !!data.overrideLokasi, p_lokasi_asli_allocated: data.lokasiAsliAllocated || null
   }),
 
+  // PERBAIKAN KEAMANAN: submit_outbound_request_multi sekarang WAJIB session_token &
+  // mengecek akses OUTBOUND_REQUEST di server.
   submitOutboundRequestMulti: (payload) => _callRpc('submit_outbound_request_multi', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_tanggal_request: payload.tanggalRequest, p_tipe_outbound: payload.tipeOutbound,
     p_kode_store: payload.kodeStore,
     p_items: payload.items.map(it => ({ sku: it.sku || it.kodeSku, grade: it.grade, qty: Number(it.qty || it.qtyRequest) })),
-    p_user_login: payload.userLogin,
     p_catatan: payload.catatan || null
   }),
 
+  // PERBAIKAN KEAMANAN: add_sku_to_existing_outbound_request sekarang WAJIB
+  // session_token & mengecek akses OUTBOUND_REQUEST di server.
   addSkuToExistingOutboundRequest: (payload) => _callRpc('add_sku_to_existing_outbound_request', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest,
-    p_items: payload.items.map(it => ({ sku: it.sku || it.kodeSku, grade: it.grade, qty: Number(it.qty || it.qtyRequest) })),
-    p_user_login: payload.userLogin
+    p_items: payload.items.map(it => ({ sku: it.sku || it.kodeSku, grade: it.grade, qty: Number(it.qty || it.qtyRequest) }))
   }),
 
+  // PERBAIKAN KEAMANAN: verify_checking_by_sku sekarang WAJIB session_token &
+  // mengecek akses CHECKING_PICKING di server.
   verifyCheckingBySku: (payload) => _callRpc('verify_checking_by_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_qty_checker: Number(payload.qtyChecker),
     p_plastik_id: payload.plastikId, p_checker: payload.checker
   }),
@@ -157,7 +172,12 @@ const ENDPOINTS = {
     p_no_po: noPo
   }),
 
-  cancelOutboundRequest: (noRequest, userAktif) => _callRpc('cancel_outbound_request', { p_no_request: noRequest, p_user_login: userAktif }),
+  // PERBAIKAN KEAMANAN: cancel_outbound_request sekarang WAJIB session_token &
+  // mengecek akses OUTBOUND_REQUEST di server.
+  cancelOutboundRequest: (noRequest) => _callRpc('cancel_outbound_request', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: noRequest
+  }),
 
   // PERBAIKAN KEAMANAN: sekarang WAJIB session_token & mengecek akses
   // INV_ADJUSTMENT di server (sebelumnya SIAPA SAJA bisa panggil RPC ini
@@ -182,23 +202,32 @@ const ENDPOINTS = {
   // seluruh item dalam SATU transaksi database (all-or-nothing). Kalau salah satu SKU
   // gagal, semua perubahan pada batch ini otomatis di-rollback -- tidak ada lagi data
   // yang "nyangkut" separuh jalan seperti versi sebelumnya.
+  // PERBAIKAN KEAMANAN: submit_request_qc_ulang_multi sekarang WAJIB session_token
+  // & mengecek akses di server (p_user_login lama sudah dihapus dari signature DB).
   submitRequestQCUlangMulti: (payload) => _callRpc('submit_request_qc_ulang_multi', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_items: payload.items.map(it => ({
       kodeSku: it.kodeSku, gradeAsal: it.gradeAsal, lokasiAsal: it.lokasiAsal, qtyRequest: Number(it.qtyRequest)
     })),
-    p_keterangan: payload.keterangan, p_user_login: payload.userLogin
+    p_keterangan: payload.keterangan
   }),
 
+  // PERBAIKAN KEAMANAN: submit_recheck_qc sekarang WAJIB session_token & mengecek
+  // akses QC_RECHECK di server (p_user_login lama sudah dihapus dari signature DB).
   submitRecheckQC: (data) => _callRpc('submit_recheck_qc', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request_qc: data.noRequestQC, p_kode_sku: data.kodeSku, p_total_recheck: Number(data.totalRecheck),
     p_bagus: Number(data.bagus || 0), p_minor: Number(data.minor || 0), p_reject: Number(data.reject || 0),
     p_kotor: Number(data.kotor || 0), p_perbaikan: Number(data.perbaikan || 0),
-    p_petugas_qc: data.petugasQc, p_user_login: data.userLogin, p_keterangan: data.keterangan
+    p_petugas_qc: data.petugasQc, p_keterangan: data.keterangan
   }),
 
+  // PERBAIKAN KEAMANAN: save_open_po_manual sekarang WAJIB session_token &
+  // mengecek akses MASTER_PO di server.
   saveOpenPoManual: (payload) => _callRpc('save_open_po_manual', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_po: payload.noPo, p_supplier: payload.supplier, p_kategori: payload.kategori,
-    p_tanggal: payload.tanggal, p_items: payload.items, p_user_login: payload.userLogin
+    p_tanggal: payload.tanggal, p_items: payload.items
   }),
 
   // PERBAIKAN KEAMANAN: process_putaway_return_sku sekarang WAJIB session_token &
@@ -209,16 +238,23 @@ const ENDPOINTS = {
     p_sku_scanned: data.skuScanned, p_grade: data.grade || 'Bagus'
   }),
 
+  // PERBAIKAN KEAMANAN: reallocate_stockout_sku & reallocate_semua_stockout sekarang
+  // WAJIB session_token & mengecek akses OUTBOUND_REQUEST di server.
   reAllocateStockoutSKU: (payload) => _callRpc('reallocate_stockout_sku', {
-    p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_grade: payload.grade || '', p_user_login: payload.userLogin
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_grade: payload.grade || ''
   }),
 
-  reAllocateSemuaStockout: (bulan, tahun, userLogin) => _callRpc('reallocate_semua_stockout', {
-    p_bulan: bulan, p_tahun: tahun, p_user_login: userLogin
+  reAllocateSemuaStockout: (bulan, tahun) => _callRpc('reallocate_semua_stockout', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_bulan: bulan, p_tahun: tahun
   }),
 
-  validateAdminSuratJalan: (noRequest, so, custRef, userLogin) => _callRpc('validate_admin_surat_jalan', {
-    p_no_request: noRequest, p_sales_order_number: so, p_customer_reference: custRef, p_user_login: userLogin
+  // PERBAIKAN KEAMANAN: validate_admin_surat_jalan sekarang WAJIB session_token &
+  // mengecek akses EXPORT_SURATJALAN di server.
+  validateAdminSuratJalan: (noRequest, so, custRef) => _callRpc('validate_admin_surat_jalan', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: noRequest, p_sales_order_number: so, p_customer_reference: custRef
   }),
 
   // --- FITUR BARU (Batch 7): Multi-SKU Inbound + Validasi Inbound ---
@@ -423,11 +459,16 @@ Object.assign(ENDPOINTS, {
   // --- FITUR BARU: Klaim Baris Picking (Picker klaim sendiri per baris SKU+Lokasi) ---
   // Dipakai bersama oleh Picking Outbound & Picking QC Ulang (tabel picking_claims generik,
   // di-key oleh no_request + kode_sku + lokasi, tidak terikat ke tabel request tertentu).
+  // PERBAIKAN KEAMANAN: claim_picking_row & release_picking_row sekarang WAJIB
+  // session_token & mengecek akses (CHECKING_PICKING atau CHECKING_PICKING_QCULANG)
+  // di server lewat require_akses_any.
   claimPickingRow: (payload) => _callRpc('claim_picking_row', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
     p_grade: payload.grade || null, p_picker: payload.picker
   }),
   releasePickingRow: (payload) => _callRpc('release_picking_row', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi, p_picker: payload.picker
   }),
   getPickingClaimsForRequest: async (noRequest) => {
@@ -1214,13 +1255,19 @@ Object.assign(ENDPOINTS, {
     return reqMap;
   },
 
+  // PERBAIKAN KEAMANAN: import_open_po_excel sekarang WAJIB session_token &
+  // mengecek akses MASTER_PO di server.
   importOpenPoExcel: (payload) => _callRpc('import_open_po_excel', {
-    p_rows: payload.excelRows, p_user_login: payload.userLogin || 'Operator PO'
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_rows: payload.excelRows
   }),
 
   // FITUR BARU (poin 5&6): Validate PO Return dengan input Nomor SO.
+  // PERBAIKAN KEAMANAN: validate_po_return sekarang WAJIB session_token &
+  // mengecek akses MASTER_PO di server.
   validatePoReturn: (payload) => _callRpc('validate_po_return', {
-    p_no_po: payload.noPo, p_no_so: payload.noSo, p_user_login: payload.userLogin || 'Admin'
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_po: payload.noPo, p_no_so: payload.noSo
   }),
 
   // FITUR BARU (poin 7): daftar batch penerimaan (No SO + Tanggal Terima + Qty) untuk 1 No PO
@@ -1255,8 +1302,11 @@ Object.assign(ENDPOINTS, {
     p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
   }),
 
+  // PERBAIKAN KEAMANAN: process_adjustment_stock_fg_import_excel sekarang WAJIB
+  // session_token & mengecek akses INV_ADJUSTMENT di server.
   processAdjustmentStockFGImportExcel: (payload) => _callRpc('process_adjustment_stock_fg_import_excel', {
-    p_rows: payload.rows, p_user_login: payload.userLogin || 'Operator Inventory'
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_rows: payload.rows
   }),
 
   // --- FITUR BARU: Request QC Ulang (mirip Outbound Request + Picking) ---
