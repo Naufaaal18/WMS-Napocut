@@ -58,7 +58,7 @@ const ENDPOINTS = {
 
   // FITUR BARU: DASHBOARD HOME - satu RPC agregat mengembalikan semua angka
   // KPI/Inbound/Outbound/Work/Employees yang dipakai widget dashboard di Home.
-  getDashboardHomeData: () => _callRpc('get_dashboard_home_data', {}),
+  getDashboardHomeData: () => _callRpc('get_dashboard_home_data', { p_session_token: _sessTok() }),
 
   // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
   // PERBAIKAN KEAMANAN: fungsi di database sekarang WAJIB p_session_token (bukan lagi
@@ -602,7 +602,7 @@ Object.assign(ENDPOINTS, {
   },
   // Laporan Produktivitas Picker -- agregasi jumlah baris & durasi kerja per picker, per rentang tanggal.
   getPickingProductivityReport: (tglMulai, tglSelesai) => _callRpc('get_picking_productivity_report', {
-    p_tanggal_mulai: tglMulai, p_tanggal_selesai: tglSelesai
+    p_session_token: _sessTok(), p_tanggal_mulai: tglMulai, p_tanggal_selesai: tglSelesai
   }),
 
   getLokasiRakBySkuGrade: async (kodeSku, grade) => {
@@ -1264,6 +1264,7 @@ Object.assign(ENDPOINTS, {
   // Type QC) via RPC get_data_qc_filtered, supaya tidak perlu tarik seluruh isi data_qc
   // ke browser lalu difilter manual (beda dengan getDataQCExportData di atas).
   getDataQCFiltered: (filters) => _callRpc('get_data_qc_filtered', {
+    p_session_token: _sessTok(),
     p_kode_sku: filters.kodeSku || null,
     p_petugas_qc: filters.petugasQc || null,
     p_tanggal_dari: filters.tanggalDari || null,
@@ -1271,7 +1272,7 @@ Object.assign(ENDPOINTS, {
     p_search_ref: filters.searchRef || null,
     p_status: filters.status || null
   }),
-  getDataQCFilterOptions: () => _callRpc('get_data_qc_filter_options', {}),
+  getDataQCFilterOptions: () => _callRpc('get_data_qc_filter_options', { p_session_token: _sessTok() }),
 
   getDataQCExportData: async () => {
     try {
