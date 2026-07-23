@@ -6340,6 +6340,17 @@ async function eksekusiAddSkuOutbound() {
               <datalist id="mhexp-list-user"></datalist>
             </div>
             <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Filter Grade</label>
+              <select id="mhexp-filter-grade" class="form-select form-select-sm">
+                <option value="">Semua Grade</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label small fw-bold mb-1">Filter Lokasi</label>
+              <input type="text" id="mhexp-filter-lokasi" list="mhexp-list-lokasi" class="form-control form-control-sm" placeholder="Cth: A-01-01">
+              <datalist id="mhexp-list-lokasi"></datalist>
+            </div>
+            <div class="col-6 col-md-3">
               <label class="form-label small fw-bold mb-1">Tgl Dari</label>
               <input type="date" id="mhexp-filter-tgl-dari" class="form-control form-control-sm">
             </div>
@@ -8022,8 +8033,16 @@ async function eksekusiAddSkuOutbound() {
       if (!ctx) return;
       const map = {};
       (hourlyArr || []).forEach(h => { map[h.hour] = h.count; });
+      // FITUR BARU: sumbu jam sekarang dimulai dari jam pertama proses berjalan hari ini
+      // (jam pertama yang punya data), bukan selalu dari 00:00, supaya tidak menampilkan
+      // deretan jam kosong sebelum aktivitas gudang dimulai. Berhenti di jam saat ini
+      // (jam-jam yang belum terjadi tidak perlu ditampilkan).
+      const jamSekarang = new Date().getHours();
+      const jamAktif = Object.keys(map).map(Number).filter(h => map[h] > 0);
+      const jamMulai = jamAktif.length ? Math.min(...jamAktif) : jamSekarang;
+      const jamSelesai = Math.max(jamSekarang, jamAktif.length ? Math.max(...jamAktif) : jamSekarang);
       const labels = []; const data = [];
-      for (let h = 0; h <= 23; h++) { labels.push(h + ':00'); data.push(map[h] || 0); }
+      for (let h = jamMulai; h <= jamSelesai; h++) { labels.push(h + ':00'); data.push(map[h] || 0); }
       WHDASH_CHARTS[canvasId] = new Chart(ctx, {
         type: 'line',
         data: { labels, datasets: [{
@@ -13600,22 +13619,33 @@ async function eksekusiCancelOutbound() {
         .then(res => {
           if (res && res.error) throw new Error(res.error);
           const data = res || [];
-          const setSku = new Set(), setUser = new Set(), setType = new Set();
+          const setSku = new Set(), setUser = new Set(), setType = new Set(), setGrade = new Set(), setLokasi = new Set();
           data.forEach(r => {
             if (r.sku) setSku.add(r.sku);
             if (r.user) setUser.add(r.user);
             if (r.type) setType.add(r.type);
+            if (r.grade) setGrade.add(r.grade);
+            if (r.lokasi) setLokasi.add(r.lokasi);
           });
           const listSku = document.getElementById('mhexp-list-sku');
           const listUser = document.getElementById('mhexp-list-user');
+          const listLokasi = document.getElementById('mhexp-list-lokasi');
           const selType = document.getElementById('mhexp-filter-type');
+          const selGrade = document.getElementById('mhexp-filter-grade');
           if (listSku) listSku.innerHTML = [...setSku].sort().map(s => `<option value="${s}">`).join('');
           if (listUser) listUser.innerHTML = [...setUser].sort().map(u => `<option value="${u}">`).join('');
+          if (listLokasi) listLokasi.innerHTML = [...setLokasi].sort().map(l => `<option value="${l}">`).join('');
           if (selType) {
             const valSaatIni = selType.value;
             selType.innerHTML = '<option value="">Semua Tipe Transaksi</option>' +
               [...setType].sort().map(t => `<option value="${t}">${t}</option>`).join('');
             selType.value = setType.has(valSaatIni) ? valSaatIni : "";
+          }
+          if (selGrade) {
+            const gradeSaatIni = selGrade.value;
+            selGrade.innerHTML = '<option value="">Semua Grade</option>' +
+              [...setGrade].sort().map(g => `<option value="${g}">${g}</option>`).join('');
+            selGrade.value = setGrade.has(gradeSaatIni) ? gradeSaatIni : "";
           }
         })
         .catch(() => { /* gagal diam-diam; operator tetap bisa isi filter manual & Generate */ });
@@ -13650,21 +13680,27 @@ async function eksekusiCancelOutbound() {
       const fRefRaw  = document.getElementById('mhexp-filter-ref').value.trim();
       const fType    = document.getElementById('mhexp-filter-type').value.trim();
       const fUserRaw = document.getElementById('mhexp-filter-user').value.trim();
+      // FITUR BARU: filter Grade (dropdown, match persis) & Lokasi (teks, contains).
+      const fGrade    = document.getElementById('mhexp-filter-grade').value.trim();
+      const fLokasiRaw = document.getElementById('mhexp-filter-lokasi').value.trim();
       // FITUR BARU: filter tanggal (Tgl Dari s/d Tgl Sampai), membandingkan tanggal saja
       // (bukan jam) dari kolom `timestampRaw`. Kalau salah satu/kedua dikosongkan, filter
       // itu diabaikan (dianggap tidak ada batas ke arah tsb).
       const fTglDari    = document.getElementById('mhexp-filter-tgl-dari').value.trim();
       const fTglSampai  = document.getElementById('mhexp-filter-tgl-sampai').value.trim();
 
-      const fSku  = sanitizeFilterInput(fSkuRaw);
-      const fRef  = sanitizeFilterInput(fRefRaw);
-      const fUser = sanitizeFilterInput(fUserRaw);
+      const fSku    = sanitizeFilterInput(fSkuRaw);
+      const fRef    = sanitizeFilterInput(fRefRaw);
+      const fUser   = sanitizeFilterInput(fUserRaw);
+      const fLokasi = sanitizeFilterInput(fLokasiRaw);
 
       const rows = allData.filter(r => {
         if (fSku !== "" && !(r.sku || "").toLowerCase().includes(fSku)) return false;
         if (fRef !== "" && !(r.ref || "").toLowerCase().includes(fRef)) return false;
         if (fType !== "" && r.type !== fType) return false;
         if (fUser !== "" && !(r.user || "").toLowerCase().includes(fUser)) return false;
+        if (fGrade !== "" && r.grade !== fGrade) return false;
+        if (fLokasi !== "" && !(r.lokasi || "").toLowerCase().includes(fLokasi)) return false;
         if (fTglDari || fTglSampai) {
           if (!r.timestampRaw) return false;
           const tglBaris = r.timestampRaw.slice(0, 10); // YYYY-MM-DD
@@ -13685,6 +13721,8 @@ async function eksekusiCancelOutbound() {
       bagianFilter.push(`No. Referensi: ${fRefRaw || 'Semua'}`);
       bagianFilter.push(`Tipe Transaksi: ${fType || 'Semua'}`);
       bagianFilter.push(`User: ${fUserRaw || 'Semua'}`);
+      bagianFilter.push(`Grade: ${fGrade || 'Semua'}`);
+      bagianFilter.push(`Lokasi: ${fLokasiRaw || 'Semua'}`);
       bagianFilter.push(`Tanggal: ${fTglDari || '...'} s/d ${fTglSampai || '...'}`);
       document.getElementById('mhexp-filter-info').textContent = 'Filter aktif — ' + bagianFilter.join('  |  ');
 
