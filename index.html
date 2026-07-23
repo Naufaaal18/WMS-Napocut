@@ -81,10 +81,14 @@ const ENDPOINTS = {
     p_username: username, p_password_baru: passwordBaru
   }),
 
+  // PERBAIKAN KEAMANAN: process_inbound_receiving sekarang WAJIB session_token &
+  // mengecek akses INBOUND_RECEIVING di server. Actor untuk log_movement/data_inbound
+  // diambil dari sesi, bukan lagi p_user_login (teks bebas yang bisa dipalsukan).
   processInboundReceiving: (data) => _callRpc('process_inbound_receiving', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_po: data.noPo, p_kode_sku: data.kodeSku, p_kategori: data.kategori,
     p_qty: Number(data.qty), p_lokasi_rak: data.lokasiRak || null, p_grade: data.grade || null,
-    p_short_putaway: !!data.shortPutaway, p_user_login: data.userLogin,
+    p_short_putaway: !!data.shortPutaway,
     p_nomor_odoo_receiving: data.nomorOdooReceiving || null,
     // FITUR BARU: SKU Tambahan (di luar PO) -- Qty PO tercatat 0, Qty Receiving PO mengikuti
     // qty yang diterima di sini. Lihat migration process_inbound_receiving di Supabase.
@@ -108,10 +112,13 @@ const ENDPOINTS = {
   // (opsional, default null -> RPC otomatis pakai p_grade) adalah grade yang benar-benar
   // dicatat/masuk ke Stock_FG. Kalau keduanya beda, artinya operator sedang mengoreksi
   // grade yang salah dipilih saat QC.
+  // PERBAIKAN KEAMANAN: process_putaway_sku sekarang WAJIB session_token & mengecek
+  // akses OPS_PUTAWAY di server. Actor untuk log_movement diambil dari sesi.
   processPutawaySKU: (data) => _callRpc('process_putaway_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_kode_sku: data.kodeSku, p_no_po: data.noPo, p_tanggal_qc: data.tanggalQc,
     p_lokasi_baru: data.lokasiBaru, p_grade: data.grade, p_qty: Number(data.qty),
-    p_sku_scanned: data.skuScanned, p_user_login: data.userLogin,
+    p_sku_scanned: data.skuScanned,
     p_grade_final: data.gradeFinal || data.grade
   }),
 
@@ -194,9 +201,12 @@ const ENDPOINTS = {
     p_tanggal: payload.tanggal, p_items: payload.items, p_user_login: payload.userLogin
   }),
 
+  // PERBAIKAN KEAMANAN: process_putaway_return_sku sekarang WAJIB session_token &
+  // mengecek akses OPS_PUTAWAYRETURN di server.
   processPutawayReturnSKU: (data) => _callRpc('process_putaway_return_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_kode_sku: data.kodeSku, p_no_po: data.noPo, p_lokasi_baru: data.lokasiBaru, p_qty: Number(data.qty),
-    p_sku_scanned: data.skuScanned, p_grade: data.grade || 'Bagus', p_user_login: data.userLogin
+    p_sku_scanned: data.skuScanned, p_grade: data.grade || 'Bagus'
   }),
 
   reAllocateStockoutSKU: (payload) => _callRpc('reallocate_stockout_sku', {
@@ -212,16 +222,22 @@ const ENDPOINTS = {
   }),
 
   // --- FITUR BARU (Batch 7): Multi-SKU Inbound + Validasi Inbound ---
+  // PERBAIKAN KEAMANAN: process_inbound_receiving_multi sekarang WAJIB session_token
+  // & mengecek akses INBOUND_RECEIVING di server (diteruskan ke tiap panggilan
+  // process_inbound_receiving di dalamnya).
   processInboundReceivingMulti: (payload) => _callRpc('process_inbound_receiving_multi', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_po: payload.noPo, p_kategori: payload.kategori,
     p_items: payload.items.map(it => ({ kodeSku: it.kodeSku, qty: Number(it.qty || 0), lokasiRak: it.lokasiRak || null, grade: it.grade || null })),
-    p_user_login: payload.userLogin,
     p_nomor_odoo_receiving: payload.nomorOdooReceiving || null
   }),
 
+  // PERBAIKAN KEAMANAN: submit_validasi_inbound sekarang WAJIB session_token &
+  // mengecek akses INBOUND_VALIDASI di server. Nama validator untuk pencatatan
+  // diambil dari sesi (v_actor.nama), bukan lagi p_validator yang bebas dari client.
   submitValidasiInbound: (payload) => _callRpc('submit_validasi_inbound', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_items: payload.items.map(it => ({ supplier: it.supplier, sku: it.sku, noPo: it.noPo, qtyValidasi: Number(it.qtyValidasi || 0) })),
-    p_validator: payload.validator,
     p_nomor_odoo: payload.nomorOdoo
   }),
 
@@ -1232,7 +1248,9 @@ Object.assign(ENDPOINTS, {
   },
 
   // --- Validate Admin Hasil QC (bagian dari modul Putaway) ---
-  getAdminValidateQCPending: () => _callRpc('get_admin_validate_qc_pending', {}),
+  getAdminValidateQCPending: () => _callRpc('get_admin_validate_qc_pending', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
+  }),
   submitAdminValidateQC: (payload) => _callRpc('submit_admin_validate_qc', {
     p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
   }),
@@ -1245,9 +1263,20 @@ Object.assign(ENDPOINTS, {
   submitQCUlangRequestMulti: (payload) => _callRpc('submit_qc_ulang_request_multi', {
     p_items: payload.items, p_tujuan: payload.tujuan || 'RECHECK_QC', p_keterangan: payload.keterangan || null, p_user_login: payload.userLogin
   }),
-  getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {}),
-  cancelQCUlangRequest: (noRequest, userAktif) => _callRpc('cancel_qc_ulang_request', { p_no_request: noRequest, p_user_login: userAktif }),
-  getSkuListForQCUlangPicking: (noRequest) => _callRpc('get_sku_list_for_qc_ulang_picking', { p_no_request: noRequest }),
+  getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
+  }),
+  // PERBAIKAN: 'cancel_qc_ulang_request' sudah diamankan dengan p_session_token
+  // di sisi Supabase (parameter p_user_login lama sudah tidak ada), jadi wrapper
+  // ini disesuaikan supaya tidak error saat dipanggil.
+  cancelQCUlangRequest: (noRequest) => _callRpc('cancel_qc_ulang_request', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: noRequest
+  }),
+  getSkuListForQCUlangPicking: (noRequest) => _callRpc('get_sku_list_for_qc_ulang_picking', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: noRequest
+  }),
   // FITUR BARU: Picking QC Ulang sekarang mendukung Short Pick & Override Lokasi,
   // meniru pola yang sama persis dengan processPickingSKU (Outbound Picking) di atas.
   // PENTING: fungsi RPC 'process_picking_qc_ulang_sku' di Supabase WAJIB diupdate agar
@@ -1255,6 +1284,7 @@ Object.assign(ENDPOINTS, {
   // p_lokasi_asli_allocated dengan logic yang sama seperti 'process_picking_sku'
   // (potong stok sesuai qty ketemu, sisa selisih dicatat sebagai OOS ke lokasi TEMPA).
   processPickingQCUlangSKU: (payload) => _callRpc('process_picking_qc_ulang_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest, p_kode_sku: payload.kodeSku, p_lokasi: payload.lokasi,
     p_qty_pick: payload.qtyPick != null ? Number(payload.qtyPick) : null, p_picker: payload.picker,
     p_short_pick: !!payload.shortPick,
@@ -1264,7 +1294,9 @@ Object.assign(ENDPOINTS, {
   }),
 
   // --- FITUR BARU: QC Swarovski ---
-  getStagingQCSwarovskiData: () => _callRpc('get_staging_qc_swarovski_data', {}),
+  getStagingQCSwarovskiData: () => _callRpc('get_staging_qc_swarovski_data', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
+  }),
   submitQCSwarovski: (payload) => _callRpc('submit_qc_swarovski', {
     p_no_request: payload.noRequest, p_kode_sku_asal: payload.kodeSkuAsal, p_kode_sku_baru: payload.kodeSkuBaru,
     p_grade: payload.grade, p_qty: Number(payload.qty), p_petugas_qc: payload.petugasQc, p_user_login: payload.userLogin
