@@ -5112,7 +5112,10 @@ function submitOutboundRequestAplikasi() {
   }
 }
 
-function kirimPayloadOutboundKeServer(payload) {
+async function kirimPayloadOutboundKeServer(payload) {
+  const konfirmasiOB = await customConfirm(`Proses & daftarkan Outbound Request untuk Kode Store "${payload.kodeStore}" (${payload.items.length} SKU) sekarang?`);
+  if (!konfirmasiOB) return;
+
   // Panggil fungsi backend Apps Script secara langsung
   google.script.run
     .withSuccessHandler(function(res) {
@@ -9849,7 +9852,7 @@ async function eksekusiAddSkuOutbound() {
     }
 
     // B. Fungsi Kirim Data PO Manual ke Server
-    function submitPoManual() {
+    async function submitPoManual() {
       const rows = document.querySelectorAll('#tbody-po-items tr');
       const itemsArray = [];
 
@@ -9892,6 +9895,9 @@ async function eksekusiAddSkuOutbound() {
         // sehingga tercatat sebagai default generik 'Operator PO' di Movement History.
         userLogin: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama) ? DEKLARASI_USER.nama : 'Operator PO'
       };
+
+      const konfirmasiPO = await customConfirm(`Simpan & daftarkan PO "${noPo}" (Supplier "${supplier}", ${itemsArray.length} SKU) sekarang?`);
+      if (!konfirmasiPO) return;
 
       showAlert("Mendaftarkan Open PO ke database...", "info");
       google.script.run
