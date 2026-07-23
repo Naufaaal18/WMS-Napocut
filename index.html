@@ -37,6 +37,12 @@ async function _callRpc(rpcName, params) {
   return data;
 }
 
+// PERBAIKAN KEAMANAN: helper session token untuk RPC baca-data yang wajib login
+// (menggantikan _sb.from(...) langsung yang sebelumnya bisa diakses tanpa login).
+function _sessTok() {
+  return (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '';
+}
+
 // =========================================================================
 // PETA FUNGSI: nama lama (.gs) -> logic baru (Supabase)
 // Field payload di sini SUDAH DICOCOKKAN dengan nama field asli yang dipakai
@@ -314,7 +320,55 @@ function _cocokBulanTahun(rawDate, bulan, tahun) {
 // dipaksa order by 'id' pada tabel yang tidak punya kolom itu, Supabase langsung
 // balas error 400 "column ... does not exist" dan SELURUH pemanggil fungsi ini
 // ikut gagal total (bukan cuma kurang data seperti bug limit 1000 baris).
+// PERBAIKAN KEAMANAN (2026-07-23): tabel-tabel di bawah ini SUDAH DIKUNCI (RLS
+// tidak lagi mengizinkan baca langsung tanpa login) -- baca datanya sekarang WAJIB
+// lewat RPC get_<table>_rows yang mewajibkan session_token. Map ini menghubungkan
+// nama tabel ke RPC penggantinya supaya semua pemanggil _fetchAllRows lama (yang
+// jumlahnya banyak & tersebar) TIDAK PERLU diubah satu-satu.
+const _SECURE_TABLE_RPC = {
+  stock_inbound: 'get_stock_inbound_rows',
+  qc_fg: 'get_qc_fg_rows',
+  outbound_request: 'get_outbound_request_rows',
+  picking_claims: 'get_picking_claims_rows',
+  checking: 'get_checking_rows',
+  picking: 'get_picking_rows',
+  stock_fg: 'get_stock_fg_rows',
+  open_po: 'get_open_po_rows',
+  stock_return: 'get_stock_return_rows',
+  data_qc: 'get_data_qc_rows',
+  data_inbound: 'get_data_inbound_rows',
+  movement_history: 'get_movement_history_rows',
+  qc_ulang_request: 'get_qc_ulang_request_rows',
+  master_sku: 'get_master_sku_map',
+};
+
 async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
+  const rpcName = _SECURE_TABLE_RPC[tableName];
+  if (rpcName) {
+    // Data tabel-tabel ini tidak terlalu besar (puluhan ribu baris maksimal), jadi RPC
+    // mengembalikan semua baris sekaligus (tanpa paging 1000/request) -- filter opsional
+    // yang tadinya dikerjakan di sisi query (extra) sekarang dikerjakan di JS setelah data
+    // diterima, supaya tidak perlu bikin RPC terpisah untuk tiap variasi filter.
+    let rows;
+    if (tableName === 'master_sku') {
+      const map = await _callRpc(rpcName, { p_session_token: _sessTok() });
+      rows = (map || []).map(r => ({ kode_sku: r.kodeSku, nama_product: r.namaProduct }));
+    } else {
+      rows = await _callRpc(rpcName, { p_session_token: _sessTok() });
+    }
+    if (typeof extra === 'function') {
+      // Bungkus array hasil RPC supaya method .gt/.ilike/.eq dsb (gaya query builder
+      // Supabase) yang dipakai pemanggil lama tetap "jalan" tanpa perlu ditulis ulang.
+      rows = _applyClientFilter(rows || [], extra);
+    }
+    const oc = orderCol || 'id';
+    rows = (rows || []).slice().sort((a, b) => {
+      if (a[oc] < b[oc]) return -1;
+      if (a[oc] > b[oc]) return 1;
+      return 0;
+    });
+    return rows;
+  }
   const PAGE_SIZE = 1000;
   let from = 0;
   let semua = [];
@@ -328,6 +382,35 @@ async function _fetchAllRows(tableName, selectCols, extra, orderCol) {
     from += PAGE_SIZE;
   }
   return semua;
+}
+
+// Peniru minimal query-builder Supabase (.gt/.ilike/.eq) tapi bekerja di ARRAY JS biasa,
+// dipakai supaya pemanggil _fetchAllRows lama yang mengoper fungsi "extra" (q => q.gt(...))
+// tetap berfungsi persis sama walau sumber datanya sekarang dari RPC, bukan query builder asli.
+function _applyClientFilter(rows, extra) {
+  const conditions = [];
+  const fakeBuilder = {
+    gt: (col, val) => { conditions.push(r => Number(r[col]) > Number(val)); return fakeBuilder; },
+    gte: (col, val) => { conditions.push(r => Number(r[col]) >= Number(val)); return fakeBuilder; },
+    lt: (col, val) => { conditions.push(r => Number(r[col]) < Number(val)); return fakeBuilder; },
+    lte: (col, val) => { conditions.push(r => Number(r[col]) <= Number(val)); return fakeBuilder; },
+    eq: (col, val) => { conditions.push(r => r[col] === val); return fakeBuilder; },
+    ilike: (col, val) => {
+      const pat = String(val || '').toLowerCase();
+      conditions.push(r => String(r[col] || '').toLowerCase() === pat);
+      return fakeBuilder;
+    },
+  };
+  extra(fakeBuilder);
+  return rows.filter(r => conditions.every(cond => cond(r)));
+}
+
+// PERBAIKAN KEAMANAN: pengganti _sb.from(table).select(...) langsung untuk tabel
+// yang sudah dikunci -- ambil semua baris lewat RPC get_<table>_rows (wajib login).
+async function _secureRows(tableName) {
+  const rpcName = _SECURE_TABLE_RPC[tableName];
+  if (!rpcName) throw new Error('Tabel belum terdaftar di _SECURE_TABLE_RPC: ' + tableName);
+  return await _callRpc(rpcName, { p_session_token: _sessTok() });
 }
 
 async function _getMasterSkuDescMap() {
@@ -346,34 +429,37 @@ async function _getMasterSkuDescMap() {
 
 async function _getLokasiByKodeStore(kodeStore) {
   if (!kodeStore) return null;
-  const { data, error } = await _sb.from('master_store').select('toko, alamat').eq('kode_store', kodeStore).limit(1).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? { namaToko: data.toko, alamat: data.alamat } : null;
+  // PERBAIKAN KEAMANAN: master_store sudah dikunci dari baca langsung tanpa login,
+  // sekarang wajib lewat RPC get_master_store_by_kode.
+  const data = await _callRpc('get_master_store_by_kode', { p_session_token: _sessTok(), p_kode_store: kodeStore });
+  return data ? { namaToko: data.namaToko, alamat: data.alamat } : null;
 }
 
 // Isi <datalist id="dl-master-store"> dengan seluruh Kode Store dari Master Store, supaya
 // muncul rekomendasi (autocomplete bawaan browser) saat user mengetik di field Tujuan/Kode Store
-// pada form Penerbitan Outbound Request. Dipanggil sekali saat halaman dimuat.
+// pada form Penerbitan Outbound Request.
+// PERBAIKAN KEAMANAN: master_store sudah dikunci -- RPC get_master_store_list sekarang
+// wajib session_token, jadi fungsi ini TIDAK BISA lagi dipanggil sebelum login (DOMContentLoaded
+// terlalu dini). Sekarang dipanggil dari alur setelah login berhasil (lihat pemanggilan
+// muatDaftarMasterStoreUntukAutocomplete() di bagian handler login di bawah).
 async function muatDaftarMasterStoreUntukAutocomplete() {
   const dl = document.getElementById('dl-master-store');
   if (!dl) return;
   try {
-    const { data, error } = await _sb.from('master_store').select('kode_store, toko').order('kode_store');
-    if (error) throw new Error(error.message);
+    const data = await _callRpc('get_master_store_list', { p_session_token: _sessTok() });
     dl.innerHTML = (data || []).map(r =>
-      `<option value="${r.kode_store}">${r.kode_store} — ${r.toko || ''}</option>`
+      `<option value="${r.kodeStore}">${r.kodeStore} — ${r.toko || ''}</option>`
     ).join('');
   } catch (err) {
     console.error('Gagal memuat daftar Master Store untuk autocomplete:', err.message);
   }
 }
-document.addEventListener('DOMContentLoaded', muatDaftarMasterStoreUntukAutocomplete);
 
 Object.assign(ENDPOINTS, {
 
   getStagingInboundData: async () => {
-    const { data, error } = await _sb.from('stock_inbound').select('kode_sku, ref, lokasi, qty_sisa, status_validasi').ilike('lokasi', 'staging inbound').gt('qty_sisa', 0);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('stock_inbound');
+    const data = (all || []).filter(r => (r.lokasi || '').toLowerCase() === 'staging inbound' && Number(r.qty_sisa) > 0);
     const poMap = {};
     (data || []).forEach(r => {
       if (!r.ref) return;
@@ -391,10 +477,12 @@ Object.assign(ENDPOINTS, {
   getInboundPendingValidation: async () => {
     try {
       const mapDesc = await _getMasterSkuDescMap();
-      const { data, error } = await _sb.from('stock_inbound')
-        .select('supplier, kode_sku, ref, qty, waktu, lokasi, qty_sisa, status_validasi')
-        .ilike('lokasi', 'staging inbound').gt('qty_sisa', 0).ilike('status_validasi', 'pending validasi');
-      if (error) throw new Error(error.message);
+      const all = await _secureRows('stock_inbound');
+      const data = (all || []).filter(r =>
+        (r.lokasi || '').toLowerCase() === 'staging inbound' &&
+        Number(r.qty_sisa) > 0 &&
+        (r.status_validasi || '').toLowerCase() === 'pending validasi'
+      );
       const hasil = (data || []).map(r => ({
         supplier: r.supplier, sku: r.kode_sku, noPo: r.ref, qty: r.qty, qtyBelumQC: r.qty_sisa,
         tglTerima: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '', deskripsi: mapDesc[r.kode_sku] || ''
@@ -407,9 +495,8 @@ Object.assign(ENDPOINTS, {
 
 
   getQCFGDataForPutaway: async () => {
-    const { data, error } = await _sb.from('qc_fg').select('kode_sku, ref, bagus, minor, reject, kotor, perbaikan, status, validate_by')
-      .not('status', 'ilike', 'archived');
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('qc_fg');
+    const data = (all || []).filter(r => (r.status || '').toLowerCase() !== 'archived');
     const poMap = {};
     (data || []).forEach(r => {
       if (!(r.validate_by || '').toLowerCase().startsWith('valid')) return;
@@ -426,8 +513,7 @@ Object.assign(ENDPOINTS, {
   },
 
   getQCFGDataForValidate: async () => {
-    const { data, error } = await _sb.from('qc_fg').select('kode_sku, ref, total_qc, waktu, status, validate_by');
-    if (error) throw new Error(error.message);
+    const data = await _secureRows('qc_fg');
     const poMap = {};
     (data || []).forEach(r => {
       if ((r.status || '').toLowerCase() === 'archived') return;
@@ -451,8 +537,8 @@ Object.assign(ENDPOINTS, {
   },
 
   getPickingPendingRequests: async () => {
-    const { data, error } = await _sb.from('outbound_request').select('no_request').eq('status', 'Picking Pending');
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('outbound_request');
+    const data = (all || []).filter(r => r.status === 'Picking Pending');
     return [...new Set((data || []).map(r => r.no_request))];
   },
 
@@ -473,10 +559,9 @@ Object.assign(ENDPOINTS, {
   }),
   getPickingClaimsForRequest: async (noRequest) => {
     if (!noRequest) return [];
-    const { data, error } = await _sb.from('picking_claims')
-      .select('kode_sku, lokasi, picker, claimed_at').eq('no_request', noRequest).eq('status', 'Claimed');
-    if (error) throw new Error(error.message);
-    return data || [];
+    const all = await _secureRows('picking_claims');
+    return (all || []).filter(r => r.no_request === noRequest && r.status === 'Claimed')
+      .map(r => ({ kode_sku: r.kode_sku, lokasi: r.lokasi, picker: r.picker, claimed_at: r.claimed_at }));
   },
   // FITUR BARU: Cek pemakaian Plastik ID di Dashboard Checker -- 1 Plastik ID hanya
   // boleh dipakai untuk 1 No Request. Dipakai untuk validasi real-time di depan (saat
@@ -485,9 +570,8 @@ Object.assign(ENDPOINTS, {
   checkPlastikIdTerpakai: async (plastikId, noRequestSaatIni) => {
     const pid = (plastikId || '').trim();
     if (!pid) return { terpakai: false };
-    const { data, error } = await _sb.from('checking')
-      .select('no_request').ilike('plastik_id', pid).limit(20);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('checking');
+    const data = (all || []).filter(r => (r.plastik_id || '').toLowerCase() === pid.toLowerCase()).slice(0, 20);
     const bedaRequest = (data || []).find(r => (r.no_request || '').trim().toUpperCase() !== (noRequestSaatIni || '').trim().toUpperCase());
     if (bedaRequest) return { terpakai: true, noRequestLain: bedaRequest.no_request };
     return { terpakai: false };
@@ -496,29 +580,25 @@ Object.assign(ENDPOINTS, {
   // "Anda masih punya klaim aktif di Request X" di kedua modul Picking.
   getMyActivePickingClaim: async (picker) => {
     if (!picker) return null;
-    const { data, error } = await _sb.from('picking_claims')
-      .select('no_request, kode_sku, lokasi, claimed_at').ilike('picker', picker).eq('status', 'Claimed')
-      .order('claimed_at', { ascending: false }).limit(1);
-    if (error) throw new Error(error.message);
-    return (data && data[0]) || null;
+    const all = await _secureRows('picking_claims');
+    const data = (all || [])
+      .filter(r => (r.picker || '').toLowerCase() === picker.toLowerCase() && r.status === 'Claimed')
+      .sort((a, b) => new Date(b.claimed_at) - new Date(a.claimed_at));
+    return data[0] || null;
   },
   // FITUR BARU: Dashboard Monitoring Klaim Picking (khusus SPV/Admin) -- daftar klaim yang
   // SEDANG aktif (status Claimed) di seluruh gudang, lintas picker & lintas Request.
   getActivePickingClaimsAll: async () => {
-    const { data, error } = await _sb.from('picking_claims')
-      .select('no_request, tipe_request, kode_sku, grade, lokasi, picker, claimed_at')
-      .eq('status', 'Claimed').order('claimed_at', { ascending: true });
-    if (error) throw new Error(error.message);
-    return data || [];
+    const all = await _secureRows('picking_claims');
+    return (all || []).filter(r => r.status === 'Claimed')
+      .sort((a, b) => new Date(a.claimed_at) - new Date(b.claimed_at));
   },
   // Riwayat klaim yang sudah selesai/dilepas/kedaluwarsa, buat lihat pola & durasi kerja picker.
   getPickingClaimsHistory: async (limit) => {
-    const { data, error } = await _sb.from('picking_claims')
-      .select('no_request, tipe_request, kode_sku, grade, lokasi, picker, status, claimed_at, released_at')
-      .in('status', ['Completed', 'Released', 'Expired'])
-      .order('released_at', { ascending: false }).limit(limit || 100);
-    if (error) throw new Error(error.message);
-    return data || [];
+    const all = await _secureRows('picking_claims');
+    return (all || []).filter(r => ['Completed', 'Released', 'Expired'].includes(r.status))
+      .sort((a, b) => new Date(b.released_at) - new Date(a.released_at))
+      .slice(0, limit || 100);
   },
   // Laporan Produktivitas Picker -- agregasi jumlah baris & durasi kerja per picker, per rentang tanggal.
   getPickingProductivityReport: (tglMulai, tglSelesai) => _callRpc('get_picking_productivity_report', {
@@ -541,9 +621,8 @@ Object.assign(ENDPOINTS, {
     // getLokasiAlokasiBySkuGrade yang terpisah; fungsi INI dikembalikan ke perilaku semula
     // (qty_on_hand) karena memang benar untuk kebutuhan saran Putaway.
     const LOKASI_TIDAK_BOLEH_ALLOCATE = ['TEMPA', 'STAGING QC', 'STAGING INBOUND'];
-    const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_on_hand')
-      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_on_hand', 0);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('stock_fg');
+    const data = (all || []).filter(r => r.kode_sku === kodeSku && (r.grade || '').toLowerCase() === (grade || '').toLowerCase() && Number(r.qty_on_hand) > 0);
     return (data || [])
       .filter(r => !LOKASI_TIDAK_BOLEH_ALLOCATE.includes((r.kode_lokasi || '').toString().trim().toUpperCase()))
       .map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_on_hand, id: r.id }))
@@ -571,9 +650,8 @@ Object.assign(ENDPOINTS, {
     // transit/staging internal, bukan lokasi rak simpan asli). Filter case-insensitive
     // supaya tidak lolos walau variasi penulisan di database berbeda.
     const LOKASI_TIDAK_BOLEH_ALLOCATE = ['TEMPA', 'STAGING QC', 'STAGING INBOUND'];
-    const { data, error } = await _sb.from('stock_fg').select('id, kode_lokasi, qty_available')
-      .eq('kode_sku', kodeSku).ilike('grade', grade).gt('qty_available', 0);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('stock_fg');
+    const data = (all || []).filter(r => r.kode_sku === kodeSku && (r.grade || '').toLowerCase() === (grade || '').toLowerCase() && Number(r.qty_available) > 0);
     return (data || [])
       .filter(r => !LOKASI_TIDAK_BOLEH_ALLOCATE.includes((r.kode_lokasi || '').toString().trim().toUpperCase()))
       .map(r => ({ lokasi: r.kode_lokasi, qty: r.qty_available, id: r.id }))
@@ -593,10 +671,8 @@ Object.assign(ENDPOINTS, {
 
   getSkuListForPicking: async (noRequest) => {
     if (!noRequest) return [];
-    const { data, error } = await _sb.from('outbound_request')
-      .select('kode_sku, grade, qty_allocated, qty_shortpick')
-      .eq('no_request', noRequest).eq('status', 'Picking Pending');
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('outbound_request');
+    const data = (all || []).filter(r => r.no_request === noRequest && r.status === 'Picking Pending');
 
     // PERBAIKAN BUG (2026-07-19): Kalau SKU+grade yang sama muncul di LEBIH DARI 1 baris
     // untuk request yang sama (mis. SKU ditambahkan 2x lewat "Add SKU to Existing Request"),
@@ -653,15 +729,14 @@ Object.assign(ENDPOINTS, {
   },
 
   getCheckingPendingRequests: async () => {
-    const { data, error } = await _sb.from('picking').select('no_request');
-    if (error) throw new Error(error.message);
+    const data = await _secureRows('picking');
     return [...new Set((data || []).map(r => r.no_request))];
   },
 
   getSkuListForChecking: async (noRequest) => {
     if (!noRequest) return [];
-    const { data, error } = await _sb.from('picking').select('kode_sku').eq('no_request', noRequest);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('picking');
+    const data = (all || []).filter(r => r.no_request === noRequest);
     return [...new Set((data || []).map(r => r.kode_sku))].map(sku => ({ kodeSku: sku }));
   },
 
@@ -679,11 +754,9 @@ Object.assign(ENDPOINTS, {
   // waktu & checker dari batch PALING BARU untuk info tambahannya.
   getCheckedSkuListForRequest: async (noRequest) => {
     if (!noRequest) return [];
-    const { data, error } = await _sb.from('checking')
-      .select('kode_sku, qty_checker, qty_picker, checker, plastik_id, waktu, status')
-      .eq('no_request', noRequest)
-      .order('waktu', { ascending: false });
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('checking');
+    const data = (all || []).filter(r => r.no_request === noRequest)
+      .sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
     const klopRows = (data || []).filter(r => r.status ? (r.status === 'Ready to Ship') : (r.qty_checker === r.qty_picker));
 
     const agregatMap = {}; // kode_sku -> { kodeSku, qtyChecker, qtyPicker, checker, plastikId, timestamp, jumlahBatch }
@@ -711,10 +784,10 @@ Object.assign(ENDPOINTS, {
 
   getLiveCheckerMonitor: async (jumlahBaris) => {
     const limit = (jumlahBaris && jumlahBaris > 0) ? jumlahBaris : 30;
-    const { data, error } = await _sb.from('checking')
-      .select('no_request, kode_sku, qty_picker, qty_checker, checker, waktu, plastik_id, status')
-      .order('id', { ascending: false }).limit(limit);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('checking');
+    const data = (all || [])
+      .sort((a, b) => new Date(b.waktu) - new Date(a.waktu))
+      .slice(0, limit);
     return (data || []).map(r => ({
       noRequest: r.no_request, kodeSku: r.kode_sku, qtyPicker: r.qty_picker, qtyChecker: r.qty_checker,
       checker: r.checker, plastikId: r.plastik_id, status: r.status,
@@ -886,9 +959,9 @@ Object.assign(ENDPOINTS, {
   },
 
   getOpenPODataForInbound: async () => {
-    const { data, error } = await _sb.from('open_po').select('no_po, supplier, kode_sku, qty_order, kategori, status_po, grade')
-      .gt('qty_order', 0).not('status_po', 'ilike', 'CLOSED').not('status_po', 'ilike', 'CANCEL');
-    if (error) throw new Error(error.message);
+    const allPo = await _secureRows('open_po');
+    const data = (allPo || []).filter(r => Number(r.qty_order) > 0 &&
+      (r.status_po || '').toLowerCase() !== 'closed' && (r.status_po || '').toLowerCase() !== 'cancel');
     const poMap = {};
     (data || []).forEach(r => {
       if (!r.no_po || !r.kode_sku) return;
@@ -909,8 +982,8 @@ Object.assign(ENDPOINTS, {
     // masuk Staging Return (mis. hasil temuan Return dari Toko). Dipakai supaya field
     // "Grade Simpan" di form Putaway Return OTOMATIS terisi sesuai Grade Awal-nya dan
     // TERKUNCI (operator TIDAK BISA mengganti manual -- lihat pwr-grade-display/pwr-grade).
-    const { data, error } = await _sb.from('stock_return').select('kode_sku, no_po_faktur, qty, lokasi, supplier, grade').ilike('lokasi', 'staging return').gt('qty', 0);
-    if (error) throw new Error(error.message);
+    const allSr = await _secureRows('stock_return');
+    const data = (allSr || []).filter(r => (r.lokasi || '').toLowerCase() === 'staging return' && Number(r.qty) > 0);
     const poMap = {};
     const supplierByPo = {};
     const gradeByPo = {};
@@ -928,15 +1001,12 @@ Object.assign(ENDPOINTS, {
 
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
-    // PERBAIKAN BUG (pencegahan): open_po sudah 700+ baris, mendekati limit 1000/request
-    // Supabase -- diganti ke _fetchAllRows sebelum benar-benar kena limit & datanya diam-diam
-    // terpotong (sama seperti kejadian di master_sku/movement_history/stock_fg).
-    const [fgRows, ib, rt, poRows, summaryRes] = await Promise.all([
+    const [fgRows, ibAll, rtAll, poRows, summary] = await Promise.all([
       _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
-      _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
-      _sb.from('stock_return').select('kode_sku, qty, lokasi, grade'),
+      _secureRows('stock_inbound'),
+      _secureRows('stock_return'),
       _fetchAllRows('open_po', 'no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
-      _sb.from('dashboard_stock_summary').select('sku_aktif, total_qty_available, total_qty_on_hand').single()
+      _callRpc('get_dashboard_stock_summary_secure', { p_session_token: _sessTok() })
     ]);
     const mapFG = {}; const orderFG = [];
     (fgRows || []).forEach(r => {
@@ -946,14 +1016,14 @@ Object.assign(ENDPOINTS, {
       mapFG[key].qtyOnHand += Number(r.qty_on_hand || 0);
       mapFG[key].qtyAvailable += Number(r.qty_available || 0);
     });
-    const stockInbound = (ib.data || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
-    const stockReturn = (rt.data || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
+    const stockInbound = (ibAll || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
+    const stockReturn = (rtAll || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
     const stockOpenPO = (poRows || []).filter(r => r.kode_sku && r.qty_order > 0 && (r.status_po || '').toLowerCase() === 'active')
       .map(r => ({ noPo: r.no_po, supplier: r.supplier, sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', qtyOpenPO: r.qty_order, kategori: r.kategori, tanggal: _tglDMY(r.created_date), status: r.status_po }));
-    const stockSummary = summaryRes && summaryRes.data ? {
-      skuAktif: Number(summaryRes.data.sku_aktif || 0),
-      totalQtyAvailable: Number(summaryRes.data.total_qty_available || 0),
-      totalQtyOnHand: Number(summaryRes.data.total_qty_on_hand || 0)
+    const stockSummary = summary ? {
+      skuAktif: Number(summary.sku_aktif || 0),
+      totalQtyAvailable: Number(summary.total_qty_available || 0),
+      totalQtyOnHand: Number(summary.total_qty_on_hand || 0)
     } : null;
     return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary };
   },
@@ -1080,8 +1150,8 @@ Object.assign(ENDPOINTS, {
   validasiAwalSuratJalan: async (noRequest) => {
     try {
       if (!noRequest) throw new Error('No Request tidak boleh kosong.');
-      const { data: chk, error: e1 } = await _sb.from('checking').select('kode_sku, qty_checker, status, no_so, no_reference').eq('no_request', noRequest);
-      if (e1) throw new Error(e1.message);
+      const chkAll = await _secureRows('checking');
+      const chk = (chkAll || []).filter(r => r.no_request === noRequest);
       const adaReady = (chk || []).some(r => r.status === 'Ready to Ship');
       if (!adaReady) throw new Error('No Request ini belum ada SKU yang selesai di-checking. Pastikan minimal 1 SKU sudah Ready to Ship terlebih dahulu.');
 
@@ -1093,7 +1163,8 @@ Object.assign(ENDPOINTS, {
         skuSet.add(r.kode_sku); totalQty += Number(r.qty_checker || 0);
       });
 
-      const { data: reqRow } = await _sb.from('outbound_request').select('tanggal_request, tujuan').eq('no_request', noRequest).limit(1).maybeSingle();
+      const reqAll = await _secureRows('outbound_request');
+      const reqRow = (reqAll || []).find(r => r.no_request === noRequest) || null;
       const kodeStore = reqRow ? reqRow.tujuan : '-';
       const tglRequest = reqRow ? _tglDMY(reqRow.tanggal_request) : '-';
       const lokasi = await _getLokasiByKodeStore(kodeStore);
@@ -1115,14 +1186,15 @@ Object.assign(ENDPOINTS, {
       if (!salesOrderNumber) throw new Error('Sales Order Number wajib diisi oleh Admin sebelum Surat Jalan dapat dibuat.');
       if (!customerReference) throw new Error('Customer Reference wajib diisi oleh Admin sebelum Surat Jalan dapat dibuat.');
 
-      const { data: chk, error: e1 } = await _sb.from('checking').select('kode_sku, qty_checker, plastik_id, status').eq('no_request', noRequest);
-      if (e1) throw new Error(e1.message);
+      const chkAll = await _secureRows('checking');
+      const chk = (chkAll || []).filter(r => r.no_request === noRequest);
       if (!(chk || []).some(r => r.status === 'Ready to Ship')) {
         throw new Error('No Request ini belum ada SKU yang selesai di-checking (Ready to Ship). Surat Jalan hanya bisa dibuat setelah minimal 1 SKU klop.');
       }
 
       const mapDesc = await _getMasterSkuDescMap();
-      const { data: reqRow } = await _sb.from('outbound_request').select('tanggal_request, tipe_outbound, tujuan').eq('no_request', noRequest).limit(1).maybeSingle();
+      const reqAllDsj = await _secureRows('outbound_request');
+      const reqRow = (reqAllDsj || []).find(r => r.no_request === noRequest) || null;
       const kodeStore = reqRow ? reqRow.tujuan : '-';
       const tglRequest = reqRow ? new Date(reqRow.tanggal_request).toLocaleString('id-ID') : '-';
       const wmsDate = reqRow ? _tglDMY(reqRow.tanggal_request) : '-';
@@ -1162,18 +1234,18 @@ Object.assign(ENDPOINTS, {
       // Inventory" diam-diam hanya berisi ~1000 baris pertama dari Stock_FG -- laporan yang
       // didownload TIDAK LENGKAP walau terlihat berhasil (tidak ada pesan error).
       const mapDesc = await _getMasterSkuDescMap();
-      const [fgData, ib, rt] = await Promise.all([
+      const [fgData, ibAll, rtAll] = await Promise.all([
         _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
-        _sb.from('stock_inbound').select('kode_sku, lokasi, qty_sisa'),
-        _sb.from('stock_return').select('kode_sku, qty, lokasi, grade')
+        _secureRows('stock_inbound'),
+        _secureRows('stock_return')
       ]);
       const stockFG = (fgData || []).filter(r => r.kode_sku).map(r => ({
         sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', grade: r.grade, lokasi: r.kode_lokasi,
         qtyOnHand: r.qty_on_hand, qtyAvailable: r.qty_available, status: r.status,
         lastUpdate: r.last_update ? new Date(r.last_update).toLocaleString('id-ID') : ''
       }));
-      const stockInbound = (ib.data || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
-      const stockReturn = (rt.data || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
+      const stockInbound = (ibAll || []).filter(r => r.kode_sku && r.qty_sisa > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, qtyBelumQC: r.qty_sisa }));
+      const stockReturn = (rtAll || []).filter(r => r.kode_sku && r.qty > 0).map(r => ({ sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', lokasi: r.lokasi, grade: r.grade, qty: r.qty }));
       return {
         success: true, printedAt: new Date().toLocaleString('id-ID'), stockFG, stockInbound, stockReturn,
         summary: {
@@ -1204,8 +1276,7 @@ Object.assign(ENDPOINTS, {
   getDataQCExportData: async () => {
     try {
       const mapDesc = await _getMasterSkuDescMap();
-      const { data, error } = await _sb.from('data_qc').select('no_qc, kode_sku, ref, total_qc, bagus, minor, reject, kotor, perbaikan, petugas_qc, status, waktu, waktu_validasi');
-      if (error) throw new Error(error.message);
+      const data = await _secureRows('data_qc');
       const dataQC = (data || []).filter(r => r.no_qc).map(r => ({
         noQC: r.no_qc, sku: r.kode_sku, deskripsi: mapDesc[r.kode_sku] || '', noPo: r.ref, totalQC: r.total_qc,
         bagus: r.bagus, minor: r.minor, reject: r.reject, kotor: r.kotor, perbaikan: r.perbaikan,
@@ -1244,8 +1315,8 @@ Object.assign(ENDPOINTS, {
   },
 
   getStagingQCData: async () => {
-    const { data, error } = await _sb.from('stock_inbound').select('kode_sku, ref, lokasi, qty_sisa').ilike('lokasi', 'staging qc').gt('qty_sisa', 0);
-    if (error) throw new Error(error.message);
+    const all = await _secureRows('stock_inbound');
+    const data = (all || []).filter(r => (r.lokasi || '').toLowerCase() === 'staging qc' && Number(r.qty_sisa) > 0);
     const reqMap = {};
     (data || []).forEach(r => {
       if (!r.ref) return;
@@ -1275,10 +1346,7 @@ Object.assign(ENDPOINTS, {
   // Inbound oleh Admin/SPV; Tanggal Terima = waktu baris Inbound Receiving dibuat).
   getPOReceivingBatches: async (noPo) => {
     try {
-      const { data, error } = await _sb.from('data_inbound')
-        .select('no_so, waktu, qty, status_validasi')
-        .eq('no_po', noPo).eq('kategori', 'Finish Good').order('waktu', { ascending: true });
-      if (error) throw error;
+      const data = await _callRpc('get_data_inbound_rows', { p_session_token: _sessTok(), p_no_po: noPo, p_kategori: 'Finish Good' });
       const batchMap = {};
       const urutan = [];
       (data || []).forEach(r => {
@@ -1443,12 +1511,7 @@ Object.assign(ENDPOINTS, {
   // dan menghindari query lambat kalau SKU tsb sudah punya ribuan baris histori).
   getMovementHistoryForSku: async (kodeSku) => {
     try {
-      const { data, error } = await _sb.from('movement_history')
-        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
-        .eq('kode_sku', kodeSku)
-        .order('waktu', { ascending: false })
-        .limit(300);
-      if (error) throw new Error(error.message);
+      const data = await _callRpc('get_movement_history_rows', { p_session_token: _sessTok(), p_kode_sku: kodeSku, p_limit: 300 });
       return { success: true, data: data || [] };
     } catch (err) {
       return { success: false, message: 'Gagal memuat riwayat SKU: ' + err.message };
@@ -7532,6 +7595,11 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('halaman-login').style.display = 'none';
       document.getElementById('konten-aplikasi').style.display = 'none';
 
+      // PERBAIKAN KEAMANAN: Master Store sekarang wajib login untuk dibaca (RPC
+      // get_master_store_list), jadi daftar autocomplete dimuat di sini (setelah
+      // sesi valid tersedia) -- bukan lagi di DOMContentLoaded sebelum login.
+      muatDaftarMasterStoreUntukAutocomplete();
+
       // Tampilkan halaman home, sembunyikan nav-bottom
       const halamanHome = document.getElementById('halaman-home');
       halamanHome.style.display = 'block';
@@ -7970,12 +8038,8 @@ async function eksekusiAddSkuOutbound() {
     function loadWhd2LiveMovement() {
       const area = document.getElementById('whd2-lmh-list-area');
       if (!area) return;
-      _sb.from('movement_history')
-        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
-        .order('waktu', { ascending: false })
-        .limit(WHD2_LMH_LIMIT)
-        .then(({ data, error }) => {
-          if (error) { area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(error.message)}</div>`; return; }
+      _callRpc('get_movement_history_rows', { p_session_token: _sessTok(), p_limit: WHD2_LMH_LIMIT })
+        .then((data) => {
           whd2LmhData = data || [];
           renderWhd2LiveMovement();
         })
@@ -15827,12 +15891,8 @@ async function eksekusiCancelOutbound() {
     function loadLiveMovementHistory() {
       const area = document.getElementById('lmh-list-area');
       if (!area) return;
-      _sb.from('movement_history')
-        .select('tipe, ref, kode_sku, qty, lokasi, user_login, waktu, catatan')
-        .order('waktu', { ascending: false })
-        .limit(LMH_MAX_ROWS)
-        .then(({ data, error }) => {
-          if (error) { area.innerHTML = `<div class="text-danger small text-center py-4 border rounded">Gagal memuat: ${escapeHtmlAttr(error.message)}</div>`; return; }
+      _callRpc('get_movement_history_rows', { p_session_token: _sessTok(), p_limit: LMH_MAX_ROWS })
+        .then((data) => {
           lmhDataTerakhir = data || [];
           renderLiveMovementHistory();
         })
