@@ -87,6 +87,18 @@ const ENDPOINTS = {
     p_username: username, p_password_baru: passwordBaru
   }),
 
+  // FITUR BARU: MODUL SKU MASTER - Tambah SKU Baru ke tabel master_sku.
+  // Akses ditumpangkan pada fitur MASTER_PO (server juga mengecek akses yang sama
+  // lewat require_akses(p_session_token, 'MASTER_PO') di RPC create_master_sku).
+  createMasterSku: (data) => _callRpc('create_master_sku', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_kode_sku: data.kodeSku, p_nama_product: data.namaProduct, p_display_name: data.displayName || null,
+    p_kategori: data.kategori || null, p_satuan: data.satuan || null,
+    p_harga_jual: (data.hargaJual !== undefined && data.hargaJual !== '' && data.hargaJual !== null) ? Number(data.hargaJual) : null,
+    p_nama_pos: data.namaPos || null, p_tersedia_pos: (data.tersediaPos === undefined ? true : !!data.tersediaPos),
+    p_warna: data.warna || null, p_ukuran: data.ukuran || null
+  }),
+
   // PERBAIKAN KEAMANAN: process_inbound_receiving sekarang WAJIB session_token &
   // mengecek akses INBOUND_RECEIVING di server. Actor untuk log_movement/data_inbound
   // diambil dari sesi, bukan lagi p_user_login (teks bebas yang bisa dipalsukan).
@@ -3556,6 +3568,13 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Data PO</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <!-- FITUR BARU: SUB-MODUL "SKU Master" -- form untuk menambahkan SKU baru
+             ke tabel master_sku (Supabase), lewat RPC create_master_sku. -->
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-sku-master')">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">SKU Master</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -4161,6 +4180,65 @@ window.fetch = function (url, options) {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <!-- FITUR BARU: SUB-MODUL "SKU Master" -- form untuk mendaftarkan SKU baru
+             langsung ke tabel master_sku di Supabase lewat RPC create_master_sku.
+             Disembunyikan (d-none) sampai dibuka lewat sub-modul "SKU Master" di Home. -->
+        <div id="sub-sku-master" class="d-none">
+          <div class="card p-3 mb-3 border-start border-4 border-primary">
+            <h6 class="fw-bold text-primary mb-3"><i class="fa-solid fa-tags me-2"></i>Tambah SKU Baru ke SKU Master</h6>
+            <p class="small text-muted mb-3">SKU yang ditambahkan di sini langsung tersimpan ke tabel <b>master_sku</b> dan bisa langsung dipakai di Master PO, Inbound Receiving, QC, Putaway, Picking, dsb. <b>Kode SKU</b> harus unik (belum pernah terdaftar).</p>
+            <form id="form-sku-master-baru" onsubmit="event.preventDefault(); submitSkuMasterBaru();">
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Kode SKU <span class="text-danger">*</span></label>
+                  <input type="text" id="skm-kode-sku" class="form-control form-control-sm" placeholder="Contoh: SKU-00123" required>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Nama Product <span class="text-danger">*</span></label>
+                  <input type="text" id="skm-nama-product" class="form-control form-control-sm" placeholder="Nama produk" required>
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Display Name</label>
+                  <input type="text" id="skm-display-name" class="form-control form-control-sm" placeholder="Nama tampilan (opsional)">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Kategori</label>
+                  <input type="text" id="skm-kategori" class="form-control form-control-sm" placeholder="Contoh: Finish Good">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Satuan</label>
+                  <input type="text" id="skm-satuan" class="form-control form-control-sm" placeholder="Contoh: Pcs">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Harga Jual</label>
+                  <input type="number" id="skm-harga-jual" class="form-control form-control-sm" placeholder="Contoh: 150000" min="0">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Warna</label>
+                  <input type="text" id="skm-warna" class="form-control form-control-sm" placeholder="Opsional">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Ukuran</label>
+                  <input type="text" id="skm-ukuran" class="form-control form-control-sm" placeholder="Opsional">
+                </div>
+                <div class="col-6">
+                  <label class="form-label small fw-bold mb-0">Nama di POS</label>
+                  <input type="text" id="skm-nama-pos" class="form-control form-control-sm" placeholder="Opsional">
+                </div>
+                <div class="col-6 d-flex align-items-end">
+                  <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="skm-tersedia-pos" checked>
+                    <label class="form-check-label small fw-bold" for="skm-tersedia-pos">Tersedia di POS</label>
+                  </div>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm w-100 fw-bold">
+                <i class="fa-solid fa-plus me-1"></i>Simpan SKU Baru
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -8648,7 +8726,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return', 'sub-admin-validate-qc'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound'],
           'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory', 'sub-odoo-validasi'],
-          'modul-openpo': ['sub-po-buat', 'sub-po-data']
+          'modul-openpo': ['sub-po-buat', 'sub-po-data', 'sub-sku-master']
         };
         const daftarSub = mapSubCards[modulId];
         if (daftarSub) {
@@ -10371,6 +10449,45 @@ async function eksekusiAddSkuOutbound() {
         })
         .withFailureHandler(err => showAlert("🚨 Gagal membuat PO: " + err.message, "danger"))
         .saveOpenPoManual(payload);
+    }
+
+    // FITUR BARU: MODUL SKU MASTER - submit form Tambah SKU Baru ke tabel master_sku
+    // (Supabase) lewat RPC create_master_sku. Mengikuti gaya shim google.script.run
+    // yang sudah dipakai fungsi-fungsi lama lainnya di file ini.
+    async function submitSkuMasterBaru() {
+      const kodeSku = document.getElementById('skm-kode-sku').value.trim();
+      const namaProduct = document.getElementById('skm-nama-product').value.trim();
+
+      if (!kodeSku || !namaProduct) {
+        showAlert("Kode SKU dan Nama Product wajib diisi.", "warning");
+        return;
+      }
+
+      const payload = {
+        kodeSku: kodeSku,
+        namaProduct: namaProduct,
+        displayName: document.getElementById('skm-display-name').value.trim(),
+        kategori: document.getElementById('skm-kategori').value.trim(),
+        satuan: document.getElementById('skm-satuan').value.trim(),
+        hargaJual: document.getElementById('skm-harga-jual').value,
+        warna: document.getElementById('skm-warna').value.trim(),
+        ukuran: document.getElementById('skm-ukuran').value.trim(),
+        namaPos: document.getElementById('skm-nama-pos').value.trim(),
+        tersediaPos: document.getElementById('skm-tersedia-pos').checked
+      };
+
+      const konfirmasiSku = await customConfirm(`Simpan SKU baru "${kodeSku}" (${namaProduct}) ke SKU Master sekarang?`);
+      if (!konfirmasiSku) return;
+
+      showAlert("Menyimpan SKU baru ke database...", "info");
+      google.script.run
+        .withSuccessHandler(res => {
+          showAlert(`SKU "${kodeSku}" berhasil ditambahkan ke SKU Master.`, "success");
+          document.getElementById('form-sku-master-baru').reset();
+          document.getElementById('skm-tersedia-pos').checked = true;
+        })
+        .withFailureHandler(err => showAlert("🚨 Gagal menambahkan SKU: " + err.message, "danger"))
+        .createMasterSku(payload);
     }
 
     // C. Fungsi Pemroses File Excel (Mengubah File Menjadi Array JSON)
