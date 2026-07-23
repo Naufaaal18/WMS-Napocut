@@ -1299,7 +1299,8 @@ Object.assign(ENDPOINTS, {
     p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
   }),
   submitAdminValidateQC: (payload) => _callRpc('submit_admin_validate_qc', {
-    p_items: payload.items, p_no_so: payload.noSo, p_validator: payload.validator
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_items: payload.items, p_no_so: payload.noSo
   }),
 
   // PERBAIKAN KEAMANAN: process_adjustment_stock_fg_import_excel sekarang WAJIB
@@ -1311,7 +1312,8 @@ Object.assign(ENDPOINTS, {
 
   // --- FITUR BARU: Request QC Ulang (mirip Outbound Request + Picking) ---
   submitQCUlangRequestMulti: (payload) => _callRpc('submit_qc_ulang_request_multi', {
-    p_items: payload.items, p_tujuan: payload.tujuan || 'RECHECK_QC', p_keterangan: payload.keterangan || null, p_user_login: payload.userLogin
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_items: payload.items, p_tujuan: payload.tujuan || 'RECHECK_QC', p_keterangan: payload.keterangan || null
   }),
   getQCUlangRequestPending: () => _callRpc('get_qc_ulang_request_pending', {
     p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
@@ -1347,9 +1349,13 @@ Object.assign(ENDPOINTS, {
   getStagingQCSwarovskiData: () => _callRpc('get_staging_qc_swarovski_data', {
     p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
   }),
+  // PERBAIKAN KEAMANAN: submit_qc_swarovski sekarang WAJIB session_token &
+  // mengecek akses QC_SWAROVSKI di server (p_user_login lama sudah dihapus
+  // dari signature DB).
   submitQCSwarovski: (payload) => _callRpc('submit_qc_swarovski', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_no_request: payload.noRequest, p_kode_sku_asal: payload.kodeSkuAsal, p_kode_sku_baru: payload.kodeSkuBaru,
-    p_grade: payload.grade, p_qty: Number(payload.qty), p_petugas_qc: payload.petugasQc, p_user_login: payload.userLogin
+    p_grade: payload.grade, p_qty: Number(payload.qty), p_petugas_qc: payload.petugasQc
   }),
 
   // FITUR BARU: SUB-MODUL "Data PO" -- daftar semua Purchase Order yang sudah pernah
