@@ -3769,6 +3769,11 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">Movement History (Audit Trail)</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <div class="sub-module-row" id="home-subrow-odoo-validasi" onclick="bukaModulDariHome('tab-livemovement', 'modul-livemovement', 'sub-odoo-validasi')">
+          <span class="sub-dot dot-livemovement"></span>
+          <span class="sub-module-name">Validasi Transfer ke Odoo</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -6661,6 +6666,95 @@ async function eksekusiAddSkuOutbound() {
       </div>
       <!-- ===== AKHIR SUB EXPORT MOVEMENT HISTORY (dipindah) ===== -->
 
+      <!-- ===== SUB BARU: VALIDASI TRANSFER KE ODOO. Daftar transfer lokasi/grade
+           (TRANSFER_LOKASI_FG & TRANSFER_DOWNGRADE_FG) yang BELUM dicocokkan dengan
+           nomor transfer di Odoo. Centang + isi nomor Odoo per baris -> baris otomatis
+           hilang dari daftar Pending (pindah ke tab Riwayat Tervalidasi). ===== -->
+      <div id="sub-odoo-validasi">
+        <div class="card p-3 mb-3 border-start border-4" style="border-color:#6A1B9A!important;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0" style="color:#6A1B9A;"><i class="fa-solid fa-clipboard-check me-2"></i>Validasi Transfer ke Odoo</h6>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadOdooValidasiPending()" title="Muat Ulang">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
+          <p class="small text-muted mb-2">Daftar transfer lokasi &amp; downgrade grade dari <strong>Movement_History</strong> yang belum dicocokkan ke Odoo. Centang baris yang sudah dipindahkan di Odoo, isi nomor transfer Odoo-nya, lalu klik <b>Simpan Validasi</b> — baris yang tervalidasi otomatis hilang dari daftar Pending.</p>
+
+          <ul class="nav nav-tabs nav-tabs-sm mb-2" style="font-size:12px;">
+            <li class="nav-item">
+              <button type="button" class="nav-link active" id="oov-tab-btn-pending" onclick="oovSwitchTab('pending')">
+                Pending <span class="badge bg-danger ms-1" id="oov-pending-count">0</span>
+              </button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" id="oov-tab-btn-riwayat" onclick="oovSwitchTab('riwayat')">
+                Riwayat Tervalidasi
+              </button>
+            </li>
+          </ul>
+
+          <!-- TAB: PENDING -->
+          <div id="oov-tab-pending">
+            <div class="row g-2 mb-2">
+              <div class="col-8">
+                <input type="text" id="oov-filter" class="form-control form-control-sm" placeholder="Cari SKU / No Referensi / Lokasi..." oninput="oovRenderPending()">
+              </div>
+              <div class="col-4">
+                <button type="button" class="btn btn-sm fw-bold w-100 text-white" style="background:#6A1B9A;" onclick="oovSubmitBatch()">
+                  <i class="fa-solid fa-floppy-disk me-1"></i>Simpan Validasi
+                </button>
+              </div>
+            </div>
+            <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
+              <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
+                <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                  <tr>
+                    <th style="width:28px;"><input type="checkbox" id="oov-checkall" onchange="oovToggleAll(this)"></th>
+                    <th>Tanggal</th>
+                    <th>Tipe Riwayat</th>
+                    <th>No. Referensi</th>
+                    <th>SKU</th>
+                    <th>Grade</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th style="min-width:150px;">No. Odoo</th>
+                  </tr>
+                </thead>
+                <tbody id="oov-tbody-pending">
+                  <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB: RIWAYAT TERVALIDASI -->
+          <div id="oov-tab-riwayat" style="display:none;">
+            <input type="text" id="oov-filter-riwayat" class="form-control form-control-sm mb-2" placeholder="Cari SKU / No Referensi / No Odoo..." oninput="oovRenderRiwayat()">
+            <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
+              <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
+                <thead class="table-light" style="position:sticky; top:0; z-index:1;">
+                  <tr>
+                    <th>Tanggal Transfer</th>
+                    <th>Tipe Riwayat</th>
+                    <th>No. Referensi</th>
+                    <th>SKU</th>
+                    <th>Grade</th>
+                    <th style="text-align:right;">Qty</th>
+                    <th>No. Odoo</th>
+                    <th>Divalidasi</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="oov-tbody-riwayat">
+                  <tr><td colspan="9" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="oov-alert" class="mt-2"></div>
+      </div>
+      <!-- ===== AKHIR SUB VALIDASI TRANSFER KE ODOO ===== -->
+
     </div>
 
     <!-- ===== MODUL BARU: KELOLA USER (khusus Administrator) ===== -->
@@ -7626,6 +7720,10 @@ async function eksekusiAddSkuOutbound() {
       DASHBOARD_OBIB:       { grup: 'home-group-outbound',     tab: 'tab-dashob',       subrow: 'home-subrow-dashob-outbound' },
       EXPORT_SURATJALAN:    { grup: 'home-group-checking',     tab: 'tab-checking',     subrow: 'home-subrow-export-suratjalan', subcard: 'sub-export-suratjalan' },
       EXPORT_MOVHISTORY:    { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-export-movhistory', subcard: 'sub-export-movhistory' },
+      // FITUR BARU: Validasi Transfer ke Odoo -- list transfer lokasi/grade (TRANSFER_LOKASI_FG
+      // & TRANSFER_DOWNGRADE_FG) yang BELUM dicocokkan dengan nomor transfer di Odoo. Operator
+      // centang & isi nomor Odoo per baris, baris otomatis hilang dari daftar pending setelah tersimpan.
+      ODOO_VALIDASI_TRANSFER: { grup: 'home-group-livemovement', tab: 'tab-livemovement', subrow: 'home-subrow-odoo-validasi', subcard: 'sub-odoo-validasi' },
       KELOLA_USER:          { grup: 'home-group-kelolauser',   tab: 'tab-kelolauser' },
       CHECKING_PICKING_QCULANG: { grup: 'home-group-checking', tab: 'tab-checking',     subrow: 'home-sub-picking-qculang-row',  subcard: 'sub-picking-qc-ulang' }
     };
@@ -7658,7 +7756,7 @@ async function eksekusiAddSkuOutbound() {
       'Marketing':            ['INV_DASHBOARD'],
       'Inventory Controller': ['INBOUND_RECEIVING', 'OPS_PUTAWAYRETURN', 'CHECKING_PICKING', 'CHECKING_PICKING_QCULANG',
                                 'INV_DASHBOARD', 'INV_ADJUSTMENT', 'INV_TRANSFER', 'EXPORT_MOVHISTORY', 'LIVE_MOVEMENT',
-                                'CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR']
+                                'CHECKING_DASHBOARD', 'CHECKING_LIVEMONITOR', 'ODOO_VALIDASI_TRANSFER']
     };
     // "Checker" sengaja TIDAK dimasukkan ke RBAC_PER_ROLE (perilakunya di-hardcode
     // terpisah di inisialisasiAplikasi) -- tapi tetap disertakan di sini sebagai
@@ -7694,6 +7792,7 @@ async function eksekusiAddSkuOutbound() {
       DASHBOARD_OBIB:            { grup: 'Outbound',          label: 'Data Outbound Request' },
       EXPORT_SURATJALAN:         { grup: 'Checking',          label: 'Create Surat Jalan' },
       EXPORT_MOVHISTORY:         { grup: 'Live Movement',     label: 'Export Movement History (Audit Trail)' },
+      ODOO_VALIDASI_TRANSFER:    { grup: 'Live Movement',     label: 'Validasi Transfer ke Odoo' },
       KELOLA_USER:               { grup: 'Kelola User',       label: 'Kelola User (khusus Administrator)' }
     };
     const RBAC_URUTAN_GRUP = ['Inbound', 'Open PO', 'QC', 'Outbound', 'Putaway', 'Checking', 'Inventory',
@@ -7766,6 +7865,9 @@ async function eksekusiAddSkuOutbound() {
       document.getElementById('home-subrow-export-movhistory').style.display = 'none';
       document.getElementById('sub-livemovement-live').classList.add('d-none');
       document.getElementById('sub-export-movhistory').classList.add('d-none');
+      // FITUR BARU: Validasi Transfer ke Odoo -- sub ke-3 di modul Live Movement.
+      document.getElementById('home-subrow-odoo-validasi').style.display = 'none';
+      document.getElementById('sub-odoo-validasi').classList.add('d-none');
 
       // Sembunyikan dulu sub-baris & sub-card Inbound baru (Validasi Inbound)
       // yang bisa dibatasi per-role. Validasi Inbound HANYA untuk Admin/SPV/Manager.
@@ -8535,7 +8637,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-qc': ['sub-qc-finishgood', 'sub-request-qc-ulang', 'sub-request-qc-ulang-v2', 'sub-recheck-qc', 'sub-qc-swarovski', 'sub-qc-datalist'],
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return', 'sub-admin-validate-qc'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound'],
-          'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory'],
+          'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory', 'sub-odoo-validasi'],
           'modul-openpo': ['sub-po-buat', 'sub-po-data']
         };
         const daftarSub = mapSubCards[modulId];
@@ -8696,7 +8798,8 @@ async function eksekusiAddSkuOutbound() {
         ],
         'modul-livemovement' : [
           { fn: startLiveMovementPolling,        fitur: 'LIVE_MOVEMENT' },
-          { fn: preloadMovementHistoryFilters,   fitur: 'EXPORT_MOVHISTORY' }
+          { fn: preloadMovementHistoryFilters,   fitur: 'EXPORT_MOVHISTORY' },
+          { fn: loadOdooValidasiPending,         fitur: 'ODOO_VALIDASI_TRANSFER' }
         ],
         'modul-kelolauser' : [
           { fn: loadKelolaUserData, fitur: 'KELOLA_USER' }
@@ -16118,6 +16221,229 @@ async function eksekusiCancelOutbound() {
       if (lmhIntervalId) {
         clearInterval(lmhIntervalId);
         lmhIntervalId = null;
+      }
+    }
+
+    // =========================================================================
+    // FITUR BARU: VALIDASI TRANSFER KE ODOO
+    // -------------------------------------------------------------------------
+    // Daftar transfer lokasi/grade (movement_history tipe TRANSFER_LOKASI_FG &
+    // TRANSFER_DOWNGRADE_FG) yang BELUM dicocokkan ke Odoo. 1 baris movement_history
+    // (1 transfer WMS, sudah mencakup lokasi asal & tujuan) = 1 nomor Odoo. Ditampilkan
+    // sebagai SEPASANG baris From/To (persis gaya Export Movement History) supaya mudah
+    // dicocokkan, tapi checkbox + input No. Odoo + aksi validasi HANYA 1 per pasang
+    // (rowspan), karena memang 1 transfer = 1 dokumen Odoo.
+    // Setelah disimpan (submit_odoo_validasi), baris otomatis hilang dari daftar
+    // Pending karena RPC get_pending_transfer_odoo mengecualikan yang sudah ada
+    // di tabel odoo_transfer_validasi.
+    // =========================================================================
+    let OOV_PENDING_DATA = [];
+    let OOV_RIWAYAT_DATA = [];
+    let OOV_RIWAYAT_SUDAH_DIMUAT = false;
+    const OOV_TIPE_LABEL = {
+      TRANSFER_LOKASI_FG: 'Transfer Lokasi',
+      TRANSFER_DOWNGRADE_FG: 'Transfer/Downgrade Grade'
+    };
+
+    function oovSwitchTab(tab) {
+      const btnPending = document.getElementById('oov-tab-btn-pending');
+      const btnRiwayat = document.getElementById('oov-tab-btn-riwayat');
+      const tabPending = document.getElementById('oov-tab-pending');
+      const tabRiwayat = document.getElementById('oov-tab-riwayat');
+      if (tab === 'riwayat') {
+        btnPending.classList.remove('active'); btnRiwayat.classList.add('active');
+        tabPending.style.display = 'none'; tabRiwayat.style.display = 'block';
+        if (!OOV_RIWAYAT_SUDAH_DIMUAT) loadOdooValidasiRiwayat();
+      } else {
+        btnRiwayat.classList.remove('active'); btnPending.classList.add('active');
+        tabRiwayat.style.display = 'none'; tabPending.style.display = 'block';
+      }
+    }
+
+    // Ambil daftar transfer yang MASIH PENDING (belum divalidasi ke Odoo) dari server.
+    function loadOdooValidasiPending() {
+      const tbody = document.getElementById('oov-tbody-pending');
+      _callRpc('get_pending_transfer_odoo', { p_session_token: _sessTok(), p_limit: 1000 })
+        .then(data => {
+          OOV_PENDING_DATA = data || [];
+          oovRenderPending();
+        })
+        .catch(err => {
+          if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`;
+        });
+    }
+
+    function oovRenderPending() {
+      const tbody = document.getElementById('oov-tbody-pending');
+      const countBadge = document.getElementById('oov-pending-count');
+      if (!tbody) return;
+      const q = (document.getElementById('oov-filter').value || '').trim().toLowerCase();
+
+      let rows = OOV_PENDING_DATA;
+      if (q) {
+        rows = rows.filter(r =>
+          (r.sku || '').toLowerCase().includes(q) ||
+          (r.ref || '').toLowerCase().includes(q) ||
+          (r.lokasi_asal || '').toLowerCase().includes(q) ||
+          (r.lokasi_tujuan || '').toLowerCase().includes(q)
+        );
+      }
+      if (countBadge) countBadge.textContent = OOV_PENDING_DATA.length;
+
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada transfer yang menunggu validasi.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => {
+        const waktu = r.waktu ? new Date(r.waktu).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+        const qty = Number(r.qty) || 0;
+        const idAttr = escapeHtmlAttr(String(r.movement_history_id));
+        const refTxt = escapeHtmlAttr(r.ref || '-');
+        const skuTxt = escapeHtmlAttr(r.sku || '-');
+        return `
+        <tr data-mh-id="${idAttr}">
+          <td rowspan="2" class="text-center align-middle">
+            <input type="checkbox" class="oov-row-check" data-id="${idAttr}">
+          </td>
+          <td class="text-nowrap">${waktu}</td>
+          <td><span class="badge bg-danger-subtle text-danger border border-danger-subtle">From</span></td>
+          <td>${refTxt}</td>
+          <td class="fw-bold">${skuTxt}</td>
+          <td>${escapeHtmlAttr(r.grade_asal || '-')}</td>
+          <td class="text-end">${(-Math.abs(qty)).toLocaleString('id-ID')}</td>
+          <td rowspan="2" class="align-middle">
+            <input type="text" class="form-control form-control-sm oov-input-odoo" data-id="${idAttr}" placeholder="No. Transfer Odoo">
+          </td>
+        </tr>
+        <tr>
+          <td class="text-nowrap">${waktu}</td>
+          <td><span class="badge bg-success-subtle text-success border border-success-subtle">To</span></td>
+          <td>${refTxt}</td>
+          <td class="fw-bold">${skuTxt}</td>
+          <td>${escapeHtmlAttr(r.grade_tujuan || '-')}</td>
+          <td class="text-end">${qty.toLocaleString('id-ID')}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    function oovToggleAll(masterEl) {
+      document.querySelectorAll('.oov-row-check').forEach(cb => { cb.checked = masterEl.checked; });
+    }
+
+    // Simpan validasi untuk semua baris yang DICENTANG & sudah diisi No. Odoo.
+    // Dikirim satu-per-satu (bukan bulk RPC) supaya kalau 1 gagal, sisanya tetap tersimpan
+    // dan operator tahu persis baris mana yang gagal.
+    async function oovSubmitBatch() {
+      const alertEl = document.getElementById('oov-alert');
+      const checked = Array.from(document.querySelectorAll('.oov-row-check:checked'));
+      if (!checked.length) {
+        alertEl.innerHTML = '<div class="alert alert-warning small py-2">Centang minimal 1 baris transfer yang mau divalidasi.</div>';
+        return;
+      }
+
+      const tugas = checked.map(cb => {
+        const id = cb.dataset.id;
+        const inputEl = document.querySelector(`.oov-input-odoo[data-id="${id}"]`);
+        const noOdoo = (inputEl ? inputEl.value : '').trim();
+        return { id, noOdoo };
+      });
+
+      const kosong = tugas.filter(t => !t.noOdoo);
+      if (kosong.length) {
+        alertEl.innerHTML = `<div class="alert alert-warning small py-2">${kosong.length} baris yang dicentang belum diisi No. Odoo. Isi dulu semua No. Odoo sebelum menyimpan.</div>`;
+        return;
+      }
+
+      alertEl.innerHTML = `<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Menyimpan ${tugas.length} validasi...</div>`;
+
+      let sukses = 0;
+      const gagal = [];
+      for (const t of tugas) {
+        try {
+          await _callRpc('submit_odoo_validasi', {
+            p_session_token: _sessTok(),
+            p_movement_history_id: Number(t.id),
+            p_no_odoo: t.noOdoo
+          });
+          sukses++;
+        } catch (err) {
+          gagal.push(`#${t.id}: ${err.message}`);
+        }
+      }
+
+      if (gagal.length) {
+        alertEl.innerHTML = `<div class="alert alert-warning small py-2">${sukses} validasi tersimpan, ${gagal.length} gagal:<br>${gagal.map(escapeHtmlAttr).join('<br>')}</div>`;
+      } else {
+        alertEl.innerHTML = `<div class="alert alert-success small py-2"><i class="fa-solid fa-check me-1"></i>${sukses} validasi berhasil disimpan.</div>`;
+      }
+      OOV_RIWAYAT_SUDAH_DIMUAT = false; // paksa reload riwayat berikutnya kali tab dibuka
+      loadOdooValidasiPending();
+    }
+
+    // Ambil riwayat yang SUDAH divalidasi (untuk cek ulang / undo kalau salah input).
+    function loadOdooValidasiRiwayat() {
+      const tbody = document.getElementById('oov-tbody-riwayat');
+      _callRpc('get_odoo_validasi_history', { p_session_token: _sessTok(), p_limit: 500 })
+        .then(data => {
+          OOV_RIWAYAT_DATA = data || [];
+          OOV_RIWAYAT_SUDAH_DIMUAT = true;
+          oovRenderRiwayat();
+        })
+        .catch(err => {
+          if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`;
+        });
+    }
+
+    function oovRenderRiwayat() {
+      const tbody = document.getElementById('oov-tbody-riwayat');
+      if (!tbody) return;
+      const q = (document.getElementById('oov-filter-riwayat').value || '').trim().toLowerCase();
+
+      let rows = OOV_RIWAYAT_DATA;
+      if (q) {
+        rows = rows.filter(r =>
+          (r.sku || '').toLowerCase().includes(q) ||
+          (r.ref || '').toLowerCase().includes(q) ||
+          (r.no_odoo || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Belum ada transfer yang tervalidasi.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => {
+        const waktu = r.waktu ? new Date(r.waktu).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+        const divalidasi = r.validated_at ? new Date(r.validated_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+        const qty = Number(r.qty) || 0;
+        const idAttr = escapeHtmlAttr(String(r.movement_history_id));
+        const gradeTxt = `${escapeHtmlAttr(r.grade_asal || '-')} &rarr; ${escapeHtmlAttr(r.grade_tujuan || '-')}`;
+        return `<tr>
+          <td class="text-nowrap">${waktu}</td>
+          <td>${escapeHtmlAttr(OOV_TIPE_LABEL[r.tipe] || r.tipe || '-')}</td>
+          <td>${escapeHtmlAttr(r.ref || '-')}</td>
+          <td class="fw-bold">${escapeHtmlAttr(r.sku || '-')}</td>
+          <td>${gradeTxt}</td>
+          <td class="text-end">${qty.toLocaleString('id-ID')}</td>
+          <td class="fw-bold">${escapeHtmlAttr(r.no_odoo || '-')}</td>
+          <td class="text-nowrap">${divalidasi}<br><span class="text-muted">oleh ${escapeHtmlAttr(r.validated_by || '-')}</span></td>
+          <td><button type="button" class="btn btn-outline-danger btn-sm" title="Batalkan validasi (baris kembali ke Pending)" onclick="oovCancelValidasi('${idAttr}')"><i class="fa-solid fa-rotate-left"></i></button></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Batalkan validasi (kalau salah input No. Odoo) -- baris kembali muncul di tab Pending.
+    async function oovCancelValidasi(movementHistoryId) {
+      if (!confirm('Batalkan validasi ini? Baris akan kembali muncul di daftar Pending.')) return;
+      try {
+        await _callRpc('cancel_odoo_validasi', { p_session_token: _sessTok(), p_movement_history_id: Number(movementHistoryId) });
+        OOV_RIWAYAT_SUDAH_DIMUAT = false;
+        loadOdooValidasiRiwayat();
+        loadOdooValidasiPending();
+      } catch (err) {
+        document.getElementById('oov-alert').innerHTML = `<div class="alert alert-danger small py-2">Gagal membatalkan: ${escapeHtmlAttr(err.message)}</div>`;
       }
     }
 
