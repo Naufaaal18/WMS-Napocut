@@ -666,7 +666,7 @@ Object.assign(ENDPOINTS, {
   // dropdown Override -- itu tetap pakai getLokasiAlokasiBySkuGrade karena tujuannya memang
   // mencari stok BEBAS di lokasi LAIN, bukan lokasi yang sudah direservasi).
   getLokasiReservasiPicking: (noRequest, kodeSku, grade) => _callRpc('get_lokasi_reservasi_picking', {
-    p_no_request: noRequest, p_kode_sku: kodeSku, p_grade: grade
+    p_session_token: _sessTok(), p_no_request: noRequest, p_kode_sku: kodeSku, p_grade: grade
   }).then(rows => (rows || []).map(r => ({ lokasi: r.kode_lokasi, qty: Number(r.qty), id: null }))),
 
   getSkuListForPicking: async (noRequest) => {
@@ -696,7 +696,7 @@ Object.assign(ENDPOINTS, {
     // PERBAIKAN PERFORMA: semua baris SKU diproses PARALEL (Promise.all), bukan berurutan.
     const detailPerRow = await Promise.all(rows.map(async (row) => {
       const [kebutuhan, lokasiList] = await Promise.all([
-        _callRpc('get_kebutuhan_picking_sku', { p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
+        _callRpc('get_kebutuhan_picking_sku', { p_session_token: _sessTok(), p_no_request: noRequest, p_kode_sku: row.kode_sku, p_grade: row.grade }),
         ENDPOINTS.getLokasiReservasiPicking(noRequest, row.kode_sku, row.grade)
       ]);
       const k = (Array.isArray(kebutuhan) && kebutuhan[0]) ? kebutuhan[0] : { qty_wajib: 0, sisa_kebutuhan: 0 };
