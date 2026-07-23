@@ -46,19 +46,23 @@ const ENDPOINTS = {
 
   checkLogin: (u, p) => _callRpc('check_login', { p_username: u, p_password: p }),
 
+  // FITUR BARU: cabut session_token di server saat logout, supaya token lama
+  // (misal kalau sempat bocor) tidak bisa dipakai lagi setelah user logout.
+  revokeSession: (token) => _callRpc('revoke_session_token', { p_session_token: token }),
+
   // FITUR BARU: DASHBOARD HOME - satu RPC agregat mengembalikan semua angka
   // KPI/Inbound/Outbound/Work/Employees yang dipakai widget dashboard di Home.
   getDashboardHomeData: () => _callRpc('get_dashboard_home_data', {}),
 
   // FITUR BARU: MODUL KELOLA USER (khusus role Administrator)
-  // PERBAIKAN KEAMANAN: fungsi di database sekarang WAJIB p_actor_username dan akan
-  // menolak (raise exception) kalau actor tsb bukan Administrator aktif. Actor diambil
-  // dari sesi yang sedang login (DEKLARASI_USER), bukan dikirim manual oleh pemanggil.
+  // PERBAIKAN KEAMANAN: fungsi di database sekarang WAJIB p_session_token (bukan lagi
+  // p_actor_username yang cuma teks bebas dan bisa dipalsukan lewat console browser).
+  // Server memvalidasi token ke tabel sesi, baru mengecek akses KELOLA_USER dari sana.
   getAllUsers: () => _callRpc('get_all_users', {
-    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || ''
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || ''
   }).then((data) => ({ success: true, data: data || [] })),
   createUser: (payload) => _callRpc('create_user', {
-    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_username: payload.username, p_password: payload.password, p_nama: payload.nama,
     p_role: payload.role, p_status: payload.status || 'Active', p_akses: payload.akses || null
   }),
@@ -68,12 +72,12 @@ const ENDPOINTS = {
   // `payload.akses || null` di sini karena '' dianggap falsy dan akan salah ketuker
   // jadi null (tidak mengubah), padahal '' seharusnya berarti RESET eksplisit.
   updateUserProfile: (payload) => _callRpc('update_user_profile', {
-    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_username: payload.username, p_nama: payload.nama, p_role: payload.role,
     p_status: payload.status, p_akses: (payload.akses === undefined ? null : payload.akses)
   }),
   updateUserPassword: (username, passwordBaru) => _callRpc('update_user_password', {
-    p_actor_username: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.username) || '',
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_username: username, p_password_baru: passwordBaru
   }),
 
@@ -138,19 +142,33 @@ const ENDPOINTS = {
     p_plastik_id: payload.plastikId, p_checker: payload.checker
   }),
 
-  cancelPO: (noPo, userAktif) => _callRpc('cancel_po', { p_no_po: noPo, p_user_login: userAktif }),
+  // PERBAIKAN KEAMANAN: cancel_po sekarang WAJIB session_token & mengecek akses
+  // MASTER_PO di server. Actor untuk log diambil dari sesi, bukan parameter
+  // p_user_login (yang dulu bisa dipalsukan bebas lewat console browser).
+  cancelPO: (noPo) => _callRpc('cancel_po', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_po: noPo
+  }),
 
   cancelOutboundRequest: (noRequest, userAktif) => _callRpc('cancel_outbound_request', { p_no_request: noRequest, p_user_login: userAktif }),
 
+  // PERBAIKAN KEAMANAN: sekarang WAJIB session_token & mengecek akses
+  // INV_ADJUSTMENT di server (sebelumnya SIAPA SAJA bisa panggil RPC ini
+  // langsung dari console browser tanpa role apapun).
   processAdjustmentStockFG: (data) => _callRpc('process_adjustment_stock_fg', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_kode_sku: data.kodeSku, p_lokasi: data.lokasi, p_grade: data.grade, p_qty: Number(data.qty),
-    p_tipe_adjustment: data.tipeAdjustment, p_keterangan: data.keterangan, p_user_login: data.userLogin
+    p_tipe_adjustment: data.tipeAdjustment, p_keterangan: data.keterangan
   }),
 
+  // PERBAIKAN KEAMANAN: sekarang WAJIB session_token & mengecek akses
+  // INV_TRANSFER di server (sebelumnya SIAPA SAJA bisa panggil RPC ini
+  // langsung dari console browser tanpa role apapun).
   processTransferStockFG: (data) => _callRpc('process_transfer_stock_fg', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
     p_kode_sku: data.kodeSku, p_grade_asal: data.gradeAsal, p_lokasi_asal: data.lokasiAsal,
     p_grade_tujuan: data.gradeTujuan, p_lokasi_tujuan: data.lokasiTujuan, p_qty: Number(data.qty),
-    p_keterangan: data.keterangan, p_user_login: data.userLogin
+    p_keterangan: data.keterangan
   }),
 
   // PERBAIKAN: sekarang memanggil 1 RPC 'submit_request_qc_ulang_multi' yang memproses
@@ -962,7 +980,7 @@ Object.assign(ENDPOINTS, {
     try {
       // PERBAIKAN BUG (PENTING): sebelumnya checking (1.100+ baris) & outbound_request (1.800+
       // baris) diambil langsung tanpa paging -- keduanya sudah di atas limit 1000/request
-      // Supabase, jadi daftar "No Request Siap Kirim" di modul Export Surat Jalan bisa diam-diam
+      // Supabase, jadi daftar "No Request Siap Kirim" di modul Create Surat Jalan bisa diam-diam
       // KEHILANGAN sebagian No Request (terutama yang lebih baru, karena baris yang terpotong
       // biasanya baris "sisa" di akhir hasil). Sekarang pakai _fetchAllRows.
       const [chkData, reqData] = await Promise.all([
@@ -7251,6 +7269,14 @@ async function eksekusiAddSkuOutbound() {
     // LOGOUT & HAPUS SESI — kembali ke halaman login tanpa reload
     async function eksekusiLogout() {
       if (await customConfirm("Apakah Anda ingin keluar dari aplikasi WMS?")) {
+        // KEAMANAN: cabut session_token di server dulu supaya token lama tidak
+        // bisa dipakai lagi kalau sempat bocor. Kalau gagal (mis. offline),
+        // tetap lanjut logout di sisi client -- jangan sampai user terjebak.
+        const _tokenToRevoke = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '';
+        if (_tokenToRevoke) {
+          try { await ENDPOINTS.revokeSession(_tokenToRevoke); } catch (e) { console.warn('[Logout] Gagal mencabut sesi di server:', e); }
+        }
+
         localStorage.removeItem("wms_napocut_session");
 
         // Reset semua halaman
@@ -10882,10 +10908,8 @@ let stagingDataMaster = {};
 
 // 1. Fungsi yang dipanggil otomatis saat halaman dimuat (Ini sudah bekerja karena PO keluar)
 function loadStagingInboundToDropdown() {
-  console.log("Memulai pengambilan data Staging Inbound...");
   google.script.run
     .withSuccessHandler(function(poMap) {
-      console.log("Data PO diterima dari server:", poMap);
       stagingDataMaster = poMap;
       
       let poSelect = document.getElementById("qc-nopo");
@@ -10914,8 +10938,6 @@ function onPoSelected() {
   let poSelected = document.getElementById("qc-nopo").value.toString().trim();
   let skuSelect = document.getElementById("qc-sku");
   
-  console.log("PO yang dipilih user:", poSelected);
-  
   // Reset Dropdown SKU & Input Total
   skuSelect.innerHTML = '<option value="">-- Pilih SKU --</option>';
   let totalInput = document.getElementById("qc-total");
@@ -10932,7 +10954,6 @@ function onPoSelected() {
 
   // Ambil list item SKU berdasarkan kunci PO yang dipilih
   let listItems = stagingDataMaster[poSelected];
-  console.log("List SKU yang terikat dengan PO ini:", listItems);
 
   if (listItems && listItems.length > 0) {
     listItems.forEach(function(item) {
@@ -10942,7 +10963,6 @@ function onPoSelected() {
       option.text = item.sku.toString().trim();
       skuSelect.appendChild(option);
     });
-    console.log(`Sukses memasukkan ${listItems.length} SKU ke dropdown.`);
   } else {
     console.warn("Kunci PO ditemukan, tetapi tidak ada list SKU di dalamnya.");
     skuSelect.innerHTML = '<option value="">-- SKU Tidak Ditemukan --</option>';
@@ -10968,7 +10988,6 @@ function onSkuSelected() {
     let match = stagingDataMaster[poSelected].find(item => item.sku.toString().trim() === skuSelected);
     
     if (match) {
-      console.log("SKU Cocok Ditemukan:", match);
       if(totalInput) {
         totalInput.value = match.maxQty; // Isi otomatis angka Qty maksimal
         totalInput.max = match.maxQty;   // Kunci batas atas input HTML
@@ -11137,8 +11156,6 @@ async function submitFormQC(e) {
   resetQcConfirmSku();
         // 5. Jalankan ulang penarikan data untuk memperbarui list PO terbaru dari spreadsheet
         loadStagingInboundToDropdown();
-        
-        console.log("Sistem berhasil dipaksa refresh ke kondisi awal.");
       }
     })
     .withFailureHandler(function(error) {
@@ -13198,9 +13215,8 @@ async function eksekusiCancelPO() {
     return;
   }
   
-  // Ambil user login aktif dari deklarasi global frontend Anda
-  let userAktif = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.nama) ? DEKLARASI_USER.nama : "Operator Inbound";
-  
+  // PERBAIKAN KEAMANAN: actor (siapa yang membatalkan PO) sekarang ditentukan
+  // server dari session_token yang sedang login, bukan lagi dikirim dari sini.
   // Tampilkan loading / disabled status jika diperlukan
   google.script.run
     .withSuccessHandler(function(response) {
@@ -13217,7 +13233,7 @@ async function eksekusiCancelPO() {
     .withFailureHandler(function(error) {
       customAlert("Sistem Gagal Memproses Pembatalan PO: " + error.message);
     })
-    .cancelPO(noPo, userAktif);
+    .cancelPO(noPo);
 }
 
 // Function untuk memproses pembatalan Request Outbound dari Frontend
