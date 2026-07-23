@@ -6674,9 +6674,14 @@ async function eksekusiAddSkuOutbound() {
         <div class="card p-3 mb-3 border-start border-4" style="border-color:#6A1B9A!important;">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="fw-bold mb-0" style="color:#6A1B9A;"><i class="fa-solid fa-clipboard-check me-2"></i>Validasi Transfer ke Odoo</h6>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadOdooValidasiPending()" title="Muat Ulang">
-              <i class="fa-solid fa-rotate"></i>
-            </button>
+            <div class="d-flex gap-1">
+              <button type="button" class="btn btn-outline-success btn-sm" onclick="oovExportExcel()" title="Export Excel (Ctrl+E)">
+                <i class="fa-solid fa-file-excel"></i> Export Excel
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadOdooValidasiPending()" title="Muat Ulang">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
           </div>
           <p class="small text-muted mb-2">Daftar histori <strong>perubahan Grade</strong> (downgrade/reject/dsb, dengan atau tanpa pindah lokasi) dari <strong>Movement_History</strong> yang belum dicocokkan ke Odoo — transfer lokasi biasa yang gradenya tetap sama TIDAK ditampilkan. Centang baris yang sudah dipindahkan di Odoo, isi 1 nomor transfer Odoo untuk semua baris tercentang, lalu klik <b>Simpan Validasi</b> — baris yang tervalidasi otomatis hilang dari daftar Pending. Sumber data tetap dibaca langsung dari Movement_History (read-only), tidak menambah/mengubah baris apa pun di sana.</p>
 
@@ -6715,15 +6720,16 @@ async function eksekusiAddSkuOutbound() {
                   <tr>
                     <th style="width:28px;"><input type="checkbox" id="oov-checkall" onchange="oovToggleAll(this)"></th>
                     <th>Tanggal</th>
-                    <th>Tipe Riwayat</th>
                     <th>No. Referensi</th>
                     <th>SKU</th>
-                    <th>Grade</th>
-                    <th style="text-align:right;">Qty</th>
+                    <th>From Grade</th>
+                    <th>To Grade</th>
+                    <th style="text-align:right;">From Qty</th>
+                    <th style="text-align:right;">To Qty</th>
                   </tr>
                 </thead>
                 <tbody id="oov-tbody-pending">
-                  <tr><td colspan="7" class="text-center text-muted py-3">Memuat data...</td></tr>
+                  <tr><td colspan="8" class="text-center text-muted py-3">Memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -6737,18 +6743,19 @@ async function eksekusiAddSkuOutbound() {
                 <thead class="table-light" style="position:sticky; top:0; z-index:1;">
                   <tr>
                     <th>Tanggal Transfer</th>
-                    <th>Tipe Riwayat</th>
                     <th>No. Referensi</th>
                     <th>SKU</th>
-                    <th>Grade</th>
-                    <th style="text-align:right;">Qty</th>
+                    <th>From Grade</th>
+                    <th>To Grade</th>
+                    <th style="text-align:right;">From Qty</th>
+                    <th style="text-align:right;">To Qty</th>
                     <th>No. Odoo</th>
                     <th>Divalidasi</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody id="oov-tbody-riwayat">
-                  <tr><td colspan="9" class="text-center text-muted py-3">Memuat data...</td></tr>
+                  <tr><td colspan="10" class="text-center text-muted py-3">Memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -16295,7 +16302,7 @@ async function eksekusiCancelOutbound() {
       if (countBadge) countBadge.textContent = OOV_PENDING_DATA.length;
 
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Tidak ada transfer perubahan grade yang menunggu validasi.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada transfer perubahan grade yang menunggu validasi.</td></tr>';
         return;
       }
 
@@ -16307,22 +16314,15 @@ async function eksekusiCancelOutbound() {
         const skuTxt = escapeHtmlAttr(r.sku || '-');
         return `
         <tr data-mh-id="${idAttr}">
-          <td rowspan="2" class="text-center align-middle">
+          <td class="text-center align-middle">
             <input type="checkbox" class="oov-row-check" data-id="${idAttr}">
           </td>
           <td class="text-nowrap">${waktu}</td>
-          <td><span class="badge bg-danger-subtle text-danger border border-danger-subtle">From</span></td>
           <td>${refTxt}</td>
           <td class="fw-bold">${skuTxt}</td>
-          <td>${escapeHtmlAttr(r.grade_asal || '-')}</td>
+          <td><span class="badge bg-danger-subtle text-danger border border-danger-subtle">${escapeHtmlAttr(r.grade_asal || '-')}</span></td>
+          <td><span class="badge bg-success-subtle text-success border border-success-subtle">${escapeHtmlAttr(r.grade_tujuan || '-')}</span></td>
           <td class="text-end">${(-Math.abs(qty)).toLocaleString('id-ID')}</td>
-        </tr>
-        <tr>
-          <td class="text-nowrap">${waktu}</td>
-          <td><span class="badge bg-success-subtle text-success border border-success-subtle">To</span></td>
-          <td>${refTxt}</td>
-          <td class="fw-bold">${skuTxt}</td>
-          <td>${escapeHtmlAttr(r.grade_tujuan || '-')}</td>
           <td class="text-end">${qty.toLocaleString('id-ID')}</td>
         </tr>`;
       }).join('');
@@ -16379,7 +16379,7 @@ async function eksekusiCancelOutbound() {
           oovRenderRiwayat();
         })
         .catch(err => {
-          if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`;
+          if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">Gagal memuat: ${escapeHtmlAttr(err.message)}</td></tr>`;
         });
     }
 
@@ -16398,7 +16398,7 @@ async function eksekusiCancelOutbound() {
       }
 
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">Belum ada transfer yang tervalidasi.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Belum ada transfer yang tervalidasi.</td></tr>';
         return;
       }
 
@@ -16407,13 +16407,13 @@ async function eksekusiCancelOutbound() {
         const divalidasi = r.validated_at ? new Date(r.validated_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
         const qty = Number(r.qty) || 0;
         const idAttr = escapeHtmlAttr(String(r.movement_history_id));
-        const gradeTxt = `${escapeHtmlAttr(r.grade_asal || '-')} &rarr; ${escapeHtmlAttr(r.grade_tujuan || '-')}`;
         return `<tr>
           <td class="text-nowrap">${waktu}</td>
-          <td>${escapeHtmlAttr(OOV_TIPE_LABEL[r.tipe] || r.tipe || '-')}</td>
           <td>${escapeHtmlAttr(r.ref || '-')}</td>
           <td class="fw-bold">${escapeHtmlAttr(r.sku || '-')}</td>
-          <td>${gradeTxt}</td>
+          <td>${escapeHtmlAttr(r.grade_asal || '-')}</td>
+          <td>${escapeHtmlAttr(r.grade_tujuan || '-')}</td>
+          <td class="text-end">${(-Math.abs(qty)).toLocaleString('id-ID')}</td>
           <td class="text-end">${qty.toLocaleString('id-ID')}</td>
           <td class="fw-bold">${escapeHtmlAttr(r.no_odoo || '-')}</td>
           <td class="text-nowrap">${divalidasi}<br><span class="text-muted">oleh ${escapeHtmlAttr(r.validated_by || '-')}</span></td>
@@ -16434,6 +16434,100 @@ async function eksekusiCancelOutbound() {
         document.getElementById('oov-alert').innerHTML = `<div class="alert alert-danger small py-2">Gagal membatalkan: ${escapeHtmlAttr(err.message)}</div>`;
       }
     }
+
+    // =========================================================================
+    // FITUR BARU: EXPORT VALIDASI TRANSFER KE ODOO KE EXCEL
+    // Mengekspor data tab yang SEDANG aktif (Pending atau Riwayat Tervalidasi),
+    // mengikuti kata kunci filter yang sedang jalan di tab tsb. Bisa dipicu lewat
+    // tombol "Export Excel" atau shortcut keyboard Ctrl+E (Cmd+E di Mac) selagi
+    // modul ini sedang terbuka. Sumber data tetap OOV_PENDING_DATA / OOV_RIWAYAT_DATA
+    // yang sudah dimuat dari RPC read-only get_pending_transfer_odoo /
+    // get_odoo_validasi_history -- tidak menambah panggilan/perubahan apa pun ke DB.
+    // =========================================================================
+    function oovExportExcel() {
+      if (typeof XLSX === 'undefined') { customAlert("Error: Library XLSX belum termuat di sistem."); return; }
+
+      const tabRiwayatAktif = document.getElementById('oov-tab-btn-riwayat').classList.contains('active');
+      const wb = XLSX.utils.book_new();
+
+      if (tabRiwayatAktif) {
+        const q = (document.getElementById('oov-filter-riwayat').value || '').trim().toLowerCase();
+        let rows = OOV_RIWAYAT_DATA;
+        if (q) {
+          rows = rows.filter(r =>
+            (r.sku || '').toLowerCase().includes(q) ||
+            (r.ref || '').toLowerCase().includes(q) ||
+            (r.no_odoo || '').toLowerCase().includes(q)
+          );
+        }
+        if (!rows.length) { customAlert("Tidak ada data Riwayat Tervalidasi untuk diexport (cek filter pencarian)."); return; }
+
+        const dataExport = rows.map(r => {
+          const qty = Number(r.qty) || 0;
+          return {
+            'Tanggal Transfer': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-',
+            'No. Referensi': r.ref || '-',
+            'SKU': r.sku || '-',
+            'From Grade': r.grade_asal || '-',
+            'To Grade': r.grade_tujuan || '-',
+            'From Qty': -Math.abs(qty),
+            'To Qty': qty,
+            'No. Odoo': r.no_odoo || '-',
+            'Divalidasi Pada': r.validated_at ? new Date(r.validated_at).toLocaleString('id-ID') : '-',
+            'Divalidasi Oleh': r.validated_by || '-'
+          };
+        });
+        const ws = XLSX.utils.json_to_sheet(dataExport);
+        ws['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 18 }, { wch: 20 }, { wch: 16 }];
+        XLSX.utils.book_append_sheet(wb, ws, "Riwayat Tervalidasi");
+        XLSX.writeFile(wb, `Riwayat_Validasi_Odoo_${_tglFileSekarang()}.xlsx`);
+      } else {
+        const q = (document.getElementById('oov-filter').value || '').trim().toLowerCase();
+        let rows = OOV_PENDING_DATA;
+        if (q) {
+          rows = rows.filter(r =>
+            (r.sku || '').toLowerCase().includes(q) ||
+            (r.ref || '').toLowerCase().includes(q) ||
+            (r.lokasi_asal || '').toLowerCase().includes(q) ||
+            (r.lokasi_tujuan || '').toLowerCase().includes(q)
+          );
+        }
+        if (!rows.length) { customAlert("Tidak ada data Pending untuk diexport (cek filter pencarian, atau memang belum ada transfer yang menunggu validasi)."); return; }
+
+        const dataExport = rows.map(r => {
+          const qty = Number(r.qty) || 0;
+          return {
+            'Tanggal': r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '-',
+            'No. Referensi': r.ref || '-',
+            'SKU': r.sku || '-',
+            'From Grade': r.grade_asal || '-',
+            'To Grade': r.grade_tujuan || '-',
+            'From Qty': -Math.abs(qty),
+            'To Qty': qty
+          };
+        });
+        const ws = XLSX.utils.json_to_sheet(dataExport);
+        ws['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+        XLSX.utils.book_append_sheet(wb, ws, "Pending Validasi Odoo");
+        XLSX.writeFile(wb, `Pending_Validasi_Odoo_${_tglFileSekarang()}.xlsx`);
+      }
+    }
+
+    // Shortcut keyboard Ctrl+E (Cmd+E di Mac) untuk export Excel, aktif HANYA selagi
+    // modul "Validasi Transfer ke Odoo" sedang terbuka & terlihat di layar -- supaya
+    // tidak bentrok dengan shortcut Ctrl+E di modul lain / browser saat modul ini
+    // tidak sedang dibuka. preventDefault() dipasang supaya browser (mis. address bar
+    // search di beberapa browser) tidak ikut merespon kombinasi tombol ini.
+    document.addEventListener('keydown', function (e) {
+      const keyE = (e.key === 'e' || e.key === 'E');
+      if (!keyE || !(e.ctrlKey || e.metaKey)) return;
+      const modulEl = document.getElementById('sub-odoo-validasi');
+      if (!modulEl) return;
+      const sedangTerlihat = !modulEl.classList.contains('d-none') && modulEl.offsetParent !== null;
+      if (!sedangTerlihat) return;
+      e.preventDefault();
+      oovExportExcel();
+    });
 
 
     // Event delegation: 1 listener terpasang SEKALI di tbody (elemen ini statis, tidak
