@@ -808,7 +808,7 @@ Object.assign(ENDPOINTS, {
       // diisi lewat proses "Validasi Awal Surat Jalan" (lihat ENDPOINTS.validasiAwalSuratJalan
       // di atas), disimpan per baris Checking, bukan kolom baru di outbound_request.
       const [obData, ckData, pkData] = await Promise.all([
-        _fetchAllRows('outbound_request', 'no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status, catatan'),
+        _fetchAllRows('outbound_request', 'id, no_request, tanggal_request, tipe_outbound, tujuan, kode_sku, grade, qty_request, qty_allocated, qty_oos, qty_shortpick, status, catatan'),
         _fetchAllRows('checking', 'no_request, kode_sku, qty_picker, qty_checker, no_so'),
         _fetchAllRows('picking', 'no_request, kode_sku, qty_diambil')
       ]);
@@ -841,19 +841,66 @@ Object.assign(ENDPOINTS, {
       // Tidak ada risiko double-count antara sumber (1) dan (2): begitu satu baris Picking
       // selesai di-checking dengan klop, baris itu dihapus dari `picking` sehingga otomatis
       // "berpindah" murni ke sumber (2), tidak pernah dihitung di keduanya sekaligus.
-      const klopMap = {};
-      const pickerMap = {};
+      const klopTotalMap = {};
+      const pickerTotalMap = {};
       (ckData || []).forEach(r => {
         if (!r.no_request || !r.kode_sku) return;
         if (Number(r.qty_checker) !== Number(r.qty_picker)) return; // bukan klop, dilewati
         const key = r.no_request + '||' + r.kode_sku;
-        klopMap[key] = (klopMap[key] || 0) + Number(r.qty_checker || 0);
-        pickerMap[key] = (pickerMap[key] || 0) + Number(r.qty_picker || 0);
+        klopTotalMap[key] = (klopTotalMap[key] || 0) + Number(r.qty_checker || 0);
+        pickerTotalMap[key] = (pickerTotalMap[key] || 0) + Number(r.qty_picker || 0);
       });
       (pkData || []).forEach(r => {
         if (!r.no_request || !r.kode_sku) return;
         const key = r.no_request + '||' + r.kode_sku;
-        pickerMap[key] = (pickerMap[key] || 0) + Number(r.qty_diambil || 0);
+        pickerTotalMap[key] = (pickerTotalMap[key] || 0) + Number(r.qty_diambil || 0);
+      });
+
+      // PERBAIKAN BUG: sebelumnya total qtyPicker/qtyCheckerKlop per No Request+SKU
+      // ditempel APA ADANYA ke SETIAP baris outbound_request yang berbagi No Request+SKU
+      // yang sama (misalnya karena SKU yang sama ditambahkan 2x ke 1 No Request lewat
+      // "Add SKU to Existing Request"). Akibatnya kalau ada 2 baris untuk 1 SKU, KEDUANYA
+      // menampilkan total yang sama persis -> kalau dijumlah manual oleh user jadi
+      // kelihatan dobel, padahal yang benar-benar terjadi cuma 1x total itu.
+      // FIX: sebelum di-map, urutkan dulu baris outbound_request per No Request+SKU
+      // berdasarkan `id` (baris yang dibuat lebih dulu diproses lebih dulu), lalu bagi
+      // total qtyPicker/qtyCheckerKlop tsb secara BERURUTAN mengisi tiap baris sampai
+      // penuh sesuai qty_allocated baris itu, baru sisanya lanjut ke baris berikutnya.
+      // Jumlah semua baris tetap sama dengan total asli -> tidak dobel lagi.
+      const rowsByKey = {};
+      (obData || []).forEach(r => {
+        if (!r.no_request || !r.kode_sku) return;
+        const key = r.no_request + '||' + r.kode_sku;
+        (rowsByKey[key] = rowsByKey[key] || []).push(r);
+      });
+      Object.keys(rowsByKey).forEach(key => {
+        rowsByKey[key].sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+      });
+
+      const distribute = (rows, total) => {
+        const out = {}; // id -> qty terdistribusi
+        let sisa = Number(total || 0);
+        rows.forEach(r => {
+          const kapasitas = Math.max(Number(r.qty_allocated || 0), 0);
+          const jatah = Math.min(kapasitas, sisa);
+          out[r.id] = jatah;
+          sisa -= jatah;
+        });
+        // Kalau masih ada sisa (mis. qty_allocated total < total picker/checker karena
+        // data lama/anomali), tumpuk semua sisa ke baris TERAKHIR supaya tidak hilang.
+        if (sisa > 0 && rows.length > 0) {
+          const lastId = rows[rows.length - 1].id;
+          out[lastId] = (out[lastId] || 0) + sisa;
+        }
+        return out;
+      };
+
+      const pickerDistMap = {}; // id -> qtyPicker
+      const klopDistMap = {}; // id -> qtyCheckerKlop
+      Object.keys(rowsByKey).forEach(key => {
+        const rows = rowsByKey[key];
+        Object.assign(pickerDistMap, distribute(rows, pickerTotalMap[key] || 0));
+        Object.assign(klopDistMap, distribute(rows, klopTotalMap[key] || 0));
       });
 
       // FITUR BARU: sort hasil akhir berdasarkan No Request (naik, natural/numeric-aware
@@ -864,8 +911,8 @@ Object.assign(ENDPOINTS, {
           noRequest: r.no_request, tglRequest: _tglDMY(r.tanggal_request), kodeStore: r.tujuan, kodeSku: r.kode_sku,
           grade: r.grade, tipeOB: r.tipe_outbound, qtyRequest: r.qty_request, qtyAllocated: r.qty_allocated,
           qtyStockout: r.qty_oos, qtyShortpick: r.qty_shortpick || 0, status: r.status, catatan: r.catatan || '',
-          qtyPicker: pickerMap[r.no_request + '||' + r.kode_sku] || 0,
-          qtyCheckerKlop: klopMap[r.no_request + '||' + r.kode_sku] || 0,
+          qtyPicker: pickerDistMap[r.id] || 0,
+          qtyCheckerKlop: klopDistMap[r.id] || 0,
           noSo: noSoMap[r.no_request] || ''
         }))
         .sort((a, b) => {
