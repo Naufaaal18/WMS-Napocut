@@ -647,10 +647,27 @@ Object.assign(ENDPOINTS, {
     return hasil;
   },
 
+  // FITUR BARU: sekarang mengembalikan array of object { noRequest, tanggalPengiriman }
+  // (bukan lagi array string polos) supaya dropdown Picking Outbound bisa menampilkan
+  // tanggal request/kirim di samping No Request, dan mengurutkannya dari yang paling
+  // dekat/lama tanggalnya duluan -- konsisten dengan getCheckingPendingRequests.
   getPickingPendingRequests: async () => {
     const all = await _secureRows('outbound_request');
     const data = (all || []).filter(r => r.status === 'Picking Pending');
-    return [...new Set((data || []).map(r => r.no_request))];
+    const tglMap = {};
+    data.forEach(r => {
+      if (r.no_request && !(r.no_request in tglMap)) tglMap[r.no_request] = r.tanggal_request || null;
+    });
+    const list = Object.keys(tglMap).map(noRequest => {
+      const tglRaw = tglMap[noRequest];
+      return {
+        noRequest,
+        tanggalPengiriman: tglRaw ? _tglDMY(tglRaw) : '',
+        _sortKey: tglRaw ? new Date(tglRaw).getTime() : Infinity
+      };
+    });
+    list.sort((a, b) => a._sortKey - b._sortKey);
+    return list.map(({ noRequest, tanggalPengiriman }) => ({ noRequest, tanggalPengiriman }));
   },
 
   // FITUR BARU (SOP v3.0): dipakai Picking Outbound & Create Surat Jalan untuk mendeteksi
@@ -850,9 +867,31 @@ Object.assign(ENDPOINTS, {
     return flatList;
   },
 
+  // FITUR BARU: sekarang mengembalikan array of object { noRequest, tanggalPengiriman }
+  // (bukan lagi array string polos) supaya dropdown Dashboard Checker bisa menampilkan
+  // tanggal request/kirim di samping No Request, dan mengurutkannya dari yang paling
+  // dekat/lama tanggalnya duluan. Tanggal diambil dari outbound_request.tanggal_request
+  // (tabel 'picking' sendiri tidak menyimpan tanggal request/kirim).
   getCheckingPendingRequests: async () => {
-    const data = await _secureRows('picking');
-    return [...new Set((data || []).map(r => r.no_request))];
+    const [pickingRows, outboundRows] = await Promise.all([
+      _secureRows('picking'),
+      _secureRows('outbound_request')
+    ]);
+    const tglMap = {};
+    (outboundRows || []).forEach(r => {
+      if (r.no_request && !(r.no_request in tglMap) && r.tanggal_request) tglMap[r.no_request] = r.tanggal_request;
+    });
+    const noRequestList = [...new Set((pickingRows || []).map(r => r.no_request))];
+    const list = noRequestList.map(noRequest => {
+      const tglRaw = tglMap[noRequest];
+      return {
+        noRequest,
+        tanggalPengiriman: tglRaw ? _tglDMY(tglRaw) : '',
+        _sortKey: tglRaw ? new Date(tglRaw).getTime() : Infinity
+      };
+    });
+    list.sort((a, b) => a._sortKey - b._sortKey);
+    return list.map(({ noRequest, tanggalPengiriman }) => ({ noRequest, tanggalPengiriman }));
   },
 
   getSkuListForChecking: async (noRequest) => {
@@ -1170,7 +1209,7 @@ Object.assign(ENDPOINTS, {
 
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
-    const [fgRows, ibAll, rtAll, poRows, summary, repairRows, vendorRepairRows] = await Promise.all([
+    const [fgRows, ibAll, rtAll, poRows, summary, repairRows, vendorRepairRows, qcPutawayMap] = await Promise.all([
       _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
       _secureRows('stock_inbound'),
       _secureRows('stock_return'),
@@ -1180,7 +1219,10 @@ Object.assign(ENDPOINTS, {
       // dipakai lewat RPC get_stock_repair_rows / get_vendor_repair_rows yang sudah ada
       // (sudah membawa validasi akses INV_DASHBOARD & join Supplier PO asal).
       ENDPOINTS.getStockRepairRows().catch(() => []),
-      ENDPOINTS.getVendorRepairRows().catch(() => [])
+      // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC], sama seperti Stok Pending
+      // Putaway Return): pakai ulang ENDPOINTS.getQCFGDataForPutaway() yang sudah ada
+      // (hasil QC yang SUDAH divalidasi tapi BELUM diproses Putaway ke Stock_FG/Stock_Repair).
+      ENDPOINTS.getQCFGDataForPutaway().catch(() => ({}))
     ]);
     const mapFG = {}; const orderFG = [];
     (fgRows || []).forEach(r => {
@@ -1212,7 +1254,21 @@ Object.assign(ENDPOINTS, {
       noPo: r.no_po, sku: r.kode_sku, kategori: r.kategori, vendor: r.vendor || '', qty: Number(r.qty || 0)
     }));
 
-    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary, stockRepair, stockVendorRepair };
+    // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC], sama seperti Stok Pending
+    // Putaway Return): qcPutawayMap berbentuk { noPo: { sku: { Bagus, Minor, Reject, Kotor,
+    // Perbaikan } } } -- diratakan jadi 1 baris per No PO/SKU/Grade yang qty-nya > 0.
+    const stockQcPutaway = [];
+    Object.keys(qcPutawayMap || {}).forEach(po => {
+      Object.keys(qcPutawayMap[po] || {}).forEach(sku => {
+        const g = qcPutawayMap[po][sku] || {};
+        ['Bagus', 'Minor', 'Reject', 'Kotor', 'Perbaikan'].forEach(grade => {
+          const qty = Number(g[grade] || 0);
+          if (qty > 0) stockQcPutaway.push({ noPo: po, sku, grade, qty });
+        });
+      });
+    });
+
+    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary, stockRepair, stockVendorRepair, stockQcPutaway };
   },
 
   getMovementHistoryData: async () => {
@@ -2791,6 +2847,7 @@ window.fetch = function (url, options) {
       #inv-openpo-table-wrap,
       #inv-inbound-table-wrap,
       #inv-return-table-wrap,
+      #inv-qcputaway-table-wrap,
       #inv-repair-table-wrap,
       #inv-vendor-repair-table-wrap {
         overflow-x: hidden !important;
@@ -2799,6 +2856,7 @@ window.fetch = function (url, options) {
       #inv-openpo-table-wrap table,
       #inv-inbound-table-wrap table,
       #inv-return-table-wrap table,
+      #inv-qcputaway-table-wrap table,
       #inv-repair-table-wrap table,
       #inv-vendor-repair-table-wrap table {
         table-layout: fixed;
@@ -2809,6 +2867,7 @@ window.fetch = function (url, options) {
       #inv-openpo-table-wrap th, #inv-openpo-table-wrap td,
       #inv-inbound-table-wrap th, #inv-inbound-table-wrap td,
       #inv-return-table-wrap th, #inv-return-table-wrap td,
+      #inv-qcputaway-table-wrap th, #inv-qcputaway-table-wrap td,
       #inv-repair-table-wrap th, #inv-repair-table-wrap td,
       #inv-vendor-repair-table-wrap th, #inv-vendor-repair-table-wrap td {
         padding: 3px 2px !important;
@@ -2844,6 +2903,12 @@ window.fetch = function (url, options) {
       #inv-return-table-wrap th:nth-child(2), #inv-return-table-wrap td:nth-child(2) { width: 28%; }
       #inv-return-table-wrap th:nth-child(3), #inv-return-table-wrap td:nth-child(3) { width: 22%; }
       #inv-return-table-wrap th:nth-child(4), #inv-return-table-wrap td:nth-child(4) { width: 22%; }
+
+      /* Stock Pending Putaway (Hasil QC): No PO, SKU, Grade, Qty */
+      #inv-qcputaway-table-wrap th:nth-child(1), #inv-qcputaway-table-wrap td:nth-child(1) { width: 28%; }
+      #inv-qcputaway-table-wrap th:nth-child(2), #inv-qcputaway-table-wrap td:nth-child(2) { width: 28%; }
+      #inv-qcputaway-table-wrap th:nth-child(3), #inv-qcputaway-table-wrap td:nth-child(3) { width: 22%; }
+      #inv-qcputaway-table-wrap th:nth-child(4), #inv-qcputaway-table-wrap td:nth-child(4) { width: 22%; }
 
       /* Stock Repair: No PO, SKU, Kategori, Lokasi, Qty Available, Qty On Hand */
       #inv-repair-table-wrap th:nth-child(1), #inv-repair-table-wrap td:nth-child(1) { width: 20%; }
@@ -6820,6 +6885,31 @@ async function eksekusiAddSkuOutbound() {
                 </tr>
               </thead>
               <tbody id="inv-tbody-return">
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-2">Memuat data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- FITUR BARU (permintaan Naufal): Dashboard Stock Pending Putaway (Hasil QC) --
+             barang yang hasil QC-nya SUDAH divalidasi (qc_fg) tapi BELUM diproses Putaway
+             ke Stock_FG/Stock_Repair, dibuat mirip persis dengan Stok Pending Putaway Return. -->
+        <div class="mt-3">
+          <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-dolly me-2"></i>Stock Pending Putaway
+            (Hasil QC)</h6>
+          <div class="table-responsive" id="inv-qcputaway-table-wrap" style="max-height: 160px; overflow-y: auto;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
+              <thead class="table-light">
+                <tr>
+                  <th>No PO</th>
+                  <th>SKU</th>
+                  <th class="text-center">Grade</th>
+                  <th class="text-center">Qty</th>
+                </tr>
+              </thead>
+              <tbody id="inv-tbody-qcputaway">
                 <tr>
                   <td colspan="4" class="text-center text-muted py-2">Memuat data...</td>
                 </tr>
@@ -15465,6 +15555,8 @@ async function eksekusiCancelOutbound() {
     // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
     let INV_DATA_REPAIR = [];
     let INV_DATA_VENDOR_REPAIR = [];
+    // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC], sama seperti Stok Pending Putaway Return):
+    let INV_DATA_QC_PUTAWAY = [];
 
     // FITUR BARU: Klik-Baris-untuk-Transfer -- baris tabel Dashboard Inventory yang sedang
     // ditampilkan (hasil filter aktif), disimpan di sini supaya handler klik baris tinggal
@@ -15484,6 +15576,7 @@ async function eksekusiCancelOutbound() {
       document.getElementById('inv-tbody-dashboard').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-inbound').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-return').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">Memuat data...</td></tr>';
+      document.getElementById('inv-tbody-qcputaway').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-openpo').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-repair').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-vendor-repair').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-2">Memuat data...</td></tr>';
@@ -15507,6 +15600,7 @@ async function eksekusiCancelOutbound() {
             INV_SUMMARY = (res && res.stockSummary) || null;
             INV_DATA_REPAIR = (res && res.stockRepair) || [];
             INV_DATA_VENDOR_REPAIR = (res && res.stockVendorRepair) || [];
+            INV_DATA_QC_PUTAWAY = (res && res.stockQcPutaway) || [];
 
             try { isiDatalistInventory(); } catch (e1) { console.error('isiDatalistInventory error:', e1); }
             try { renderInventoryTable(); } catch (e2) { console.error('renderInventoryTable error:', e2); }
@@ -15537,6 +15631,7 @@ async function eksekusiCancelOutbound() {
       document.getElementById('inv-tbody-openpo').innerHTML = `<tr><td colspan="4" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
       document.getElementById('inv-tbody-repair').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
       document.getElementById('inv-tbody-vendor-repair').innerHTML = `<tr><td colspan="5" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
+      document.getElementById('inv-tbody-qcputaway').innerHTML = `<tr><td colspan="4" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
     }
 
     // Isi datalist SKU & Lokasi unik (gabungan dari Stock_FG, Stock_Inbound, Stock_Return, Open_PO)
@@ -15551,6 +15646,7 @@ async function eksekusiCancelOutbound() {
       INV_DATA_OPENPO.forEach(r => { if (r.sku) setSku.add(r.sku); });
       INV_DATA_REPAIR.forEach(r => { if (r.sku) setSku.add(r.sku); if (r.lokasi) setLokasi.add(r.lokasi); });
       INV_DATA_VENDOR_REPAIR.forEach(r => { if (r.sku) setSku.add(r.sku); });
+      INV_DATA_QC_PUTAWAY.forEach(r => { if (r.sku) setSku.add(r.sku); });
 
       document.getElementById('inv-list-sku').innerHTML = [...setSku].sort().map(s => `<option value="${s}">`).join('');
       document.getElementById('inv-list-lokasi').innerHTML = [...setLokasi].sort().map(l => `<option value="${l}">`).join('');
@@ -15682,8 +15778,9 @@ async function eksekusiCancelOutbound() {
       const filteredRepair = (INV_DATA_REPAIR || []).filter(r =>
         (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || (r.lokasi || '').toLowerCase().includes(fLokasi)));
       const filteredVendorRepair = (INV_DATA_VENDOR_REPAIR || []).filter(r => (fSku === "" || r.sku.toLowerCase().includes(fSku)));
+      const filteredQcPutaway = (INV_DATA_QC_PUTAWAY || []).filter(r => (fSku === "" || r.sku.toLowerCase().includes(fSku)));
 
-      if (!daftar.length && !filteredOpenPO.length && !filteredInbound.length && !filteredReturn.length && !filteredRepair.length && !filteredVendorRepair.length) {
+      if (!daftar.length && !filteredOpenPO.length && !filteredInbound.length && !filteredReturn.length && !filteredRepair.length && !filteredVendorRepair.length && !filteredQcPutaway.length) {
         customAlert('Tidak ada data untuk di-export.'); return;
       }
 
@@ -15709,6 +15806,13 @@ async function eksekusiCancelOutbound() {
         'SKU': r.sku, 'Lokasi': r.lokasi, 'Grade': r.grade, 'Qty': Number(r.qty || 0)
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsReturn), 'Stok Pending Putaway Return');
+
+      // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC]): sheet tambahan konsisten
+      // dengan sheet-sheet lain di export Excel Dashboard Inventory.
+      const rowsQcPutaway = filteredQcPutaway.map(r => ({
+        'No PO': r.noPo, 'SKU': r.sku, 'Grade': r.grade, 'Qty': Number(r.qty || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsQcPutaway), 'Stock Pending Putaway QC');
 
       // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
       // sheet tambahan supaya export Excel Dashboard Inventory tetap konsisten/lengkap.
@@ -15761,6 +15865,20 @@ async function eksekusiCancelOutbound() {
       tbodyRet.innerHTML = filteredReturn.length === 0
         ? '<tr><td colspan="4" class="text-center text-muted py-2">Tidak ada stok pending putaway return.</td></tr>'
         : filteredReturn.map(r => `<tr><td class="fw-bold" data-label="SKU">${r.sku}</td><td data-label="Lokasi">${r.lokasi}</td><td class="text-center" data-label="Grade">${r.grade}</td><td class="text-center" data-label="Qty">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+
+      // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC], sama seperti Stok Pending
+      // Putaway Return): barang hasil QC yang sudah divalidasi tapi belum diproses Putaway.
+      // Filter Lokasi sengaja tidak diterapkan -- barang belum punya lokasi rak (baru
+      // ditentukan saat Putaway diproses).
+      const filteredQcPutaway = INV_DATA_QC_PUTAWAY.filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku))
+      );
+      const tbodyQcPutaway = document.getElementById('inv-tbody-qcputaway');
+      if (tbodyQcPutaway) {
+        tbodyQcPutaway.innerHTML = filteredQcPutaway.length === 0
+          ? '<tr><td colspan="4" class="text-center text-muted py-2">Tidak ada stok pending putaway hasil QC.</td></tr>'
+          : filteredQcPutaway.map(r => `<tr><td class="fw-bold" data-label="No PO">${r.noPo}</td><td data-label="SKU">${r.sku}</td><td class="text-center" data-label="Grade">${r.grade}</td><td class="text-center" data-label="Qty">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+      }
 
       // FITUR BARU (Dashboard Stock Repair, permintaan Naufal poin 4): barang Kotor/
       // Perbaikan yang sudah dipotong dari Stock_FG, siap dikirim ke Vendor -- lengkap
