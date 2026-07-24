@@ -4240,6 +4240,37 @@ window.fetch = function (url, options) {
               </button>
             </form>
           </div>
+
+          <!-- FITUR BARU: Import SKU Massal via Template Excel -- tambah banyak SKU sekaligus
+               ke tabel master_sku. Membaca file lewat SheetJS, lalu mengirim tiap baris satu per
+               satu ke RPC create_master_sku (RPC yang sama dipakai form manual di atas), supaya
+               validasi & aturan keunikan Kode SKU di server tetap konsisten. -->
+          <div class="card p-3 mb-3 border-start border-4 border-success">
+            <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-file-excel me-2"></i>Import SKU Massal via Template Excel</h6>
+            <p class="text-muted mb-2" style="font-size: 11px;">Pastikan susunan kolom file Excel Anda sesuai urutan template:
+              <br><b>Kode SKU (A) | Nama Product (B) | Display Name (C) | Kategori (D) | Satuan (E) | Harga Jual (F) | Warna (G) | Ukuran (H) | Nama di POS (I) | Tersedia di POS (J)</b>
+              <br>Kolom <b>Kode SKU</b> dan <b>Nama Product</b> wajib diisi di setiap baris. Kolom lain boleh dikosongkan. Kolom <b>Tersedia di POS</b> diisi <b>Ya</b>/<b>Tidak</b> (kosong dianggap Ya). Kode SKU yang sudah terdaftar akan otomatis dilaporkan gagal di akhir proses.
+            </p>
+            <button type="button" class="btn btn-outline-success btn-sm w-100 fw-bold mb-2" onclick="downloadTemplateSkuMaster()">
+              <i class="fa-solid fa-download me-1"></i>Download Template Excel
+            </button>
+            <div class="input-group input-group-sm mb-2">
+              <input type="file" id="skm-file-excel" class="form-control" accept=".csv, .xlsx, .xls">
+              <button type="button" class="btn btn-success fw-bold" id="skm-bulk-upload-btn" onclick="prosesUploadExcelSkuMaster()"><i class="fa-solid fa-cloud-arrow-up"></i> Upload SKU</button>
+            </div>
+            <div id="skm-bulk-progress" class="small text-muted mb-1" style="display:none;"></div>
+            <div id="skm-bulk-result" style="display:none;">
+              <div class="small fw-bold mb-1"></div>
+              <div class="table-responsive" style="max-height: 220px;">
+                <table class="table table-sm table-bordered mb-0" style="font-size: 11px;">
+                  <thead class="table-light">
+                    <tr><th>Kode SKU</th><th>Status</th><th>Keterangan</th></tr>
+                  </thead>
+                  <tbody id="skm-bulk-result-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -10488,6 +10519,131 @@ async function eksekusiAddSkuOutbound() {
         })
         .withFailureHandler(err => showAlert("🚨 Gagal menambahkan SKU: " + err.message, "danger"))
         .createMasterSku(payload);
+    }
+
+    // FITUR BARU: MODUL SKU MASTER - Import SKU Massal via Template Excel.
+    // Membaca file Excel dengan SheetJS, lalu mengirim tiap baris satu per satu ke RPC
+    // create_master_sku (RPC yang sama dipakai form manual di atas) supaya validasi &
+    // aturan keunikan Kode SKU tetap konsisten dengan input manual. Diproses berurutan
+    // (bukan Promise.all) supaya progress bisa ditampilkan & satu baris gagal tidak
+    // menghentikan baris lainnya.
+    function downloadTemplateSkuMaster() {
+      const header = ["Kode SKU", "Nama Product", "Display Name", "Kategori", "Satuan", "Harga Jual", "Warna", "Ukuran", "Nama di POS", "Tersedia di POS"];
+      const contohRows = [
+        ["SKU-00123", "Kemeja Flanel Pria", "Kemeja Flanel", "Finish Good", "Pcs", 150000, "Merah", "L", "Kemeja Flanel Pria", "Ya"],
+        ["SKU-00124", "Kaos Polos Wanita", "Kaos Polos", "Finish Good", "Pcs", 85000, "Hitam", "M", "Kaos Polos Wanita", "Ya"],
+        ["SKU-00125", "Bahan Katun Combed", "", "Raw Material", "Meter", "", "", "", "", "Tidak"]
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...contohRows]);
+      ws['!cols'] = [
+        { wch: 14 }, { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 14 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template SKU Master");
+      XLSX.writeFile(wb, "Template_Import_SKU_Master.xlsx");
+    }
+
+    async function prosesUploadExcelSkuMaster() {
+      const fileInput = document.getElementById('skm-file-excel');
+      if (fileInput.files.length === 0) {
+        showAlert("Pilih file Excel terlebih dahulu!", "warning");
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+
+      reader.onload = async function (e) {
+        let rowsArray = [];
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          // Looping dimulai dari indeks 1 (melewati baris header Excel)
+          for (let i = 1; i < sheetData.length; i++) {
+            const row = sheetData[i];
+            // Pastikan baris tidak kosong dan minimal punya Kode SKU (A) & Nama Product (B)
+            if (row && row.length > 0 && row[0] && row[1]) {
+              const tersediaRaw = (row[9] !== undefined && row[9] !== null) ? String(row[9]).trim().toLowerCase() : '';
+              rowsArray.push({
+                kodeSku: String(row[0]).trim(),
+                namaProduct: String(row[1]).trim(),
+                displayName: row[2] ? String(row[2]).trim() : '',
+                kategori: row[3] ? String(row[3]).trim() : '',
+                satuan: row[4] ? String(row[4]).trim() : '',
+                hargaJual: (row[5] !== undefined && row[5] !== null && row[5] !== '') ? row[5] : '',
+                warna: row[6] ? String(row[6]).trim() : '',
+                ukuran: row[7] ? String(row[7]).trim() : '',
+                namaPos: row[8] ? String(row[8]).trim() : '',
+                tersediaPos: (tersediaRaw === 'tidak' || tersediaRaw === 'no' || tersediaRaw === '0' || tersediaRaw === 'false') ? false : true
+              });
+            }
+          }
+        } catch (err) {
+          showAlert("🚨 Gagal membaca file Excel: " + err.message, "danger");
+          return;
+        }
+
+        if (rowsArray.length === 0) {
+          showAlert("⚠️ File kosong atau format kolom tidak sesuai template! Pastikan Kode SKU (A) dan Nama Product (B) terisi di setiap baris.", "danger");
+          return;
+        }
+
+        const konfirmasiImport = await customConfirm(`Import ${rowsArray.length} SKU baru ke SKU Master sekarang? Proses ini mengirim tiap baris satu per satu ke database.`);
+        if (!konfirmasiImport) return;
+
+        const uploadBtn = document.getElementById('skm-bulk-upload-btn');
+        const progressEl = document.getElementById('skm-bulk-progress');
+        const resultWrap = document.getElementById('skm-bulk-result');
+        const resultTbody = document.getElementById('skm-bulk-result-tbody');
+        uploadBtn.disabled = true;
+        progressEl.style.display = 'block';
+        resultWrap.style.display = 'none';
+        resultTbody.innerHTML = '';
+
+        let sukses = 0, gagal = 0;
+        const hasilBaris = [];
+
+        for (let i = 0; i < rowsArray.length; i++) {
+          const item = rowsArray[i];
+          progressEl.textContent = `Memproses ${i + 1} dari ${rowsArray.length}: ${item.kodeSku} ...`;
+          try {
+            await ENDPOINTS.createMasterSku(item);
+            sukses++;
+            hasilBaris.push({ kodeSku: item.kodeSku, ok: true, ket: 'Berhasil ditambahkan' });
+          } catch (err) {
+            gagal++;
+            hasilBaris.push({ kodeSku: item.kodeSku, ok: false, ket: (err && err.message) ? err.message : 'Gagal diproses' });
+          }
+        }
+
+        progressEl.style.display = 'none';
+        resultWrap.style.display = 'block';
+        resultWrap.querySelector('.small.fw-bold').textContent = `Hasil Import: ${sukses} berhasil, ${gagal} gagal dari total ${rowsArray.length} baris.`;
+        resultTbody.innerHTML = hasilBaris.map(h => `
+          <tr>
+            <td>${h.kodeSku}</td>
+            <td class="${h.ok ? 'text-success' : 'text-danger'} fw-bold">${h.ok ? 'Berhasil' : 'Gagal'}</td>
+            <td>${h.ket}</td>
+          </tr>
+        `).join('');
+
+        uploadBtn.disabled = false;
+        fileInput.value = "";
+
+        if (gagal === 0) {
+          showAlert(`✅ Semua ${sukses} SKU berhasil ditambahkan ke SKU Master.`, "success");
+        } else {
+          showAlert(`⚠️ Import selesai: ${sukses} berhasil, ${gagal} gagal. Lihat rincian di tabel hasil.`, "warning");
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
     }
 
     // C. Fungsi Pemroses File Excel (Mengubah File Menjadi Array JSON)
