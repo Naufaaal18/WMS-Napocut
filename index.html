@@ -1170,12 +1170,17 @@ Object.assign(ENDPOINTS, {
 
   getInventoryDashboardData: async () => {
     const mapDesc = await _getMasterSkuDescMap();
-    const [fgRows, ibAll, rtAll, poRows, summary] = await Promise.all([
+    const [fgRows, ibAll, rtAll, poRows, summary, repairRows, vendorRepairRows] = await Promise.all([
       _fetchAllRows('stock_fg', 'kode_sku, grade, kode_lokasi, qty_on_hand, status, last_update, qty_available'),
       _secureRows('stock_inbound'),
       _secureRows('stock_return'),
       _fetchAllRows('open_po', 'no_po, supplier, kode_sku, qty_order, kategori, created_date, status_po'),
-      _callRpc('get_dashboard_stock_summary_secure', { p_session_token: _sessTok() })
+      _callRpc('get_dashboard_stock_summary_secure', { p_session_token: _sessTok() }),
+      // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
+      // dipakai lewat RPC get_stock_repair_rows / get_vendor_repair_rows yang sudah ada
+      // (sudah membawa validasi akses INV_DASHBOARD & join Supplier PO asal).
+      ENDPOINTS.getStockRepairRows().catch(() => []),
+      ENDPOINTS.getVendorRepairRows().catch(() => [])
     ]);
     const mapFG = {}; const orderFG = [];
     (fgRows || []).forEach(r => {
@@ -1194,7 +1199,20 @@ Object.assign(ENDPOINTS, {
       totalQtyAvailable: Number(summary.total_qty_available || 0),
       totalQtyOnHand: Number(summary.total_qty_on_hand || 0)
     } : null;
-    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary };
+
+    // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
+    // Stock Repair = barang Kotor/Perbaikan yang sudah dipotong dari Stock_FG dan siap
+    // dikirim ke Vendor (tabel stock_repair); Stock Vendor Repair = barang yang SUDAH
+    // dikirim & sedang berada secara fisik di Vendor (tabel vendor_repair).
+    const stockRepair = (repairRows || []).filter(r => r.kode_sku).map(r => ({
+      noPo: r.no_po, sku: r.kode_sku, kategori: r.kategori, lokasi: r.kode_lokasi,
+      qtyAvailable: Number(r.qty_available || 0), qtyOnHand: Number(r.qty_on_hand || 0), supplier: r.supplier || ''
+    }));
+    const stockVendorRepair = (vendorRepairRows || []).filter(r => r.kode_sku && Number(r.qty || 0) > 0).map(r => ({
+      noPo: r.no_po, sku: r.kode_sku, kategori: r.kategori, vendor: r.vendor || '', qty: Number(r.qty || 0)
+    }));
+
+    return { stockFG: orderFG.map(k => mapFG[k]), stockInbound, stockReturn, stockOpenPO, stockSummary, stockRepair, stockVendorRepair };
   },
 
   getMovementHistoryData: async () => {
@@ -2772,13 +2790,17 @@ window.fetch = function (url, options) {
       #inv-dashboard-table-wrap,
       #inv-openpo-table-wrap,
       #inv-inbound-table-wrap,
-      #inv-return-table-wrap {
+      #inv-return-table-wrap,
+      #inv-repair-table-wrap,
+      #inv-vendor-repair-table-wrap {
         overflow-x: hidden !important;
       }
       #inv-dashboard-table-wrap table,
       #inv-openpo-table-wrap table,
       #inv-inbound-table-wrap table,
-      #inv-return-table-wrap table {
+      #inv-return-table-wrap table,
+      #inv-repair-table-wrap table,
+      #inv-vendor-repair-table-wrap table {
         table-layout: fixed;
         width: 100% !important;
         font-size: 9.5px !important;
@@ -2786,7 +2808,9 @@ window.fetch = function (url, options) {
       #inv-dashboard-table-wrap th, #inv-dashboard-table-wrap td,
       #inv-openpo-table-wrap th, #inv-openpo-table-wrap td,
       #inv-inbound-table-wrap th, #inv-inbound-table-wrap td,
-      #inv-return-table-wrap th, #inv-return-table-wrap td {
+      #inv-return-table-wrap th, #inv-return-table-wrap td,
+      #inv-repair-table-wrap th, #inv-repair-table-wrap td,
+      #inv-vendor-repair-table-wrap th, #inv-vendor-repair-table-wrap td {
         padding: 3px 2px !important;
         white-space: normal !important;
         overflow-wrap: break-word !important;
@@ -2820,6 +2844,21 @@ window.fetch = function (url, options) {
       #inv-return-table-wrap th:nth-child(2), #inv-return-table-wrap td:nth-child(2) { width: 28%; }
       #inv-return-table-wrap th:nth-child(3), #inv-return-table-wrap td:nth-child(3) { width: 22%; }
       #inv-return-table-wrap th:nth-child(4), #inv-return-table-wrap td:nth-child(4) { width: 22%; }
+
+      /* Stock Repair: No PO, SKU, Kategori, Lokasi, Qty Available, Qty On Hand */
+      #inv-repair-table-wrap th:nth-child(1), #inv-repair-table-wrap td:nth-child(1) { width: 20%; }
+      #inv-repair-table-wrap th:nth-child(2), #inv-repair-table-wrap td:nth-child(2) { width: 20%; }
+      #inv-repair-table-wrap th:nth-child(3), #inv-repair-table-wrap td:nth-child(3) { width: 15%; }
+      #inv-repair-table-wrap th:nth-child(4), #inv-repair-table-wrap td:nth-child(4) { width: 15%; }
+      #inv-repair-table-wrap th:nth-child(5), #inv-repair-table-wrap td:nth-child(5) { width: 15%; }
+      #inv-repair-table-wrap th:nth-child(6), #inv-repair-table-wrap td:nth-child(6) { width: 15%; }
+
+      /* Stock Vendor Repair: No PO, SKU, Kategori, Vendor, Qty */
+      #inv-vendor-repair-table-wrap th:nth-child(1), #inv-vendor-repair-table-wrap td:nth-child(1) { width: 22%; }
+      #inv-vendor-repair-table-wrap th:nth-child(2), #inv-vendor-repair-table-wrap td:nth-child(2) { width: 22%; }
+      #inv-vendor-repair-table-wrap th:nth-child(3), #inv-vendor-repair-table-wrap td:nth-child(3) { width: 16%; }
+      #inv-vendor-repair-table-wrap th:nth-child(4), #inv-vendor-repair-table-wrap td:nth-child(4) { width: 24%; }
+      #inv-vendor-repair-table-wrap th:nth-child(5), #inv-vendor-repair-table-wrap td:nth-child(5) { width: 16%; }
 
       /* --- Kotak ringkasan Dashboard Inventory: perkecil font & jarak supaya pasti muat --- */
       .inv-summary-row .col-4 { padding-left: 4px; padding-right: 4px; }
@@ -5395,7 +5434,18 @@ window.fetch = function (url, options) {
                  (yang otomatis dipakai sebagai No Request) dan nama Vendor tujuan. -->
             <div class="col-6 d-none" id="ob-wrap-vendor-repair">
               <label class="form-label small fw-bold mb-0">No PO (=No Request)</label>
-              <input type="text" id="ob-no-po-repair" class="form-control form-control-sm" placeholder="Contoh: PO-REPAIR-001" autocomplete="off">
+              <div class="d-flex gap-1">
+                <!-- FITUR BARU (permintaan Naufal poin 1): No PO sekarang berupa dropdown yang
+                     sumbernya Stock_Repair (bukan ketik manual), supaya operator tidak salah ketik
+                     No PO/SKU. Memilih No PO otomatis mengisi Vendor & seluruh baris SKU/Kategori/Qty
+                     -- lihat loadNoPoDropdownVendorRepair() & onNoPoRepairSelected(). -->
+                <select id="ob-no-po-repair" class="form-select form-select-sm" required onchange="onNoPoRepairSelected()">
+                  <option value="">-- Pilih No PO --</option>
+                </select>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadNoPoDropdownVendorRepair()" title="Muat Ulang Daftar No PO">
+                  <i class="fa-solid fa-rotate"></i>
+                </button>
+              </div>
             </div>
             <div class="col-6 d-none" id="ob-wrap-vendor-nama">
               <label class="form-label small fw-bold mb-0">Vendor</label>
@@ -5419,7 +5469,7 @@ window.fetch = function (url, options) {
           <div id="section-manual-outbound">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <p class="small fw-bold text-secondary mb-0">Daftar Item Barang (Multi SKU):</p>
-              <button type="button" class="btn btn-primary btn-xs py-1 px-2" onclick="tambahBarisItemOutbound()" style="font-size: 11px;">
+              <button type="button" id="btn-tambah-baris-ob" class="btn btn-primary btn-xs py-1 px-2" onclick="tambahBarisItemOutbound()" style="font-size: 11px;">
           <i class="fa-solid fa-plus me-1"></i>Tambah Baris
         </button>
             </div>
@@ -5589,6 +5639,14 @@ window.fetch = function (url, options) {
             toggleOutboundMethod();
           }
           if (excelRadio) excelRadio.disabled = true;
+
+          // FITUR BARU (permintaan Naufal poin 1): muat daftar No PO dari Stock_Repair
+          // begitu masuk mode Perbaikan Vendor, supaya dropdown langsung siap dipilih.
+          loadNoPoDropdownVendorRepair();
+          // Baris item diisi otomatis dari pilihan No PO -- tombol "+ Tambah Baris" manual
+          // disembunyikan supaya operator tidak menambah SKU di luar PO yang dipilih.
+          var btnTambahBaris = document.getElementById("btn-tambah-baris-ob");
+          if (btnTambahBaris) btnTambahBaris.classList.add("d-none");
         } else {
           wrapToko.classList.remove("d-none");
           wrapNoPo.classList.add("d-none");
@@ -5597,6 +5655,8 @@ window.fetch = function (url, options) {
           noPoInput.required = false;
           vendorInput.required = false;
           if (excelRadio) excelRadio.disabled = false;
+          var btnTambahBaris2 = document.getElementById("btn-tambah-baris-ob");
+          if (btnTambahBaris2) btnTambahBaris2.classList.remove("d-none");
         }
 
         // Sesuaikan label & opsi setiap select Grade/Kategori pada baris item yang sudah ada
@@ -5620,6 +5680,71 @@ window.fetch = function (url, options) {
         if ([...selectEl.options].some(function(o) { return o.value === current; })) {
           selectEl.value = current;
         }
+      }
+
+      // FITUR BARU (permintaan Naufal poin 1): cache baris Stock_Repair (per No PO/SKU/
+      // Kategori/Qty Available) dipakai untuk mengisi dropdown "No PO" pada Outbound
+      // Perbaikan Vendor & autofill Vendor + daftar item saat No PO dipilih.
+      let VENDOR_REPAIR_OB_STOCK_CACHE = [];
+
+      async function loadNoPoDropdownVendorRepair() {
+        const sel = document.getElementById("ob-no-po-repair");
+        if (!sel) return;
+        const currentValue = sel.value;
+        sel.innerHTML = '<option value="">Memuat...</option>';
+        try {
+          const rows = await ENDPOINTS.getStockRepairRows();
+          // Hanya No PO yang masih punya saldo Qty Available > 0 yang relevan untuk
+          // dikirim ulang ke Vendor lewat Outbound Perbaikan Vendor.
+          VENDOR_REPAIR_OB_STOCK_CACHE = (rows || []).filter(r => Number(r.qty_available || 0) > 0);
+        } catch (err) {
+          console.error("Gagal memuat daftar Stock_Repair:", err);
+          VENDOR_REPAIR_OB_STOCK_CACHE = [];
+        }
+        const daftarPo = [...new Set(VENDOR_REPAIR_OB_STOCK_CACHE.map(r => r.no_po).filter(Boolean))].sort();
+        sel.innerHTML = '<option value="">-- Pilih No PO --</option>' +
+          daftarPo.map(po => `<option value="${po}">${po}</option>`).join('');
+        if (daftarPo.includes(currentValue)) {
+          sel.value = currentValue;
+        } else {
+          onNoPoRepairSelected();
+        }
+      }
+
+      // Saat No PO dipilih: otomatis isi Vendor (dari Supplier PO Finish Good asalnya)
+      // dan isi ulang seluruh baris item (SKU, Kategori, Qty Available) sesuai data
+      // Stock_Repair untuk No PO tsb -- operator tidak perlu ketik manual lagi.
+      function onNoPoRepairSelected() {
+        const noPo = document.getElementById("ob-no-po-repair").value;
+        const vendorInput = document.getElementById("ob-vendor-repair");
+        const tbody = document.getElementById("tbody-outbound-items");
+        if (!noPo) {
+          if (vendorInput) vendorInput.value = "";
+          return;
+        }
+        const rows = VENDOR_REPAIR_OB_STOCK_CACHE.filter(r => r.no_po === noPo);
+        if (rows.length === 0) return;
+        if (vendorInput) vendorInput.value = rows[0].supplier || "";
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        rows.forEach(r => {
+          const qtyAvail = Number(r.qty_available || 0);
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td><input type="text" class="form-control form-control-sm ob-item-sku" value="${r.kode_sku}" readonly required></td>
+            <td>
+              <select class="form-select form-select-sm ob-item-grade" required>
+                <option value="Kotor" ${r.kategori === 'Kotor' ? 'selected' : ''}>Kotor</option>
+                <option value="Perbaikan" ${r.kategori === 'Perbaikan' ? 'selected' : ''}>Perbaikan</option>
+              </select>
+            </td>
+            <td><input type="number" class="form-control form-control-sm ob-item-qty" value="${qtyAvail}" min="1" max="${qtyAvail}" required></td>
+            <td class="text-center">
+              <button type="button" class="btn btn-outline-danger btn-sm border-0 py-0" onclick="hapusBarisOutbound(this)"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
       }
 
       function toggleOutboundMethod() {
@@ -6697,6 +6822,58 @@ async function eksekusiAddSkuOutbound() {
               <tbody id="inv-tbody-return">
                 <tr>
                   <td colspan="4" class="text-center text-muted py-2">Memuat data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- FITUR BARU (permintaan Naufal poin 4): Dashboard Stock Repair (stock_repair) --
+             barang Kotor/Perbaikan yang sudah dipotong dari Stock_FG dan siap dikirim ke
+             Vendor, lengkap dengan Qty Available & Qty On Hand seperti diminta. -->
+        <div class="mt-3">
+          <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-screwdriver-wrench me-2"></i>Stock Repair
+            (Siap Dikirim ke Vendor)</h6>
+          <div class="table-responsive" id="inv-repair-table-wrap" style="max-height: 160px; overflow-y: auto;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
+              <thead class="table-light">
+                <tr>
+                  <th>No PO</th>
+                  <th>SKU</th>
+                  <th class="text-center">Kategori</th>
+                  <th>Lokasi</th>
+                  <th class="text-center">Qty Available</th>
+                  <th class="text-center">Qty On Hand</th>
+                </tr>
+              </thead>
+              <tbody id="inv-tbody-repair">
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-2">Memuat data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- FITUR BARU (permintaan Naufal poin 4): Dashboard Stock Vendor Repair (vendor_repair) --
+             barang yang sudah dikirim & sedang secara fisik berada di Vendor untuk diperbaiki. -->
+        <div class="mt-3">
+          <h6 class="fw-bold text-secondary small mb-2"><i class="fa-solid fa-truck-ramp-box me-2"></i>Stock Vendor Repair
+            (Sedang di Vendor)</h6>
+          <div class="table-responsive" id="inv-vendor-repair-table-wrap" style="max-height: 160px; overflow-y: auto;">
+            <table class="table table-sm table-bordered align-middle mb-0 inv-mobile-cards" style="font-size: 11px;">
+              <thead class="table-light">
+                <tr>
+                  <th>No PO</th>
+                  <th>SKU</th>
+                  <th class="text-center">Kategori</th>
+                  <th>Vendor</th>
+                  <th class="text-center">Qty</th>
+                </tr>
+              </thead>
+              <tbody id="inv-tbody-vendor-repair">
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-2">Memuat data...</td>
                 </tr>
               </tbody>
             </table>
@@ -15285,6 +15462,9 @@ async function eksekusiCancelOutbound() {
     let INV_DATA_RETURN = [];
     let INV_DATA_OPENPO = [];
     let INV_SUMMARY = null; // FITUR PERBAIKAN: total resmi (SKU Aktif/Qty Available/Qty On Hand) dari view dashboard_stock_summary, dihitung Postgres atas SELURUH tabel stock_fg (tidak terpengaruh limit baris API)
+    // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
+    let INV_DATA_REPAIR = [];
+    let INV_DATA_VENDOR_REPAIR = [];
 
     // FITUR BARU: Klik-Baris-untuk-Transfer -- baris tabel Dashboard Inventory yang sedang
     // ditampilkan (hasil filter aktif), disimpan di sini supaya handler klik baris tinggal
@@ -15305,6 +15485,8 @@ async function eksekusiCancelOutbound() {
       document.getElementById('inv-tbody-inbound').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-return').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">Memuat data...</td></tr>';
       document.getElementById('inv-tbody-openpo').innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2">Memuat data...</td></tr>';
+      document.getElementById('inv-tbody-repair').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-2">Memuat data...</td></tr>';
+      document.getElementById('inv-tbody-vendor-repair').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-2">Memuat data...</td></tr>';
 
       if (INV_LOAD_TIMEOUT_ID) clearTimeout(INV_LOAD_TIMEOUT_ID);
       INV_LOAD_TIMEOUT_ID = setTimeout(() => {
@@ -15323,6 +15505,8 @@ async function eksekusiCancelOutbound() {
             INV_DATA_OPENPO = (res && res.stockOpenPO) || [];
             INV_DEBUG_INFO = (res && res.debugInfo) || null;
             INV_SUMMARY = (res && res.stockSummary) || null;
+            INV_DATA_REPAIR = (res && res.stockRepair) || [];
+            INV_DATA_VENDOR_REPAIR = (res && res.stockVendorRepair) || [];
 
             try { isiDatalistInventory(); } catch (e1) { console.error('isiDatalistInventory error:', e1); }
             try { renderInventoryTable(); } catch (e2) { console.error('renderInventoryTable error:', e2); }
@@ -15351,6 +15535,8 @@ async function eksekusiCancelOutbound() {
       document.getElementById('inv-tbody-inbound').innerHTML = `<tr><td colspan="3" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
       document.getElementById('inv-tbody-return').innerHTML = `<tr><td colspan="4" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
       document.getElementById('inv-tbody-openpo').innerHTML = `<tr><td colspan="4" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
+      document.getElementById('inv-tbody-repair').innerHTML = `<tr><td colspan="6" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
+      document.getElementById('inv-tbody-vendor-repair').innerHTML = `<tr><td colspan="5" class="text-center text-danger py-2">Gagal memuat.</td></tr>`;
     }
 
     // Isi datalist SKU & Lokasi unik (gabungan dari Stock_FG, Stock_Inbound, Stock_Return, Open_PO)
@@ -15363,6 +15549,8 @@ async function eksekusiCancelOutbound() {
       INV_DATA_INBOUND.forEach(r => { if (r.sku) setSku.add(r.sku); if (r.lokasi) setLokasi.add(r.lokasi); });
       INV_DATA_RETURN.forEach(r => { if (r.sku) setSku.add(r.sku); if (r.lokasi) setLokasi.add(r.lokasi); });
       INV_DATA_OPENPO.forEach(r => { if (r.sku) setSku.add(r.sku); });
+      INV_DATA_REPAIR.forEach(r => { if (r.sku) setSku.add(r.sku); if (r.lokasi) setLokasi.add(r.lokasi); });
+      INV_DATA_VENDOR_REPAIR.forEach(r => { if (r.sku) setSku.add(r.sku); });
 
       document.getElementById('inv-list-sku').innerHTML = [...setSku].sort().map(s => `<option value="${s}">`).join('');
       document.getElementById('inv-list-lokasi').innerHTML = [...setLokasi].sort().map(l => `<option value="${l}">`).join('');
@@ -15491,8 +15679,11 @@ async function eksekusiCancelOutbound() {
         (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || r.lokasi.toLowerCase().includes(fLokasi)));
       const filteredReturn = (INV_DATA_RETURN || []).filter(r =>
         (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || r.lokasi.toLowerCase().includes(fLokasi)));
+      const filteredRepair = (INV_DATA_REPAIR || []).filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku)) && (fLokasi === "" || (r.lokasi || '').toLowerCase().includes(fLokasi)));
+      const filteredVendorRepair = (INV_DATA_VENDOR_REPAIR || []).filter(r => (fSku === "" || r.sku.toLowerCase().includes(fSku)));
 
-      if (!daftar.length && !filteredOpenPO.length && !filteredInbound.length && !filteredReturn.length) {
+      if (!daftar.length && !filteredOpenPO.length && !filteredInbound.length && !filteredReturn.length && !filteredRepair.length && !filteredVendorRepair.length) {
         customAlert('Tidak ada data untuk di-export.'); return;
       }
 
@@ -15518,6 +15709,19 @@ async function eksekusiCancelOutbound() {
         'SKU': r.sku, 'Lokasi': r.lokasi, 'Grade': r.grade, 'Qty': Number(r.qty || 0)
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsReturn), 'Stok Pending Putaway Return');
+
+      // FITUR BARU (Dashboard Stock Repair & Stock Vendor Repair, permintaan Naufal poin 4):
+      // sheet tambahan supaya export Excel Dashboard Inventory tetap konsisten/lengkap.
+      const rowsRepair = filteredRepair.map(r => ({
+        'No PO': r.noPo, 'SKU': r.sku, 'Kategori': r.kategori || '-', 'Lokasi': r.lokasi || '-',
+        'Qty Available': Number(r.qtyAvailable || 0), 'Qty On Hand': Number(r.qtyOnHand || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsRepair), 'Stock Repair');
+
+      const rowsVendorRepair = filteredVendorRepair.map(r => ({
+        'No PO': r.noPo, 'SKU': r.sku, 'Kategori': r.kategori || '-', 'Vendor': r.vendor || '-', 'Qty': Number(r.qty || 0)
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rowsVendorRepair), 'Stock Vendor Repair');
 
       XLSX.writeFile(wb, `Dashboard_Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
@@ -15557,6 +15761,32 @@ async function eksekusiCancelOutbound() {
       tbodyRet.innerHTML = filteredReturn.length === 0
         ? '<tr><td colspan="4" class="text-center text-muted py-2">Tidak ada stok pending putaway return.</td></tr>'
         : filteredReturn.map(r => `<tr><td class="fw-bold" data-label="SKU">${r.sku}</td><td data-label="Lokasi">${r.lokasi}</td><td class="text-center" data-label="Grade">${r.grade}</td><td class="text-center" data-label="Qty">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+
+      // FITUR BARU (Dashboard Stock Repair, permintaan Naufal poin 4): barang Kotor/
+      // Perbaikan yang sudah dipotong dari Stock_FG, siap dikirim ke Vendor -- lengkap
+      // dengan Qty Available & Qty On Hand seperti diminta.
+      const filteredRepair = INV_DATA_REPAIR.filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku)) &&
+        (fLokasi === "" || (r.lokasi || '').toLowerCase().includes(fLokasi))
+      );
+      const tbodyRepair = document.getElementById('inv-tbody-repair');
+      if (tbodyRepair) {
+        tbodyRepair.innerHTML = filteredRepair.length === 0
+          ? '<tr><td colspan="6" class="text-center text-muted py-2">Tidak ada Stock Repair.</td></tr>'
+          : filteredRepair.map(r => `<tr><td class="fw-bold" data-label="No PO">${r.noPo}</td><td data-label="SKU">${r.sku}</td><td class="text-center" data-label="Kategori">${r.kategori || '-'}</td><td data-label="Lokasi">${r.lokasi || '-'}</td><td class="text-center fw-bold text-success" data-label="Qty Available">${Number(r.qtyAvailable || 0).toLocaleString('id-ID')}</td><td class="text-center" data-label="Qty On Hand">${Number(r.qtyOnHand || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+      }
+
+      // FITUR BARU (Dashboard Stock Vendor Repair, permintaan Naufal poin 4): barang yang
+      // sudah dikirim & sedang secara fisik berada di Vendor untuk diperbaiki.
+      const filteredVendorRepair = INV_DATA_VENDOR_REPAIR.filter(r =>
+        (fSku === "" || r.sku.toLowerCase().includes(fSku))
+      );
+      const tbodyVendorRepair = document.getElementById('inv-tbody-vendor-repair');
+      if (tbodyVendorRepair) {
+        tbodyVendorRepair.innerHTML = filteredVendorRepair.length === 0
+          ? '<tr><td colspan="5" class="text-center text-muted py-2">Tidak ada barang di Vendor.</td></tr>'
+          : filteredVendorRepair.map(r => `<tr><td class="fw-bold" data-label="No PO">${r.noPo}</td><td data-label="SKU">${r.sku}</td><td class="text-center" data-label="Kategori">${r.kategori || '-'}</td><td data-label="Vendor">${r.vendor || '-'}</td><td class="text-center" data-label="Qty">${Number(r.qty || 0).toLocaleString('id-ID')}</td></tr>`).join('');
+      }
     }
 
     // =========================================================================
