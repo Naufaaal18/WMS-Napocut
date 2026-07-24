@@ -3233,7 +3233,9 @@ window.fetch = function (url, options) {
     .qcx-stepper button{ width:26px; height:28px; border:none; background:transparent; color:var(--qcx-text-dim); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
     .qcx-stepper button:hover{ background:var(--qcx-surface-3); color:var(--qcx-text); }
     .qcx-stepper:has(input:disabled) button{ opacity:.35; pointer-events:none; }
-    .qcx-stepper input.form-control{ width:52px !important; border:none !important; border-left:1px solid var(--qcx-border) !important; border-right:1px solid var(--qcx-border) !important; border-radius:0 !important; }
+    .qcx-stepper input.form-control{ width:64px !important; padding-left:4px !important; padding-right:4px !important; text-align:center; border:none !important; border-left:1px solid var(--qcx-border) !important; border-right:1px solid var(--qcx-border) !important; border-radius:0 !important; -moz-appearance:textfield; }
+    .qcx-stepper input.form-control::-webkit-outer-spin-button,
+    .qcx-stepper input.form-control::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 
     /* ---- Donut distribusi (disuntik via JS) ---- */
     .qcx-donut-card{ margin-top:10px; padding:14px; background:var(--qcx-surface); border:1px solid var(--qcx-border); border-radius:14px; }
@@ -5594,8 +5596,7 @@ window.fetch = function (url, options) {
               <select id="ob-tipe" class="form-select form-select-sm" required onchange="toggleTipeOutboundVendorRepair()">
           <option value="Toko/Dept Store">Toko/Dept Store</option>
           <option value="Perbaikan Vendor">Perbaikan Vendor</option>
-          <option value="Mfg Order">Mfg Order</option>
-          <option value="Urgent Putaway">Urgent Putaway</option>
+          <option value="Kirim ke Vendor">Kirim ke Vendor</option>
         </select>
             </div>
             <div class="col-12">
