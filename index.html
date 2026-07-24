@@ -3070,6 +3070,42 @@ window.fetch = function (url, options) {
     #sub-po-data .wms-filter-pill:hover, #sub-dashob-outbound .wms-filter-pill:hover { border-color: var(--qcx-accent); }
     #sub-po-data .wms-filter-pill.active, #sub-dashob-outbound .wms-filter-pill.active { background: var(--qcx-accent); border-color: var(--qcx-accent); color:#fff; font-weight:700; }
 
+    /* FITUR BARU: Filter kolom ala Excel (ikon corong di header + panel dropdown berisi
+       Sort A-Z/Z-A, kotak pencarian, checkbox "(Select All)" + daftar nilai unik, tombol
+       OK/Cancel) -- meniru persis tampilan AutoFilter Excel yang diminta user. Dipakai
+       bersama oleh tabel Data PO (prefix pod) & Data Outbound Request (prefix obf).
+       Ikon corong ada di dalam <th>, tapi panel dropdown-nya di-append ke <body> (posisi
+       fixed) supaya tidak terpotong oleh overflow:auto pada .table-responsive. */
+    .xlf-icon { margin-left:4px; font-size:10px; cursor:pointer; color:#9c9488; }
+    .xlf-icon:hover { color: var(--qcx-accent, #495057); }
+    .xlf-icon.xlf-active { color: var(--qcx-accent, #0d6efd); }
+    .xlf-panel {
+      position:fixed; z-index:3000; width:240px; max-width:calc(100vw - 20px);
+      background:#fff; border:1px solid #c9c2b6; border-radius:8px;
+      box-shadow:0 6px 20px rgba(30,25,15,.22);
+      font-family:'Inter',sans-serif; font-size:12.5px; color:#2c271f;
+      padding:6px 0; user-select:none;
+    }
+    .xlf-sortopt { padding:6px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; }
+    .xlf-sortopt:hover { background:#f2ede4; }
+    .xlf-sortopt i { width:14px; text-align:center; color:#8a5a44; }
+    .xlf-sep { height:1px; background:#e6e0d4; margin:4px 0; }
+    .xlf-search {
+      display:block; width:calc(100% - 20px); margin:2px 10px; padding:4px 8px;
+      border:1px solid #cfc8bb; border-radius:6px; font-size:12px;
+    }
+    .xlf-search:focus { outline:none; border-color:#8a5a44; }
+    .xlf-list { max-height:200px; overflow-y:auto; padding:2px 0; }
+    .xlf-item {
+      display:flex; align-items:center; gap:7px; padding:3px 12px; cursor:pointer;
+      font-size:12px; line-height:1.35; word-break:break-word;
+    }
+    .xlf-item:hover { background:#f2ede4; }
+    .xlf-item input[type=checkbox] { accent-color:#8a5a44; flex:0 0 auto; }
+    .xlf-selectall { font-weight:600; }
+    .xlf-footer { display:flex; justify-content:flex-end; gap:6px; padding:6px 10px 2px; }
+    .xlf-footer .btn { font-size:11.5px; padding:3px 10px; }
+
     /* ---- Aksen per dashboard (pakai token --qcx-* yang sudah didefinisikan di :root) ---- */
     #sub-dashob-outbound{
       --qcx-accent:#D2604B;
@@ -4227,16 +4263,16 @@ window.fetch = function (url, options) {
               <table class="table table-sm table-bordered align-middle mb-0" id="pod-table" style="font-size:11px;">
                 <thead class="table-light" style="position:sticky;top:0;">
                   <tr>
-                    <th class="wms-th-sortable" onclick="podToggleSort('noPo')">No PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-noPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-noPo"></sup></th>
-                    <th class="wms-th-sortable" onclick="podToggleSort('supplier')">Supplier <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-supplier"></i><sup class="wms-sort-badge" id="pod-sortbadge-supplier"></sup></th>
-                    <th class="wms-th-sortable" onclick="podToggleSort('kategori')">Kategori <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-kategori"></i><sup class="wms-sort-badge" id="pod-sortbadge-kategori"></sup></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('noPo')">No PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-noPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-noPo"></sup><i class="fa-solid fa-filter xlf-icon" id="pod-xlf-noPo" title="Filter No PO" onclick="podOpenExcelFilter(event,'noPo')"></i></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('supplier')">Supplier <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-supplier"></i><sup class="wms-sort-badge" id="pod-sortbadge-supplier"></sup><i class="fa-solid fa-filter xlf-icon" id="pod-xlf-supplier" title="Filter Supplier" onclick="podOpenExcelFilter(event,'supplier')"></i></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('kategori')">Kategori <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-kategori"></i><sup class="wms-sort-badge" id="pod-sortbadge-kategori"></sup><i class="fa-solid fa-filter xlf-icon" id="pod-xlf-kategori" title="Filter Kategori" onclick="podOpenExcelFilter(event,'kategori')"></i></th>
                     <th class="wms-th-sortable" onclick="podToggleSort('tanggal')">Tanggal <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-tanggal"></i><sup class="wms-sort-badge" id="pod-sortbadge-tanggal"></sup></th>
                     <th class="text-center wms-th-sortable" onclick="podToggleSort('jmlSku')">Jml SKU <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-jmlSku"></i><sup class="wms-sort-badge" id="pod-sortbadge-jmlSku"></sup></th>
                     <th class="text-end wms-th-sortable" onclick="podToggleSort('qtyPo')">Qty PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-qtyPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-qtyPo"></sup></th>
                     <th class="text-end wms-th-sortable" onclick="podToggleSort('pendingQtyPo')">Pending Qty PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-pendingQtyPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-pendingQtyPo"></sup></th>
                     <th class="text-end wms-th-sortable" onclick="podToggleSort('qtyReceivingPo')">Qty Receiving PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-qtyReceivingPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-qtyReceivingPo"></sup></th>
-                    <th class="text-center wms-th-sortable" onclick="podToggleSort('statusPo')">Status <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-statusPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-statusPo"></sup></th>
-                    <th class="text-center wms-th-sortable" onclick="podToggleSort('validasi')">Validasi <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-validasi"></i><sup class="wms-sort-badge" id="pod-sortbadge-validasi"></sup></th>
+                    <th class="text-center wms-th-sortable" onclick="podToggleSort('statusPo')">Status <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-statusPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-statusPo"></sup><i class="fa-solid fa-filter xlf-icon" id="pod-xlf-statusPo" title="Filter Status" onclick="podOpenExcelFilter(event,'statusPo')"></i></th>
+                    <th class="text-center wms-th-sortable" onclick="podToggleSort('validasi')">Validasi <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-validasi"></i><sup class="wms-sort-badge" id="pod-sortbadge-validasi"></sup><i class="fa-solid fa-filter xlf-icon" id="pod-xlf-validasi" title="Filter Validasi" onclick="podOpenExcelFilter(event,'validasi')"></i></th>
                   </tr>
                   <tr id="pod-filter-row">
                     <th></th>
@@ -4268,14 +4304,7 @@ window.fetch = function (url, options) {
                       </div>
                     </th>
                     <th></th>
-                    <th style="min-width:130px;">
-                      <div class="wms-filter-pills" id="pod-f-validasi">
-                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Valid',this)">Valid</span>
-                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Partial',this)">Partial</span>
-                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Pending',this)">Pending</span>
-                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('-',this)">-</span>
-                      </div>
-                    </th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="pod-tbody">
@@ -6485,36 +6514,28 @@ async function eksekusiAddSkuOutbound() {
             <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
               <thead class="table-light" style="position:sticky;top:0;">
                 <tr>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('noRequest')">No Request <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-noRequest"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('noRequest')">No Request <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-noRequest"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-noRequest" title="Filter No Request" onclick="obfOpenExcelFilter(event,'noRequest')"></i></th>
                   <th class="wms-th-sortable" onclick="obfToggleSort('tglRequest')">Tgl <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-tglRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-tglRequest"></sup></th>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('kodeStore')">Store <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-kodeStore"></i><sup class="wms-sort-badge" id="obf-sortbadge-kodeStore"></sup></th>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('noSo')">No SO <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noSo"></i><sup class="wms-sort-badge" id="obf-sortbadge-noSo"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('kodeStore')">Store <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-kodeStore"></i><sup class="wms-sort-badge" id="obf-sortbadge-kodeStore"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-kodeStore" title="Filter Store" onclick="obfOpenExcelFilter(event,'kodeStore')"></i></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('noSo')">No SO <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noSo"></i><sup class="wms-sort-badge" id="obf-sortbadge-noSo"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-noSo" title="Filter No SO" onclick="obfOpenExcelFilter(event,'noSo')"></i></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('skuCount')" title="Jumlah SKU berbeda dalam 1 No Request">SKU <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-skuCount"></i><sup class="wms-sort-badge" id="obf-sortbadge-skuCount"></sup></th>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('grade')">Grade <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-grade"></i><sup class="wms-sort-badge" id="obf-sortbadge-grade"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('grade')">Grade <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-grade"></i><sup class="wms-sort-badge" id="obf-sortbadge-grade"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-grade" title="Filter Grade" onclick="obfOpenExcelFilter(event,'grade')"></i></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyRequest')">Qty Req <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyRequest"></sup></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyAllocated')">Qty Alloc <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyAllocated"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyAllocated"></sup></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyPicker')">Qty Picker <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyPicker"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyPicker"></sup></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyCheckerKlop')">Qty Checker <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyCheckerKlop"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyCheckerKlop"></sup></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyShortpick')">Qty Shortpick <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyShortpick"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyShortpick"></sup></th>
                   <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyStockout')">Stockout <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyStockout"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyStockout"></sup></th>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('leadingStatus')" title="Berubah begitu SALAH SATU SKU dalam Request ini sudah diproses (In Packing saat mulai ada yang dipicking, Ready to Ship saat mulai ada yang di-check)">Leading Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-leadingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-leadingStatus"></sup></th>
-                  <th class="wms-th-sortable" onclick="obfToggleSort('trailingStatus')" title="Berubah setelah SEMUA SKU dalam Request ini selesai diproses (In Packing setelah semua dipicking, Ready to Ship setelah semua di-check)">Trailing Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-trailingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-trailingStatus"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('leadingStatus')" title="Berubah begitu SALAH SATU SKU dalam Request ini sudah diproses (In Packing saat mulai ada yang dipicking, Ready to Ship saat mulai ada yang di-check)">Leading Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-leadingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-leadingStatus"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-leadingStatus" title="Filter Leading Status" onclick="obfOpenExcelFilter(event,'leadingStatus')"></i></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('trailingStatus')" title="Berubah setelah SEMUA SKU dalam Request ini selesai diproses (In Packing setelah semua dipicking, Ready to Ship setelah semua di-check)">Trailing Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-trailingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-trailingStatus"></sup><i class="fa-solid fa-filter xlf-icon" id="obf-xlf-trailingStatus" title="Filter Trailing Status" onclick="obfOpenExcelFilter(event,'trailingStatus')"></i></th>
                 </tr>
                 <tr id="obf-filter-row">
                   <th></th>
                   <th></th>
                   <th></th>
-                  <th style="min-width:90px;"><input type="text" class="form-control form-control-sm" id="obf-f-noso" placeholder="Filter..." style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()"></th>
                   <th></th>
-                  <th style="min-width:110px;">
-                    <div class="wms-filter-pills" id="obf-f-grade">
-                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Bagus',this)">Bagus</span>
-                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Minor',this)">Minor</span>
-                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Reject',this)">Reject</span>
-                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Kotor',this)">Kotor</span>
-                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Perbaikan',this)">Perbaikan</span>
-                    </div>
-                  </th>
+                  <th></th>
+                  <th></th>
                   <th style="min-width:80px;">
                     <div class="d-flex gap-1">
                       <input type="number" class="form-control form-control-sm" id="obf-f-qtyreq-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
@@ -6551,22 +6572,8 @@ async function eksekusiAddSkuOutbound() {
                       <input type="number" class="form-control form-control-sm" id="obf-f-stockout-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
                     </div>
                   </th>
-                  <th style="min-width:120px;">
-                    <div class="wms-filter-pills" id="obf-f-leading">
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Stockout',this)">Stockout</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Picking Pending',this)">Picking Pending</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','In Packing',this)">In Packing</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Ready to Ship',this)">Ready to Ship</span>
-                    </div>
-                  </th>
-                  <th style="min-width:120px;">
-                    <div class="wms-filter-pills" id="obf-f-trailing">
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Stockout',this)">Stockout</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Picking Pending',this)">Picking Pending</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','In Packing',this)">In Packing</span>
-                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Ready to Ship',this)">Ready to Ship</span>
-                    </div>
-                  </th>
+                  <th></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="ob-dash-summary-tbody">
@@ -11409,8 +11416,154 @@ async function validatePOReturnPrompt() {
 // Qty Receiving PO/Validasi -- kolom No PO/Supplier/Kategori/Tanggal/Status
 // sudah punya kontrol filter sendiri di atas tabel jadi tidak diduplikasi).
 // =========================================================================
+// =========================================================================
+// FITUR BARU: Mesin generik "Filter Kolom ala Excel" -- dipakai bersama oleh
+// tabel Data PO (prefix pod) & Data Outbound Request (prefix obf). Klik ikon
+// corong di header kolom -> muncul panel: Sort A to Z / Sort Z to A, kotak
+// pencarian, checkbox "(Select All)" + daftar nilai unik kolom tsb, tombol
+// OK/Cancel -- persis seperti AutoFilter Excel. Panel di-append ke <body>
+// (position:fixed) supaya tidak kepotong oleh scroll tabel.
+// =========================================================================
+function xlfLabel(v) {
+  return (v === null || v === undefined || v === '') ? '(Kosong)' : String(v);
+}
+
+let XLF_CURRENT = null; // konfigurasi dropdown yang sedang terbuka (null = tertutup)
+let XLF_SEARCH = '';
+let XLF_PENDING = null; // Set nilai yang sedang dicentang di panel (belum di-OK-kan)
+
+function xlfClose() {
+  const el = document.getElementById('xlf-dropdown');
+  if (el) el.remove();
+  document.removeEventListener('mousedown', xlfOutsideClickHandler, true);
+  XLF_CURRENT = null;
+}
+
+function xlfOutsideClickHandler(e) {
+  const el = document.getElementById('xlf-dropdown');
+  if (el && !el.contains(e.target)) xlfClose();
+}
+
+// cfg = {
+//   btnEl:      elemen ikon corong yang diklik (dipakai untuk posisi panel & id unik),
+//   getValues:  () => array nilai mentah kolom ini dari SELURUH data (boleh duplikat),
+//   getSelected:() => array label yang sedang aktif difilter ([] artinya semua tampil),
+//   setSelected:(arr) => simpan filter baru lalu render ulang tabel,
+//   sortAsc:    () => set sort kolom ini eksplisit ascending,
+//   sortDesc:   () => set sort kolom ini eksplisit descending
+// }
+function xlfOpen(event, cfg) {
+  event.stopPropagation();
+  const wasOpenSameBtn = XLF_CURRENT && XLF_CURRENT.btnEl === cfg.btnEl;
+  xlfClose();
+  if (wasOpenSameBtn) return; // klik ikon yang sama saat panel terbuka -> toggle tutup
+
+  XLF_CURRENT = cfg;
+  XLF_SEARCH = '';
+  const rawValues = (cfg.getValues() || []).map(xlfLabel);
+  const uniqueValues = Array.from(new Set(rawValues)).sort((a, b) => a.localeCompare(b, 'id', { numeric: true, sensitivity: 'base' }));
+  const selectedNow = cfg.getSelected() || [];
+  XLF_PENDING = new Set(selectedNow.length ? selectedNow : uniqueValues);
+  XLF_CURRENT.allValues = uniqueValues;
+
+  const panel = document.createElement('div');
+  panel.id = 'xlf-dropdown';
+  panel.className = 'xlf-panel';
+  panel.innerHTML = `
+    <div class="xlf-sortopt" onclick="xlfSortClick('asc')"><i class="fa-solid fa-arrow-down-a-z"></i> Sort A to Z</div>
+    <div class="xlf-sortopt" onclick="xlfSortClick('desc')"><i class="fa-solid fa-arrow-down-z-a"></i> Sort Z to A</div>
+    <div class="xlf-sep"></div>
+    <input type="text" class="xlf-search" placeholder="Search" oninput="xlfOnSearch(this.value)">
+    <div class="xlf-sep"></div>
+    <label class="xlf-item xlf-selectall">
+      <input type="checkbox" id="xlf-selectall-chk" onchange="xlfToggleSelectAll(this.checked)">
+      <span>(Select All)</span>
+    </label>
+    <div class="xlf-list" id="xlf-list"></div>
+    <div class="xlf-sep"></div>
+    <div class="xlf-footer">
+      <button type="button" class="btn btn-sm btn-primary" onclick="xlfApply()">OK</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="xlfClose()">Cancel</button>
+    </div>
+  `;
+  document.body.appendChild(panel);
+  xlfRenderList();
+  const selAllChk = document.getElementById('xlf-selectall-chk');
+  if (selAllChk) selAllChk.checked = XLF_PENDING.size === uniqueValues.length;
+
+  // Posisi panel persis di bawah ikon corong yang diklik, digeser kalau ketutup tepi layar.
+  const rect = cfg.btnEl.getBoundingClientRect();
+  const panelW = 240;
+  let left = rect.left;
+  if (left + panelW > window.innerWidth - 10) left = window.innerWidth - panelW - 10;
+  if (left < 5) left = 5;
+  panel.style.left = left + 'px';
+  panel.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+
+  setTimeout(() => document.addEventListener('mousedown', xlfOutsideClickHandler, true), 0);
+}
+
+function xlfRenderList() {
+  const list = document.getElementById('xlf-list');
+  if (!list || !XLF_CURRENT) return;
+  const q = XLF_SEARCH.trim().toLowerCase();
+  const values = XLF_CURRENT.allValues.filter(v => !q || v.toLowerCase().includes(q));
+  if (!values.length) {
+    list.innerHTML = '<div class="text-muted small px-2 py-2">Tidak ada hasil</div>';
+    return;
+  }
+  list.innerHTML = values.map((v, i) => `
+    <label class="xlf-item">
+      <input type="checkbox" data-xlf-idx="${i}" ${XLF_PENDING.has(v) ? 'checked' : ''} onchange="xlfToggleValue(${i}, this.checked)">
+      <span>${escapeHtmlAttr(v)}</span>
+    </label>
+  `).join('');
+  list.dataset.visible = JSON.stringify(values);
+}
+
+function xlfOnSearch(val) {
+  XLF_SEARCH = val;
+  xlfRenderList();
+  const selAllChk = document.getElementById('xlf-selectall-chk');
+  if (selAllChk) {
+    const visible = JSON.parse(document.getElementById('xlf-list').dataset.visible || '[]');
+    selAllChk.checked = visible.length > 0 && visible.every(v => XLF_PENDING.has(v));
+  }
+}
+
+function xlfToggleValue(i, checked) {
+  const visible = JSON.parse(document.getElementById('xlf-list').dataset.visible || '[]');
+  const v = visible[i];
+  if (v === undefined) return;
+  if (checked) XLF_PENDING.add(v); else XLF_PENDING.delete(v);
+  const selAllChk = document.getElementById('xlf-selectall-chk');
+  if (selAllChk) selAllChk.checked = visible.every(vv => XLF_PENDING.has(vv));
+}
+
+function xlfToggleSelectAll(checked) {
+  const visible = JSON.parse(document.getElementById('xlf-list')?.dataset.visible || '[]');
+  visible.forEach(v => checked ? XLF_PENDING.add(v) : XLF_PENDING.delete(v));
+  xlfRenderList();
+}
+
+function xlfSortClick(dir) {
+  if (!XLF_CURRENT) return;
+  if (dir === 'asc') XLF_CURRENT.sortAsc(); else XLF_CURRENT.sortDesc();
+  xlfClose();
+}
+
+function xlfApply() {
+  if (!XLF_CURRENT) return;
+  // Kalau semua nilai dicentang, anggap "tidak ada filter" (array kosong) -- konsisten
+  // dengan pola POD_COL_FILTERS/OBF_COL_FILTERS lama (array kosong = tampilkan semua).
+  const selected = (XLF_PENDING.size === XLF_CURRENT.allValues.length) ? [] : Array.from(XLF_PENDING);
+  const setSelected = XLF_CURRENT.setSelected;
+  xlfClose();
+  setSelected(selected);
+}
+
 let POD_SORT_STATE = []; // contoh: [{col:'tanggal', dir:'desc'}, {col:'noPo', dir:'asc'}]
-let POD_COL_FILTERS = { validasi: [] };
+let POD_COL_FILTERS = { noPo: [], supplier: [], kategori: [], statusPo: [], validasi: [] };
 const POD_SORTABLE_COLS = ['noPo', 'supplier', 'kategori', 'tanggal', 'jmlSku', 'qtyPo', 'pendingQtyPo', 'qtyReceivingPo', 'statusPo', 'validasi'];
 
 // Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
@@ -11426,6 +11579,51 @@ function podToggleSort(col) {
   }
   podUpdateSortIcons();
   renderDataPOTable();
+}
+
+// FITUR BARU: dipakai oleh panel filter ala Excel (tombol "Sort A to Z"/"Sort Z to A") --
+// set arah sort kolom ini secara EKSPLISIT (bukan toggle seperti podToggleSort di atas).
+function podSetSortExplicit(col, dir) {
+  const idx = POD_SORT_STATE.findIndex(s => s.col === col);
+  if (idx === -1) POD_SORT_STATE.push({ col: col, dir: dir });
+  else POD_SORT_STATE[idx].dir = dir;
+  podUpdateSortIcons();
+  renderDataPOTable();
+}
+
+// FITUR BARU: buka panel filter ala Excel untuk kolom No PO/Supplier/Kategori/Status/
+// Validasi -- daftar nilai unik diambil dari SELURUH PO_DATA_LIST (bukan cuma yang lolos
+// filter lain) supaya pilihan tetap lengkap, sama seperti dropdown AutoFilter Excel.
+function podOpenExcelFilter(event, colKey) {
+  const btnEl = document.getElementById('pod-xlf-' + colKey);
+  if (!btnEl) return;
+  const getRaw = () => {
+    switch (colKey) {
+      case 'noPo': return PO_DATA_LIST.map(po => po.noPo || '');
+      case 'supplier': return PO_DATA_LIST.map(po => po.supplier || '');
+      case 'kategori': return PO_DATA_LIST.map(po => po.kategori || '');
+      case 'statusPo': return PO_DATA_LIST.map(po => po.statusPo || '');
+      case 'validasi': return PO_DATA_LIST.map(po => hitungValidasiPO(po).label);
+      default: return [];
+    }
+  };
+  xlfOpen(event, {
+    btnEl: btnEl,
+    getValues: getRaw,
+    getSelected: () => POD_COL_FILTERS[colKey] || [],
+    setSelected: (arr) => { POD_COL_FILTERS[colKey] = arr; podUpdateFilterIcons(); renderDataPOTable(); },
+    sortAsc: () => podSetSortExplicit(colKey, 'asc'),
+    sortDesc: () => podSetSortExplicit(colKey, 'desc')
+  });
+}
+
+// FITUR BARU: warnai ikon corong yang sedang aktif filternya (mirip AutoFilter Excel yang
+// menandai kolom ber-filter dengan ikon corong terisi).
+function podUpdateFilterIcons() {
+  ['noPo', 'supplier', 'kategori', 'statusPo', 'validasi'].forEach(col => {
+    const el = document.getElementById('pod-xlf-' + col);
+    if (el) el.classList.toggle('xlf-active', (POD_COL_FILTERS[col] || []).length > 0);
+  });
 }
 
 // Perbarui ikon panah & badge nomor prioritas di header sesuai POD_SORT_STATE saat ini.
@@ -11446,27 +11644,17 @@ function podUpdateSortIcons() {
   });
 }
 
-// Toggle pilihan label Validasi (Valid/Partial/Pending/-) lewat klik pill -- bisa pilih
-// lebih dari 1 sekaligus.
-function podToggleValidasiFilter(value, pillEl) {
-  const arr = POD_COL_FILTERS.validasi;
-  const i = arr.indexOf(value);
-  if (i === -1) arr.push(value); else arr.splice(i, 1);
-  pillEl.classList.toggle('active');
-  renderDataPOTable();
-}
-
 // Hapus semua filter kolom tambahan (Jml SKU/Qty/Validasi) & semua sort aktif sekaligus.
 // Filter lama (keyword, Kategori, Bulan/Tahun, checkbox Closed/Cancel) TIDAK ikut
 // direset di sini -- sudah ada tombol/kontrolnya sendiri masing-masing.
 function podResetFiltersSort() {
   POD_SORT_STATE = [];
-  POD_COL_FILTERS.validasi = [];
+  POD_COL_FILTERS = { noPo: [], supplier: [], kategori: [], statusPo: [], validasi: [] };
   ['pod-f-jmlsku-min', 'pod-f-jmlsku-max', 'pod-f-qtypo-min', 'pod-f-qtypo-max',
    'pod-f-qtypending-min', 'pod-f-qtypending-max', 'pod-f-qtyreceiving-min', 'pod-f-qtyreceiving-max'
   ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-  document.querySelectorAll('#pod-f-validasi .wms-filter-pill.active').forEach(el => el.classList.remove('active'));
   podUpdateSortIcons();
+  podUpdateFilterIcons();
   renderDataPOTable();
 }
 
@@ -11497,6 +11685,12 @@ function podApplyColFiltersAndSort(daftar) {
     if (qtyPendingMax !== '' && qtyPendingMax !== undefined && qtyPending > Number(qtyPendingMax)) return false;
     if (qtyRecvMin !== '' && qtyRecvMin !== undefined && qtyRecv < Number(qtyRecvMin)) return false;
     if (qtyRecvMax !== '' && qtyRecvMax !== undefined && qtyRecv > Number(qtyRecvMax)) return false;
+    // FITUR BARU: filter kolom ala Excel (checkbox nilai unik) untuk No PO/Supplier/
+    // Kategori/Status/Validasi -- array kosong berarti kolom itu tidak difilter.
+    if (POD_COL_FILTERS.noPo.length && !POD_COL_FILTERS.noPo.includes(xlfLabel(po.noPo))) return false;
+    if (POD_COL_FILTERS.supplier.length && !POD_COL_FILTERS.supplier.includes(xlfLabel(po.supplier))) return false;
+    if (POD_COL_FILTERS.kategori.length && !POD_COL_FILTERS.kategori.includes(xlfLabel(po.kategori))) return false;
+    if (POD_COL_FILTERS.statusPo.length && !POD_COL_FILTERS.statusPo.includes(xlfLabel(po.statusPo))) return false;
     if (POD_COL_FILTERS.validasi.length && !POD_COL_FILTERS.validasi.includes(hitungValidasiPO(po).label)) return false;
     return true;
   });
@@ -16491,7 +16685,7 @@ async function eksekusiCancelOutbound() {
     // form-request) supaya ID-nya tidak bentrok dengan kontrol lain di modul ini.
     // =========================================================================
     let OBF_SORT_STATE = []; // contoh: [{col:'qtyStockout', dir:'desc'}, {col:'noRequest', dir:'asc'}]
-    let OBF_COL_FILTERS = { grade: [], leadingStatus: [], trailingStatus: [] };
+    let OBF_COL_FILTERS = { noRequest: [], kodeStore: [], noSo: [], grade: [], leadingStatus: [], trailingStatus: [] };
     const OBF_SORTABLE_COLS = ['noRequest', 'tglRequest', 'kodeStore', 'noSo', 'skuCount', 'grade', 'qtyRequest', 'qtyAllocated', 'qtyPicker', 'qtyCheckerKlop', 'qtyShortpick', 'qtyStockout', 'leadingStatus', 'trailingStatus'];
 
     // Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
@@ -16507,6 +16701,53 @@ async function eksekusiCancelOutbound() {
       }
       obfUpdateSortIcons();
       renderDashboardOutboundSummaryTable();
+    }
+
+    // FITUR BARU: dipakai oleh panel filter ala Excel (tombol "Sort A to Z"/"Sort Z to A") --
+    // set arah sort kolom ini secara EKSPLISIT (bukan toggle seperti obfToggleSort di atas).
+    function obfSetSortExplicit(col, dir) {
+      const idx = OBF_SORT_STATE.findIndex(s => s.col === col);
+      if (idx === -1) OBF_SORT_STATE.push({ col: col, dir: dir });
+      else OBF_SORT_STATE[idx].dir = dir;
+      obfUpdateSortIcons();
+      renderDashboardOutboundSummaryTable();
+    }
+
+    // FITUR BARU: buka panel filter ala Excel untuk kolom No Request/Store/No SO/Grade/
+    // Leading Status/Trailing Status -- daftar nilai unik diambil dari SELURUH ringkasan
+    // Form Request (computeDashboardOutboundSummary atas DASHOB_DATA_OB penuh, belum
+    // difilter), sama seperti dropdown AutoFilter Excel yang menampilkan semua pilihan.
+    function obfOpenExcelFilter(event, colKey) {
+      const btnEl = document.getElementById('obf-xlf-' + colKey);
+      if (!btnEl) return;
+      const getRaw = () => {
+        const summaryAll = computeDashboardOutboundSummary(DASHOB_DATA_OB || []);
+        switch (colKey) {
+          case 'noRequest': return summaryAll.map(r => r.noRequest || '');
+          case 'kodeStore': return summaryAll.map(r => r.kodeStore || '');
+          case 'noSo': return summaryAll.map(r => r.noSo || '');
+          case 'grade': return summaryAll.flatMap(r => (r.grade || '').split(',').map(g => g.trim()).filter(Boolean));
+          case 'leadingStatus': return summaryAll.map(r => r.leadingStatus || '');
+          case 'trailingStatus': return summaryAll.map(r => r.trailingStatus || '');
+          default: return [];
+        }
+      };
+      xlfOpen(event, {
+        btnEl: btnEl,
+        getValues: getRaw,
+        getSelected: () => OBF_COL_FILTERS[colKey] || [],
+        setSelected: (arr) => { OBF_COL_FILTERS[colKey] = arr; obfUpdateFilterIcons(); renderDashboardOutboundSummaryTable(); },
+        sortAsc: () => obfSetSortExplicit(colKey, 'asc'),
+        sortDesc: () => obfSetSortExplicit(colKey, 'desc')
+      });
+    }
+
+    // FITUR BARU: warnai ikon corong yang sedang aktif filternya.
+    function obfUpdateFilterIcons() {
+      ['noRequest', 'kodeStore', 'noSo', 'grade', 'leadingStatus', 'trailingStatus'].forEach(col => {
+        const el = document.getElementById('obf-xlf-' + col);
+        if (el) el.classList.toggle('xlf-active', (OBF_COL_FILTERS[col] || []).length > 0);
+      });
     }
 
     // Perbarui ikon panah & badge nomor prioritas di header sesuai OBF_SORT_STATE saat ini.
@@ -16527,48 +16768,24 @@ async function eksekusiCancelOutbound() {
       });
     }
 
-    // Toggle pilihan Grade lewat klik pill -- bisa pilih lebih dari 1 Grade sekaligus.
-    // Perlu diingat "Grade" di ringkasan Form Request adalah gabungan beberapa Grade
-    // per No Request (dipisah ", "), jadi filter ini cocok kalau SALAH SATU Grade yang
-    // dipilih ada di dalam gabungan tsb.
-    function obfToggleGradeFilter(value, pillEl) {
-      const arr = OBF_COL_FILTERS.grade;
-      const i = arr.indexOf(value);
-      if (i === -1) arr.push(value); else arr.splice(i, 1);
-      pillEl.classList.toggle('active');
-      renderDashboardOutboundSummaryTable();
-    }
-
-    // Toggle pilihan Leading/Trailing Status lewat klik pill -- bisa pilih lebih dari 1.
-    function obfToggleStatusFilter(field, value, pillEl) {
-      const arr = OBF_COL_FILTERS[field];
-      const i = arr.indexOf(value);
-      if (i === -1) arr.push(value); else arr.splice(i, 1);
-      pillEl.classList.toggle('active');
-      renderDashboardOutboundSummaryTable();
-    }
-
     // Hapus semua filter kolom tambahan (No SO/Grade/Qty*/Status) & semua sort aktif
     // sekaligus. Filter lama (Filter No Request/Store, checkbox Closed/Cancelled)
     // TIDAK ikut direset -- sudah ada kontrolnya sendiri.
     function obfResetFiltersSort() {
       OBF_SORT_STATE = [];
-      OBF_COL_FILTERS.grade = [];
-      OBF_COL_FILTERS.leadingStatus = [];
-      OBF_COL_FILTERS.trailingStatus = [];
-      ['obf-f-noso', 'obf-f-qtyreq-min', 'obf-f-qtyreq-max', 'obf-f-qtyalloc-min', 'obf-f-qtyalloc-max',
+      OBF_COL_FILTERS = { noRequest: [], kodeStore: [], noSo: [], grade: [], leadingStatus: [], trailingStatus: [] };
+      ['obf-f-qtyreq-min', 'obf-f-qtyreq-max', 'obf-f-qtyalloc-min', 'obf-f-qtyalloc-max',
        'obf-f-qtypicker-min', 'obf-f-qtypicker-max', 'obf-f-qtychecker-min', 'obf-f-qtychecker-max',
        'obf-f-qtyshortpick-min', 'obf-f-qtyshortpick-max', 'obf-f-stockout-min', 'obf-f-stockout-max'
       ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-      document.querySelectorAll('#obf-filter-row .wms-filter-pill.active').forEach(el => el.classList.remove('active'));
       obfUpdateSortIcons();
+      obfUpdateFilterIcons();
       renderDashboardOutboundSummaryTable();
     }
 
     // Terapkan filter kolom tambahan DAN multi-sort ke daftar ringkasan Form Request yang
     // sudah lolos filter lama (Filter No Request/Store & checkbox Closed/Cancelled).
     function obfApplyColFiltersAndSort(rows) {
-      const fNoSo = (document.getElementById('obf-f-noso')?.value || '').trim().toLowerCase();
       const qtyReqMin = document.getElementById('obf-f-qtyreq-min')?.value;
       const qtyReqMax = document.getElementById('obf-f-qtyreq-max')?.value;
       const qtyAllocMin = document.getElementById('obf-f-qtyalloc-min')?.value;
@@ -16583,13 +16800,17 @@ async function eksekusiCancelOutbound() {
       const stockoutMax = document.getElementById('obf-f-stockout-max')?.value;
 
       let out = rows.filter(r => {
-        if (fNoSo && !(r.noSo || '').toLowerCase().includes(fNoSo)) return false;
+        // FITUR BARU: filter kolom ala Excel (checkbox nilai unik) untuk No Request/Store/
+        // No SO/Grade/Leading Status/Trailing Status -- array kosong berarti tidak difilter.
+        if (OBF_COL_FILTERS.noRequest.length && !OBF_COL_FILTERS.noRequest.includes(xlfLabel(r.noRequest))) return false;
+        if (OBF_COL_FILTERS.kodeStore.length && !OBF_COL_FILTERS.kodeStore.includes(xlfLabel(r.kodeStore))) return false;
+        if (OBF_COL_FILTERS.noSo.length && !OBF_COL_FILTERS.noSo.includes(xlfLabel(r.noSo))) return false;
         if (OBF_COL_FILTERS.grade.length) {
           const gradesRow = (r.grade || '').split(',').map(g => g.trim());
           if (!OBF_COL_FILTERS.grade.some(g => gradesRow.includes(g))) return false;
         }
-        if (OBF_COL_FILTERS.leadingStatus.length && !OBF_COL_FILTERS.leadingStatus.includes(r.leadingStatus)) return false;
-        if (OBF_COL_FILTERS.trailingStatus.length && !OBF_COL_FILTERS.trailingStatus.includes(r.trailingStatus)) return false;
+        if (OBF_COL_FILTERS.leadingStatus.length && !OBF_COL_FILTERS.leadingStatus.includes(xlfLabel(r.leadingStatus))) return false;
+        if (OBF_COL_FILTERS.trailingStatus.length && !OBF_COL_FILTERS.trailingStatus.includes(xlfLabel(r.trailingStatus))) return false;
 
         if (qtyReqMin !== '' && qtyReqMin !== undefined && r.qtyRequest < Number(qtyReqMin)) return false;
         if (qtyReqMax !== '' && qtyReqMax !== undefined && r.qtyRequest > Number(qtyReqMax)) return false;
