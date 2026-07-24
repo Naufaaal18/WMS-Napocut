@@ -3058,6 +3058,18 @@ window.fetch = function (url, options) {
        murni override tampilan (warna/border/font/spacing) di atas markup asli.
        ========================================================================= -->
   <style>
+    /* FITUR BARU: Multi-Sort & Multi-Filter per kolom untuk tabel Data PO & Dashboard
+       Outbound Request (Form Request) -- pola sama dengan tabel Validasi Transfer ke
+       Odoo, di-scope ke #sub-po-data & #sub-dashob-outbound supaya tidak menyentuh
+       modul lain. */
+    #sub-po-data .wms-th-sortable, #sub-dashob-outbound .wms-th-sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+    #sub-po-data .wms-th-sortable:hover, #sub-dashob-outbound .wms-th-sortable:hover { background: rgba(0,0,0,0.05); }
+    #sub-po-data .wms-sort-badge, #sub-dashob-outbound .wms-sort-badge { font-size:9px; font-weight:700; margin-left:1px; }
+    #sub-po-data .wms-filter-pills, #sub-dashob-outbound .wms-filter-pills { display:flex; flex-wrap:wrap; gap:3px; }
+    #sub-po-data .wms-filter-pill, #sub-dashob-outbound .wms-filter-pill { font-size:10px; padding:1px 6px; border:1px solid #ced4da; border-radius:10px; cursor:pointer; }
+    #sub-po-data .wms-filter-pill:hover, #sub-dashob-outbound .wms-filter-pill:hover { border-color: var(--qcx-accent); }
+    #sub-po-data .wms-filter-pill.active, #sub-dashob-outbound .wms-filter-pill.active { background: var(--qcx-accent); border-color: var(--qcx-accent); color:#fff; font-weight:700; }
+
     /* ---- Aksen per dashboard (pakai token --qcx-* yang sudah didefinisikan di :root) ---- */
     #sub-dashob-outbound{
       --qcx-accent:#D2604B;
@@ -4092,6 +4104,9 @@ window.fetch = function (url, options) {
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadDataPOList()" title="Muat Ulang">
                   <i class="fa-solid fa-rotate"></i>
                 </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="podResetFiltersSort()" title="Hapus filter kolom (Jml SKU/Qty/Validasi) & urutan sort">
+                  <i class="fa-solid fa-filter-circle-xmark"></i>
+                </button>
               </div>
             </div>
             <p class="small text-muted mb-2">Semua PO yang sudah tercatat di Master PO (input manual maupun upload Excel), dikelompokkan per No PO. Klik salah satu baris untuk lihat rincian SKU-nya. Tekan <kbd>Ctrl+E</kbd> untuk export ke Excel.</p>
@@ -4212,16 +4227,55 @@ window.fetch = function (url, options) {
               <table class="table table-sm table-bordered align-middle mb-0" id="pod-table" style="font-size:11px;">
                 <thead class="table-light" style="position:sticky;top:0;">
                   <tr>
-                    <th>No PO</th>
-                    <th>Supplier</th>
-                    <th>Kategori</th>
-                    <th>Tanggal</th>
-                    <th class="text-center">Jml SKU</th>
-                    <th class="text-end">Qty PO</th>
-                    <th class="text-end">Pending Qty PO</th>
-                    <th class="text-end">Qty Receiving PO</th>
-                    <th class="text-center">Status</th>
-                    <th class="text-center">Validasi</th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('noPo')">No PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-noPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-noPo"></sup></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('supplier')">Supplier <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-supplier"></i><sup class="wms-sort-badge" id="pod-sortbadge-supplier"></sup></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('kategori')">Kategori <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-kategori"></i><sup class="wms-sort-badge" id="pod-sortbadge-kategori"></sup></th>
+                    <th class="wms-th-sortable" onclick="podToggleSort('tanggal')">Tanggal <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-tanggal"></i><sup class="wms-sort-badge" id="pod-sortbadge-tanggal"></sup></th>
+                    <th class="text-center wms-th-sortable" onclick="podToggleSort('jmlSku')">Jml SKU <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-jmlSku"></i><sup class="wms-sort-badge" id="pod-sortbadge-jmlSku"></sup></th>
+                    <th class="text-end wms-th-sortable" onclick="podToggleSort('qtyPo')">Qty PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-qtyPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-qtyPo"></sup></th>
+                    <th class="text-end wms-th-sortable" onclick="podToggleSort('pendingQtyPo')">Pending Qty PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-pendingQtyPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-pendingQtyPo"></sup></th>
+                    <th class="text-end wms-th-sortable" onclick="podToggleSort('qtyReceivingPo')">Qty Receiving PO <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-qtyReceivingPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-qtyReceivingPo"></sup></th>
+                    <th class="text-center wms-th-sortable" onclick="podToggleSort('statusPo')">Status <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-statusPo"></i><sup class="wms-sort-badge" id="pod-sortbadge-statusPo"></sup></th>
+                    <th class="text-center wms-th-sortable" onclick="podToggleSort('validasi')">Validasi <i class="fa-solid fa-sort text-muted small" id="pod-sorticon-validasi"></i><sup class="wms-sort-badge" id="pod-sortbadge-validasi"></sup></th>
+                  </tr>
+                  <tr id="pod-filter-row">
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th style="min-width:80px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-jmlsku-min" placeholder="Min" style="font-size:10px;" oninput="renderDataPOTable()">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-jmlsku-max" placeholder="Max" style="font-size:10px;" oninput="renderDataPOTable()">
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtypo-min" placeholder="Min" style="font-size:10px;" oninput="renderDataPOTable()">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtypo-max" placeholder="Max" style="font-size:10px;" oninput="renderDataPOTable()">
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtypending-min" placeholder="Min" style="font-size:10px;" oninput="renderDataPOTable()">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtypending-max" placeholder="Max" style="font-size:10px;" oninput="renderDataPOTable()">
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtyreceiving-min" placeholder="Min" style="font-size:10px;" oninput="renderDataPOTable()">
+                        <input type="number" class="form-control form-control-sm" id="pod-f-qtyreceiving-max" placeholder="Max" style="font-size:10px;" oninput="renderDataPOTable()">
+                      </div>
+                    </th>
+                    <th></th>
+                    <th style="min-width:130px;">
+                      <div class="wms-filter-pills" id="pod-f-validasi">
+                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Valid',this)">Valid</span>
+                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Partial',this)">Partial</span>
+                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('Pending',this)">Pending</span>
+                        <span class="wms-filter-pill" onclick="podToggleValidasiFilter('-',this)">-</span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody id="pod-tbody">
@@ -4229,6 +4283,7 @@ window.fetch = function (url, options) {
                 </tbody>
               </table>
             </div>
+            <p class="small text-muted mt-1 mb-0" style="font-size:10.5px;"><i class="fa-solid fa-arrow-up-wide-short me-1"></i>Klik nama kolom untuk sort (klik lagi untuk balik arah, klik lagi untuk hapus) — bisa multi-kolom sekaligus.</p>
           </div>
         </div>
 
@@ -6423,24 +6478,95 @@ async function eksekusiAddSkuOutbound() {
               <input type="text" id="ob-dash-filter-summary" class="form-control form-control-sm" style="max-width:160px;" placeholder="Filter No Request/Store" oninput="renderDashboardOutboundSummaryTable()">
             </div>
           </div>
+          <p class="small text-muted mb-1" style="font-size:10.5px;"><i class="fa-solid fa-arrow-up-wide-short me-1"></i>Klik nama kolom untuk sort (klik lagi untuk balik arah, klik lagi untuk hapus) — bisa multi-kolom sekaligus. Isi kotak/pilih di bawah header untuk filter per kolom.
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 ms-1" style="font-size:10px;" onclick="obfResetFiltersSort()" title="Hapus semua filter kolom & urutan sort"><i class="fa-solid fa-filter-circle-xmark"></i> Reset Filter/Sort</button>
+          </p>
           <div class="table-responsive ob-desktop-table" style="max-height:420px;">
             <table class="table table-sm table-bordered align-middle mb-0" style="font-size:11px;">
               <thead class="table-light" style="position:sticky;top:0;">
                 <tr>
-                  <th>No Request</th>
-                  <th>Tgl</th>
-                  <th>Store</th>
-                  <th>No SO</th>
-                  <th class="text-center" title="Jumlah SKU berbeda dalam 1 No Request">SKU</th>
-                  <th>Grade</th>
-                  <th class="text-center">Qty Req</th>
-                  <th class="text-center">Qty Alloc</th>
-                  <th class="text-center">Qty Picker</th>
-                  <th class="text-center">Qty Checker</th>
-                  <th class="text-center">Qty Shortpick</th>
-                  <th class="text-center">Stockout</th>
-                  <th title="Berubah begitu SALAH SATU SKU dalam Request ini sudah diproses (In Packing saat mulai ada yang dipicking, Ready to Ship saat mulai ada yang di-check)">Leading Status</th>
-                  <th title="Berubah setelah SEMUA SKU dalam Request ini selesai diproses (In Packing setelah semua dipicking, Ready to Ship setelah semua di-check)">Trailing Status</th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('noRequest')">No Request <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-noRequest"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('tglRequest')">Tgl <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-tglRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-tglRequest"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('kodeStore')">Store <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-kodeStore"></i><sup class="wms-sort-badge" id="obf-sortbadge-kodeStore"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('noSo')">No SO <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-noSo"></i><sup class="wms-sort-badge" id="obf-sortbadge-noSo"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('skuCount')" title="Jumlah SKU berbeda dalam 1 No Request">SKU <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-skuCount"></i><sup class="wms-sort-badge" id="obf-sortbadge-skuCount"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('grade')">Grade <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-grade"></i><sup class="wms-sort-badge" id="obf-sortbadge-grade"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyRequest')">Qty Req <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyRequest"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyRequest"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyAllocated')">Qty Alloc <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyAllocated"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyAllocated"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyPicker')">Qty Picker <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyPicker"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyPicker"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyCheckerKlop')">Qty Checker <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyCheckerKlop"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyCheckerKlop"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyShortpick')">Qty Shortpick <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyShortpick"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyShortpick"></sup></th>
+                  <th class="text-center wms-th-sortable" onclick="obfToggleSort('qtyStockout')">Stockout <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-qtyStockout"></i><sup class="wms-sort-badge" id="obf-sortbadge-qtyStockout"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('leadingStatus')" title="Berubah begitu SALAH SATU SKU dalam Request ini sudah diproses (In Packing saat mulai ada yang dipicking, Ready to Ship saat mulai ada yang di-check)">Leading Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-leadingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-leadingStatus"></sup></th>
+                  <th class="wms-th-sortable" onclick="obfToggleSort('trailingStatus')" title="Berubah setelah SEMUA SKU dalam Request ini selesai diproses (In Packing setelah semua dipicking, Ready to Ship setelah semua di-check)">Trailing Status <i class="fa-solid fa-sort text-muted small" id="obf-sorticon-trailingStatus"></i><sup class="wms-sort-badge" id="obf-sortbadge-trailingStatus"></sup></th>
+                </tr>
+                <tr id="obf-filter-row">
+                  <th></th>
+                  <th></th>
+                  <th></th>
+                  <th style="min-width:90px;"><input type="text" class="form-control form-control-sm" id="obf-f-noso" placeholder="Filter..." style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()"></th>
+                  <th></th>
+                  <th style="min-width:110px;">
+                    <div class="wms-filter-pills" id="obf-f-grade">
+                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Bagus',this)">Bagus</span>
+                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Minor',this)">Minor</span>
+                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Reject',this)">Reject</span>
+                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Kotor',this)">Kotor</span>
+                      <span class="wms-filter-pill" onclick="obfToggleGradeFilter('Perbaikan',this)">Perbaikan</span>
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyreq-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyreq-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyalloc-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyalloc-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtypicker-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtypicker-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtychecker-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtychecker-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyshortpick-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-qtyshortpick-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:80px;">
+                    <div class="d-flex gap-1">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-stockout-min" placeholder="Min" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                      <input type="number" class="form-control form-control-sm" id="obf-f-stockout-max" placeholder="Max" style="font-size:10px;" oninput="renderDashboardOutboundSummaryTable()">
+                    </div>
+                  </th>
+                  <th style="min-width:120px;">
+                    <div class="wms-filter-pills" id="obf-f-leading">
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Stockout',this)">Stockout</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Picking Pending',this)">Picking Pending</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','In Packing',this)">In Packing</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('leadingStatus','Ready to Ship',this)">Ready to Ship</span>
+                    </div>
+                  </th>
+                  <th style="min-width:120px;">
+                    <div class="wms-filter-pills" id="obf-f-trailing">
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Stockout',this)">Stockout</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Picking Pending',this)">Picking Pending</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','In Packing',this)">In Packing</span>
+                      <span class="wms-filter-pill" onclick="obfToggleStatusFilter('trailingStatus','Ready to Ship',this)">Ready to Ship</span>
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody id="ob-dash-summary-tbody">
@@ -6845,6 +6971,24 @@ async function eksekusiAddSkuOutbound() {
            (TRANSFER_LOKASI_FG & TRANSFER_DOWNGRADE_FG) yang BELUM dicocokkan dengan
            nomor transfer di Odoo. Centang + isi nomor Odoo per baris -> baris otomatis
            hilang dari daftar Pending (pindah ke tab Riwayat Tervalidasi). ===== -->
+      <!-- FITUR BARU: style untuk tombol filter Grade (pill toggle) & ikon sort multi-kolom
+           di tabel Pending Validasi Transfer ke Odoo. Discope ke #sub-odoo-validasi supaya
+           tidak menyentuh tampilan modul lain. -->
+      <style>
+        #sub-odoo-validasi .oov-th-sortable { user-select: none; }
+        #sub-odoo-validasi .oov-th-sortable:hover { background: rgba(106,27,154,0.08); }
+        #sub-odoo-validasi .oov-grade-pills { display: flex; flex-wrap: wrap; gap: 3px; }
+        #sub-odoo-validasi .oov-grade-pill {
+          font-size: 10px; padding: 1px 6px; border-radius: 10px; border: 1px solid #ced4da;
+          background: #fff; color: #495057; cursor: pointer; line-height: 1.6; white-space: nowrap;
+        }
+        #sub-odoo-validasi .oov-grade-pill:hover { border-color: #6A1B9A; }
+        #sub-odoo-validasi .oov-grade-pill.active { background: #6A1B9A; border-color: #6A1B9A; color: #fff; font-weight: 700; }
+        #sub-odoo-validasi #oov-filter-row th { padding: 4px 6px; vertical-align: top; }
+        #sub-odoo-validasi #oov-filter-row input.form-control-sm { height: 24px; }
+        #sub-odoo-validasi .oov-sort-badge { font-size: 9px; color: #6A1B9A; font-weight: 700; margin-left: 1px; }
+      </style>
+
       <div id="sub-odoo-validasi">
         <div class="card p-3 mb-3 border-start border-4" style="border-color:#6A1B9A!important;">
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -6888,19 +7032,86 @@ async function eksekusiAddSkuOutbound() {
                 </button>
               </div>
             </div>
-            <p class="small text-muted mb-2"><i class="fa-solid fa-circle-info me-1"></i>Centang beberapa SKU sekaligus (bisa beda-beda SKU) lalu isi <b>1 nomor Odoo</b> di atas kalau memang 1 dokumen transfer Odoo mencakup semuanya.</p>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-2">
+              <p class="small text-muted mb-0"><i class="fa-solid fa-circle-info me-1"></i>Centang beberapa SKU sekaligus (bisa beda-beda SKU) lalu isi <b>1 nomor Odoo</b> di atas kalau memang 1 dokumen transfer Odoo mencakup semuanya.</p>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted" id="oov-filter-info"></span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="oovResetFiltersSort()" title="Hapus semua filter & urutan sort kolom">
+                  <i class="fa-solid fa-filter-circle-xmark me-1"></i>Reset Filter/Sort
+                </button>
+              </div>
+            </div>
+            <p class="small text-muted mb-2" style="font-size:10.5px;"><i class="fa-solid fa-arrow-up-wide-short me-1"></i>Klik nama kolom untuk sort (klik lagi untuk balik arah, klik lagi untuk hapus) — bisa multi-kolom sekaligus, urutan klik menentukan prioritas. Isi kotak/pilih Grade di bawah header untuk filter per kolom (bisa beberapa kolom & beberapa Grade sekaligus).</p>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
               <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
                 <thead class="table-light" style="position:sticky; top:0; z-index:1;">
                   <tr>
-                    <th style="width:28px;"><input type="checkbox" id="oov-checkall" onchange="oovToggleAll(this)"></th>
-                    <th>Tanggal</th>
-                    <th>No. Referensi</th>
-                    <th>SKU</th>
-                    <th>From Grade</th>
-                    <th>To Grade</th>
-                    <th style="text-align:right;">From Qty</th>
-                    <th style="text-align:right;">To Qty</th>
+                    <th style="width:28px;" rowspan="2" class="align-middle"><input type="checkbox" id="oov-checkall" onchange="oovToggleAll(this)"></th>
+                    <th class="oov-th-sortable" onclick="oovToggleSort('waktu')" style="cursor:pointer; white-space:nowrap;">
+                      Tanggal <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-waktu"></i><sup class="oov-sort-badge" id="oov-sortbadge-waktu"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovToggleSort('ref')" style="cursor:pointer; white-space:nowrap;">
+                      No. Referensi <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-ref"></i><sup class="oov-sort-badge" id="oov-sortbadge-ref"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovToggleSort('sku')" style="cursor:pointer; white-space:nowrap;">
+                      SKU <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-sku"></i><sup class="oov-sort-badge" id="oov-sortbadge-sku"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovToggleSort('grade_asal')" style="cursor:pointer; white-space:nowrap;">
+                      From Grade <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-grade_asal"></i><sup class="oov-sort-badge" id="oov-sortbadge-grade_asal"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovToggleSort('grade_tujuan')" style="cursor:pointer; white-space:nowrap;">
+                      To Grade <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-grade_tujuan"></i><sup class="oov-sort-badge" id="oov-sortbadge-grade_tujuan"></sup>
+                    </th>
+                    <th class="oov-th-sortable text-end" onclick="oovToggleSort('from_qty')" style="cursor:pointer; white-space:nowrap;">
+                      From Qty <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-from_qty"></i><sup class="oov-sort-badge" id="oov-sortbadge-from_qty"></sup>
+                    </th>
+                    <th class="oov-th-sortable text-end" onclick="oovToggleSort('to_qty')" style="cursor:pointer; white-space:nowrap;">
+                      To Qty <i class="fa-solid fa-sort text-muted small" id="oov-sorticon-to_qty"></i><sup class="oov-sort-badge" id="oov-sortbadge-to_qty"></sup>
+                    </th>
+                  </tr>
+                  <tr id="oov-filter-row">
+                    <th>
+                      <div class="d-flex flex-column gap-1">
+                        <input type="date" class="form-control form-control-sm" id="oov-f-tgl-dari" style="font-size:10px;" title="Dari tanggal" onchange="oovApplyFilters()">
+                        <input type="date" class="form-control form-control-sm" id="oov-f-tgl-sampai" style="font-size:10px;" title="Sampai tanggal" onchange="oovApplyFilters()">
+                      </div>
+                    </th>
+                    <th style="min-width:110px;">
+                      <input type="text" class="form-control form-control-sm" id="oov-f-ref" placeholder="Filter..." style="font-size:11px;" oninput="oovApplyFilters()">
+                    </th>
+                    <th style="min-width:100px;">
+                      <input type="text" class="form-control form-control-sm" id="oov-f-sku" placeholder="Filter..." style="font-size:11px;" oninput="oovApplyFilters()">
+                    </th>
+                    <th style="min-width:120px;">
+                      <div class="oov-grade-pills" id="oov-f-grade-asal">
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_asal','Bagus',this)">Bagus</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_asal','Minor',this)">Minor</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_asal','Reject',this)">Reject</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_asal','Kotor',this)">Kotor</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_asal','Perbaikan',this)">Perbaikan</span>
+                      </div>
+                    </th>
+                    <th style="min-width:120px;">
+                      <div class="oov-grade-pills" id="oov-f-grade-tujuan">
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_tujuan','Bagus',this)">Bagus</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_tujuan','Minor',this)">Minor</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_tujuan','Reject',this)">Reject</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_tujuan','Kotor',this)">Kotor</span>
+                        <span class="oov-grade-pill" onclick="oovToggleGradeFilter('grade_tujuan','Perbaikan',this)">Perbaikan</span>
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="oov-f-fromqty-min" placeholder="Min" style="font-size:10px;" oninput="oovApplyFilters()">
+                        <input type="number" class="form-control form-control-sm" id="oov-f-fromqty-max" placeholder="Max" style="font-size:10px;" oninput="oovApplyFilters()">
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="oov-f-toqty-min" placeholder="Min" style="font-size:10px;" oninput="oovApplyFilters()">
+                        <input type="number" class="form-control form-control-sm" id="oov-f-toqty-max" placeholder="Max" style="font-size:10px;" oninput="oovApplyFilters()">
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody id="oov-tbody-pending">
@@ -6912,20 +7123,101 @@ async function eksekusiAddSkuOutbound() {
 
           <!-- TAB: RIWAYAT TERVALIDASI -->
           <div id="oov-tab-riwayat" style="display:none;">
-            <input type="text" id="oov-filter-riwayat" class="form-control form-control-sm mb-2" placeholder="Cari SKU / No Referensi / No Odoo..." oninput="oovRenderRiwayat()">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-1 mb-2">
+              <input type="text" id="oov-filter-riwayat" class="form-control form-control-sm" style="max-width:320px;" placeholder="Cari SKU / No Referensi / No Odoo..." oninput="oovrApplyFilters()">
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted" id="oovr-filter-info"></span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="oovrResetFiltersSort()" title="Hapus semua filter & urutan sort kolom">
+                  <i class="fa-solid fa-filter-circle-xmark me-1"></i>Reset Filter/Sort
+                </button>
+              </div>
+            </div>
+            <p class="small text-muted mb-2" style="font-size:10.5px;"><i class="fa-solid fa-arrow-up-wide-short me-1"></i>Klik nama kolom untuk sort (klik lagi untuk balik arah, klik lagi untuk hapus) — bisa multi-kolom sekaligus, urutan klik menentukan prioritas. Isi kotak/pilih Grade di bawah header untuk filter per kolom (bisa beberapa kolom & beberapa Grade sekaligus).</p>
             <div class="table-responsive" style="max-height:520px; overflow-y:auto;">
               <table class="table table-sm table-hover align-middle mb-0" style="font-size:12px;">
                 <thead class="table-light" style="position:sticky; top:0; z-index:1;">
                   <tr>
-                    <th>Tanggal Transfer</th>
-                    <th>No. Referensi</th>
-                    <th>SKU</th>
-                    <th>From Grade</th>
-                    <th>To Grade</th>
-                    <th style="text-align:right;">From Qty</th>
-                    <th style="text-align:right;">To Qty</th>
-                    <th>No. Odoo</th>
-                    <th>Divalidasi</th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('waktu')" style="cursor:pointer; white-space:nowrap;">
+                      Tanggal Transfer <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-waktu"></i><sup class="oov-sort-badge" id="oovr-sortbadge-waktu"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('ref')" style="cursor:pointer; white-space:nowrap;">
+                      No. Referensi <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-ref"></i><sup class="oov-sort-badge" id="oovr-sortbadge-ref"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('sku')" style="cursor:pointer; white-space:nowrap;">
+                      SKU <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-sku"></i><sup class="oov-sort-badge" id="oovr-sortbadge-sku"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('grade_asal')" style="cursor:pointer; white-space:nowrap;">
+                      From Grade <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-grade_asal"></i><sup class="oov-sort-badge" id="oovr-sortbadge-grade_asal"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('grade_tujuan')" style="cursor:pointer; white-space:nowrap;">
+                      To Grade <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-grade_tujuan"></i><sup class="oov-sort-badge" id="oovr-sortbadge-grade_tujuan"></sup>
+                    </th>
+                    <th class="oov-th-sortable text-end" onclick="oovrToggleSort('from_qty')" style="cursor:pointer; white-space:nowrap;">
+                      From Qty <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-from_qty"></i><sup class="oov-sort-badge" id="oovr-sortbadge-from_qty"></sup>
+                    </th>
+                    <th class="oov-th-sortable text-end" onclick="oovrToggleSort('to_qty')" style="cursor:pointer; white-space:nowrap;">
+                      To Qty <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-to_qty"></i><sup class="oov-sort-badge" id="oovr-sortbadge-to_qty"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('no_odoo')" style="cursor:pointer; white-space:nowrap;">
+                      No. Odoo <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-no_odoo"></i><sup class="oov-sort-badge" id="oovr-sortbadge-no_odoo"></sup>
+                    </th>
+                    <th class="oov-th-sortable" onclick="oovrToggleSort('validated_at')" style="cursor:pointer; white-space:nowrap;">
+                      Divalidasi <i class="fa-solid fa-sort text-muted small" id="oovr-sorticon-validated_at"></i><sup class="oov-sort-badge" id="oovr-sortbadge-validated_at"></sup>
+                    </th>
+                    <th></th>
+                  </tr>
+                  <tr id="oovr-filter-row">
+                    <th>
+                      <div class="d-flex flex-column gap-1">
+                        <input type="date" class="form-control form-control-sm" id="oovr-f-tgl-dari" style="font-size:10px;" title="Dari tanggal" onchange="oovrApplyFilters()">
+                        <input type="date" class="form-control form-control-sm" id="oovr-f-tgl-sampai" style="font-size:10px;" title="Sampai tanggal" onchange="oovrApplyFilters()">
+                      </div>
+                    </th>
+                    <th style="min-width:110px;">
+                      <input type="text" class="form-control form-control-sm" id="oovr-f-ref" placeholder="Filter..." style="font-size:11px;" oninput="oovrApplyFilters()">
+                    </th>
+                    <th style="min-width:100px;">
+                      <input type="text" class="form-control form-control-sm" id="oovr-f-sku" placeholder="Filter..." style="font-size:11px;" oninput="oovrApplyFilters()">
+                    </th>
+                    <th style="min-width:120px;">
+                      <div class="oov-grade-pills" id="oovr-f-grade-asal">
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_asal','Bagus',this)">Bagus</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_asal','Minor',this)">Minor</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_asal','Reject',this)">Reject</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_asal','Kotor',this)">Kotor</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_asal','Perbaikan',this)">Perbaikan</span>
+                      </div>
+                    </th>
+                    <th style="min-width:120px;">
+                      <div class="oov-grade-pills" id="oovr-f-grade-tujuan">
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_tujuan','Bagus',this)">Bagus</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_tujuan','Minor',this)">Minor</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_tujuan','Reject',this)">Reject</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_tujuan','Kotor',this)">Kotor</span>
+                        <span class="oov-grade-pill" onclick="oovrToggleGradeFilter('grade_tujuan','Perbaikan',this)">Perbaikan</span>
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="oovr-f-fromqty-min" placeholder="Min" style="font-size:10px;" oninput="oovrApplyFilters()">
+                        <input type="number" class="form-control form-control-sm" id="oovr-f-fromqty-max" placeholder="Max" style="font-size:10px;" oninput="oovrApplyFilters()">
+                      </div>
+                    </th>
+                    <th style="min-width:90px;">
+                      <div class="d-flex gap-1">
+                        <input type="number" class="form-control form-control-sm" id="oovr-f-toqty-min" placeholder="Min" style="font-size:10px;" oninput="oovrApplyFilters()">
+                        <input type="number" class="form-control form-control-sm" id="oovr-f-toqty-max" placeholder="Max" style="font-size:10px;" oninput="oovrApplyFilters()">
+                      </div>
+                    </th>
+                    <th style="min-width:100px;">
+                      <input type="text" class="form-control form-control-sm" id="oovr-f-no-odoo" placeholder="Filter..." style="font-size:11px;" oninput="oovrApplyFilters()">
+                    </th>
+                    <th>
+                      <div class="d-flex flex-column gap-1">
+                        <input type="date" class="form-control form-control-sm" id="oovr-f-val-dari" style="font-size:10px;" title="Divalidasi dari tanggal" onchange="oovrApplyFilters()">
+                        <input type="date" class="form-control form-control-sm" id="oovr-f-val-sampai" style="font-size:10px;" title="Divalidasi sampai tanggal" onchange="oovrApplyFilters()">
+                      </div>
+                    </th>
                     <th></th>
                   </tr>
                 </thead>
@@ -11110,6 +11402,136 @@ async function validatePOReturnPrompt() {
     .catch(err => { btn.disabled = false; customAlert('Gagal validasi: ' + err.message); });
 }
 
+// =========================================================================
+// FITUR BARU: Multi-Sort & Multi-Filter per kolom untuk tabel Data PO --
+// pola sama dengan tabel Validasi Transfer ke Odoo (klik header untuk sort,
+// bisa multi-kolom; filter tambahan untuk Jml SKU/Qty PO/Pending Qty PO/
+// Qty Receiving PO/Validasi -- kolom No PO/Supplier/Kategori/Tanggal/Status
+// sudah punya kontrol filter sendiri di atas tabel jadi tidak diduplikasi).
+// =========================================================================
+let POD_SORT_STATE = []; // contoh: [{col:'tanggal', dir:'desc'}, {col:'noPo', dir:'asc'}]
+let POD_COL_FILTERS = { validasi: [] };
+const POD_SORTABLE_COLS = ['noPo', 'supplier', 'kategori', 'tanggal', 'jmlSku', 'qtyPo', 'pendingQtyPo', 'qtyReceivingPo', 'statusPo', 'validasi'];
+
+// Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
+// Kolom lain yang sudah aktif TIDAK direset, sehingga mendukung multi-sort.
+function podToggleSort(col) {
+  const idx = POD_SORT_STATE.findIndex(s => s.col === col);
+  if (idx === -1) {
+    POD_SORT_STATE.push({ col: col, dir: 'asc' });
+  } else if (POD_SORT_STATE[idx].dir === 'asc') {
+    POD_SORT_STATE[idx].dir = 'desc';
+  } else {
+    POD_SORT_STATE.splice(idx, 1);
+  }
+  podUpdateSortIcons();
+  renderDataPOTable();
+}
+
+// Perbarui ikon panah & badge nomor prioritas di header sesuai POD_SORT_STATE saat ini.
+function podUpdateSortIcons() {
+  POD_SORTABLE_COLS.forEach(col => {
+    const icon = document.getElementById('pod-sorticon-' + col);
+    const badge = document.getElementById('pod-sortbadge-' + col);
+    if (!icon) return;
+    const posisi = POD_SORT_STATE.findIndex(s => s.col === col);
+    if (posisi === -1) {
+      icon.className = 'fa-solid fa-sort text-muted small';
+      if (badge) badge.textContent = '';
+    } else {
+      icon.className = 'fa-solid ' + (POD_SORT_STATE[posisi].dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') + ' small';
+      icon.style.color = 'var(--qcx-accent)';
+      if (badge) badge.textContent = POD_SORT_STATE.length > 1 ? String(posisi + 1) : '';
+    }
+  });
+}
+
+// Toggle pilihan label Validasi (Valid/Partial/Pending/-) lewat klik pill -- bisa pilih
+// lebih dari 1 sekaligus.
+function podToggleValidasiFilter(value, pillEl) {
+  const arr = POD_COL_FILTERS.validasi;
+  const i = arr.indexOf(value);
+  if (i === -1) arr.push(value); else arr.splice(i, 1);
+  pillEl.classList.toggle('active');
+  renderDataPOTable();
+}
+
+// Hapus semua filter kolom tambahan (Jml SKU/Qty/Validasi) & semua sort aktif sekaligus.
+// Filter lama (keyword, Kategori, Bulan/Tahun, checkbox Closed/Cancel) TIDAK ikut
+// direset di sini -- sudah ada tombol/kontrolnya sendiri masing-masing.
+function podResetFiltersSort() {
+  POD_SORT_STATE = [];
+  POD_COL_FILTERS.validasi = [];
+  ['pod-f-jmlsku-min', 'pod-f-jmlsku-max', 'pod-f-qtypo-min', 'pod-f-qtypo-max',
+   'pod-f-qtypending-min', 'pod-f-qtypending-max', 'pod-f-qtyreceiving-min', 'pod-f-qtyreceiving-max'
+  ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.querySelectorAll('#pod-f-validasi .wms-filter-pill.active').forEach(el => el.classList.remove('active'));
+  podUpdateSortIcons();
+  renderDataPOTable();
+}
+
+// Terapkan filter kolom tambahan (Jml SKU/Qty PO/Pending Qty PO/Qty Receiving PO/Validasi)
+// DAN multi-sort ke daftar PO yang sudah lolos filter lama (keyword/Kategori/Bulan/Tahun/
+// checkbox Closed-Cancel). Dipakai bersama oleh renderDataPOTable() & exportDataPOExcel()
+// supaya export selalu sesuai persis dengan yang tampil di layar.
+function podApplyColFiltersAndSort(daftar) {
+  const jmlSkuMin = document.getElementById('pod-f-jmlsku-min')?.value;
+  const jmlSkuMax = document.getElementById('pod-f-jmlsku-max')?.value;
+  const qtyPoMin = document.getElementById('pod-f-qtypo-min')?.value;
+  const qtyPoMax = document.getElementById('pod-f-qtypo-max')?.value;
+  const qtyPendingMin = document.getElementById('pod-f-qtypending-min')?.value;
+  const qtyPendingMax = document.getElementById('pod-f-qtypending-max')?.value;
+  const qtyRecvMin = document.getElementById('pod-f-qtyreceiving-min')?.value;
+  const qtyRecvMax = document.getElementById('pod-f-qtyreceiving-max')?.value;
+
+  let rows = daftar.filter(po => {
+    const jmlSku = po.items.length;
+    const qtyPo = Number(po.totalQtySisa) || 0;
+    const qtyPending = Number(po.totalQtyOrder) || 0;
+    const qtyRecv = Number(po.totalQtyDiterima) || 0;
+    if (jmlSkuMin !== '' && jmlSkuMin !== undefined && jmlSku < Number(jmlSkuMin)) return false;
+    if (jmlSkuMax !== '' && jmlSkuMax !== undefined && jmlSku > Number(jmlSkuMax)) return false;
+    if (qtyPoMin !== '' && qtyPoMin !== undefined && qtyPo < Number(qtyPoMin)) return false;
+    if (qtyPoMax !== '' && qtyPoMax !== undefined && qtyPo > Number(qtyPoMax)) return false;
+    if (qtyPendingMin !== '' && qtyPendingMin !== undefined && qtyPending < Number(qtyPendingMin)) return false;
+    if (qtyPendingMax !== '' && qtyPendingMax !== undefined && qtyPending > Number(qtyPendingMax)) return false;
+    if (qtyRecvMin !== '' && qtyRecvMin !== undefined && qtyRecv < Number(qtyRecvMin)) return false;
+    if (qtyRecvMax !== '' && qtyRecvMax !== undefined && qtyRecv > Number(qtyRecvMax)) return false;
+    if (POD_COL_FILTERS.validasi.length && !POD_COL_FILTERS.validasi.includes(hitungValidasiPO(po).label)) return false;
+    return true;
+  });
+
+  if (POD_SORT_STATE.length) {
+    const nilaiKolom = (po, col) => {
+      switch (col) {
+        case 'noPo': return (po.noPo || '').toLowerCase();
+        case 'supplier': return (po.supplier || '').toLowerCase();
+        case 'kategori': return (po.kategori || '').toLowerCase();
+        case 'tanggal': return po.tanggal ? new Date(po.tanggal).getTime() : 0;
+        case 'jmlSku': return po.items.length;
+        case 'qtyPo': return Number(po.totalQtySisa) || 0;
+        case 'pendingQtyPo': return Number(po.totalQtyOrder) || 0;
+        case 'qtyReceivingPo': return Number(po.totalQtyDiterima) || 0;
+        case 'statusPo': return (po.statusPo || '').toLowerCase();
+        case 'validasi': return hitungValidasiPO(po).label.toLowerCase();
+        default: return 0;
+      }
+    };
+    rows = rows.slice().sort((a, b) => {
+      for (const s of POD_SORT_STATE) {
+        const va = nilaiKolom(a, s.col);
+        const vb = nilaiKolom(b, s.col);
+        let cmp = 0;
+        if (va < vb) cmp = -1; else if (va > vb) cmp = 1;
+        if (cmp !== 0) return s.dir === 'asc' ? cmp : -cmp;
+      }
+      return 0;
+    });
+  }
+
+  return rows;
+}
+
 function renderDataPOTable() {
   const tbody = document.getElementById('pod-tbody');
   const keyword = (document.getElementById('pod-filter').value || '').trim().toLowerCase();
@@ -11157,6 +11579,11 @@ function renderDataPOTable() {
   if (!tampilkanCancel) {
     daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
   }
+
+  // FITUR BARU: terapkan filter kolom tambahan (Jml SKU/Qty PO/Pending Qty PO/Qty
+  // Receiving PO/Validasi) DAN multi-sort sebelum Ringkasan KPI dihitung, supaya KPI
+  // & tabel SELALU konsisten sama seperti checkbox Closed/Cancel di atas.
+  daftar = podApplyColFiltersAndSort(daftar);
 
   // FITUR BARU: Ringkasan KPI sekarang dihitung SETELAH checkbox Closed/Cancel diterapkan,
   // supaya kartu ringkasan (Total PO, PO Closed, PO Active, Total Qty PO, dst) SELALU
@@ -11229,6 +11656,9 @@ function exportDataPOExcel() {
   if (!tampilkanCancel) daftar = daftar.filter(po => !['CANCEL', 'CANCELLED'].includes(String(po.statusPo || '').toUpperCase()));
   if (keyword) daftar = daftar.filter(po => (po.noPo || '').toLowerCase().includes(keyword) || (po.supplier || '').toLowerCase().includes(keyword));
   if (kategoriTerpilih) daftar = daftar.filter(po => (po.kategori || '') === kategoriTerpilih);
+  // FITUR BARU: samakan dengan tabel -- ikutkan filter kolom tambahan (Jml SKU/Qty/
+  // Validasi) & urutan multi-sort yang sedang aktif.
+  daftar = podApplyColFiltersAndSort(daftar);
 
   if (!daftar.length) { customAlert('Tidak ada data untuk di-export.'); return; }
 
@@ -16054,6 +16484,164 @@ async function eksekusiCancelOutbound() {
         : '';
     }
 
+    // =========================================================================
+    // FITUR BARU: Multi-Sort & Multi-Filter per kolom untuk tabel Form Request
+    // (ringkasan per No Request) di Dashboard/Data Outbound Request -- pola sama
+    // dengan tabel Validasi Transfer ke Odoo & Data PO. Prefix "obf" (outbound
+    // form-request) supaya ID-nya tidak bentrok dengan kontrol lain di modul ini.
+    // =========================================================================
+    let OBF_SORT_STATE = []; // contoh: [{col:'qtyStockout', dir:'desc'}, {col:'noRequest', dir:'asc'}]
+    let OBF_COL_FILTERS = { grade: [], leadingStatus: [], trailingStatus: [] };
+    const OBF_SORTABLE_COLS = ['noRequest', 'tglRequest', 'kodeStore', 'noSo', 'skuCount', 'grade', 'qtyRequest', 'qtyAllocated', 'qtyPicker', 'qtyCheckerKlop', 'qtyShortpick', 'qtyStockout', 'leadingStatus', 'trailingStatus'];
+
+    // Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
+    // Kolom lain yang sudah aktif TIDAK direset, sehingga mendukung multi-sort.
+    function obfToggleSort(col) {
+      const idx = OBF_SORT_STATE.findIndex(s => s.col === col);
+      if (idx === -1) {
+        OBF_SORT_STATE.push({ col: col, dir: 'asc' });
+      } else if (OBF_SORT_STATE[idx].dir === 'asc') {
+        OBF_SORT_STATE[idx].dir = 'desc';
+      } else {
+        OBF_SORT_STATE.splice(idx, 1);
+      }
+      obfUpdateSortIcons();
+      renderDashboardOutboundSummaryTable();
+    }
+
+    // Perbarui ikon panah & badge nomor prioritas di header sesuai OBF_SORT_STATE saat ini.
+    function obfUpdateSortIcons() {
+      OBF_SORTABLE_COLS.forEach(col => {
+        const icon = document.getElementById('obf-sorticon-' + col);
+        const badge = document.getElementById('obf-sortbadge-' + col);
+        if (!icon) return;
+        const posisi = OBF_SORT_STATE.findIndex(s => s.col === col);
+        if (posisi === -1) {
+          icon.className = 'fa-solid fa-sort text-muted small';
+          if (badge) badge.textContent = '';
+        } else {
+          icon.className = 'fa-solid ' + (OBF_SORT_STATE[posisi].dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') + ' small';
+          icon.style.color = 'var(--qcx-accent)';
+          if (badge) badge.textContent = OBF_SORT_STATE.length > 1 ? String(posisi + 1) : '';
+        }
+      });
+    }
+
+    // Toggle pilihan Grade lewat klik pill -- bisa pilih lebih dari 1 Grade sekaligus.
+    // Perlu diingat "Grade" di ringkasan Form Request adalah gabungan beberapa Grade
+    // per No Request (dipisah ", "), jadi filter ini cocok kalau SALAH SATU Grade yang
+    // dipilih ada di dalam gabungan tsb.
+    function obfToggleGradeFilter(value, pillEl) {
+      const arr = OBF_COL_FILTERS.grade;
+      const i = arr.indexOf(value);
+      if (i === -1) arr.push(value); else arr.splice(i, 1);
+      pillEl.classList.toggle('active');
+      renderDashboardOutboundSummaryTable();
+    }
+
+    // Toggle pilihan Leading/Trailing Status lewat klik pill -- bisa pilih lebih dari 1.
+    function obfToggleStatusFilter(field, value, pillEl) {
+      const arr = OBF_COL_FILTERS[field];
+      const i = arr.indexOf(value);
+      if (i === -1) arr.push(value); else arr.splice(i, 1);
+      pillEl.classList.toggle('active');
+      renderDashboardOutboundSummaryTable();
+    }
+
+    // Hapus semua filter kolom tambahan (No SO/Grade/Qty*/Status) & semua sort aktif
+    // sekaligus. Filter lama (Filter No Request/Store, checkbox Closed/Cancelled)
+    // TIDAK ikut direset -- sudah ada kontrolnya sendiri.
+    function obfResetFiltersSort() {
+      OBF_SORT_STATE = [];
+      OBF_COL_FILTERS.grade = [];
+      OBF_COL_FILTERS.leadingStatus = [];
+      OBF_COL_FILTERS.trailingStatus = [];
+      ['obf-f-noso', 'obf-f-qtyreq-min', 'obf-f-qtyreq-max', 'obf-f-qtyalloc-min', 'obf-f-qtyalloc-max',
+       'obf-f-qtypicker-min', 'obf-f-qtypicker-max', 'obf-f-qtychecker-min', 'obf-f-qtychecker-max',
+       'obf-f-qtyshortpick-min', 'obf-f-qtyshortpick-max', 'obf-f-stockout-min', 'obf-f-stockout-max'
+      ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      document.querySelectorAll('#obf-filter-row .wms-filter-pill.active').forEach(el => el.classList.remove('active'));
+      obfUpdateSortIcons();
+      renderDashboardOutboundSummaryTable();
+    }
+
+    // Terapkan filter kolom tambahan DAN multi-sort ke daftar ringkasan Form Request yang
+    // sudah lolos filter lama (Filter No Request/Store & checkbox Closed/Cancelled).
+    function obfApplyColFiltersAndSort(rows) {
+      const fNoSo = (document.getElementById('obf-f-noso')?.value || '').trim().toLowerCase();
+      const qtyReqMin = document.getElementById('obf-f-qtyreq-min')?.value;
+      const qtyReqMax = document.getElementById('obf-f-qtyreq-max')?.value;
+      const qtyAllocMin = document.getElementById('obf-f-qtyalloc-min')?.value;
+      const qtyAllocMax = document.getElementById('obf-f-qtyalloc-max')?.value;
+      const qtyPickerMin = document.getElementById('obf-f-qtypicker-min')?.value;
+      const qtyPickerMax = document.getElementById('obf-f-qtypicker-max')?.value;
+      const qtyCheckerMin = document.getElementById('obf-f-qtychecker-min')?.value;
+      const qtyCheckerMax = document.getElementById('obf-f-qtychecker-max')?.value;
+      const qtyShortpickMin = document.getElementById('obf-f-qtyshortpick-min')?.value;
+      const qtyShortpickMax = document.getElementById('obf-f-qtyshortpick-max')?.value;
+      const stockoutMin = document.getElementById('obf-f-stockout-min')?.value;
+      const stockoutMax = document.getElementById('obf-f-stockout-max')?.value;
+
+      let out = rows.filter(r => {
+        if (fNoSo && !(r.noSo || '').toLowerCase().includes(fNoSo)) return false;
+        if (OBF_COL_FILTERS.grade.length) {
+          const gradesRow = (r.grade || '').split(',').map(g => g.trim());
+          if (!OBF_COL_FILTERS.grade.some(g => gradesRow.includes(g))) return false;
+        }
+        if (OBF_COL_FILTERS.leadingStatus.length && !OBF_COL_FILTERS.leadingStatus.includes(r.leadingStatus)) return false;
+        if (OBF_COL_FILTERS.trailingStatus.length && !OBF_COL_FILTERS.trailingStatus.includes(r.trailingStatus)) return false;
+
+        if (qtyReqMin !== '' && qtyReqMin !== undefined && r.qtyRequest < Number(qtyReqMin)) return false;
+        if (qtyReqMax !== '' && qtyReqMax !== undefined && r.qtyRequest > Number(qtyReqMax)) return false;
+        if (qtyAllocMin !== '' && qtyAllocMin !== undefined && r.qtyAllocated < Number(qtyAllocMin)) return false;
+        if (qtyAllocMax !== '' && qtyAllocMax !== undefined && r.qtyAllocated > Number(qtyAllocMax)) return false;
+        if (qtyPickerMin !== '' && qtyPickerMin !== undefined && r.qtyPicker < Number(qtyPickerMin)) return false;
+        if (qtyPickerMax !== '' && qtyPickerMax !== undefined && r.qtyPicker > Number(qtyPickerMax)) return false;
+        if (qtyCheckerMin !== '' && qtyCheckerMin !== undefined && r.qtyCheckerKlop < Number(qtyCheckerMin)) return false;
+        if (qtyCheckerMax !== '' && qtyCheckerMax !== undefined && r.qtyCheckerKlop > Number(qtyCheckerMax)) return false;
+        if (qtyShortpickMin !== '' && qtyShortpickMin !== undefined && r.qtyShortpick < Number(qtyShortpickMin)) return false;
+        if (qtyShortpickMax !== '' && qtyShortpickMax !== undefined && r.qtyShortpick > Number(qtyShortpickMax)) return false;
+        if (stockoutMin !== '' && stockoutMin !== undefined && r.qtyStockout < Number(stockoutMin)) return false;
+        if (stockoutMax !== '' && stockoutMax !== undefined && r.qtyStockout > Number(stockoutMax)) return false;
+
+        return true;
+      });
+
+      if (OBF_SORT_STATE.length) {
+        const nilaiKolom = (r, col) => {
+          switch (col) {
+            case 'noRequest': return (r.noRequest || '').toLowerCase();
+            case 'tglRequest': return (r.tglRequest || '').toLowerCase();
+            case 'kodeStore': return (r.kodeStore || '').toLowerCase();
+            case 'noSo': return (r.noSo || '').toLowerCase();
+            case 'skuCount': return Number(r.skuCount) || 0;
+            case 'grade': return (r.grade || '').toLowerCase();
+            case 'qtyRequest': return Number(r.qtyRequest) || 0;
+            case 'qtyAllocated': return Number(r.qtyAllocated) || 0;
+            case 'qtyPicker': return Number(r.qtyPicker) || 0;
+            case 'qtyCheckerKlop': return Number(r.qtyCheckerKlop) || 0;
+            case 'qtyShortpick': return Number(r.qtyShortpick) || 0;
+            case 'qtyStockout': return Number(r.qtyStockout) || 0;
+            case 'leadingStatus': return (r.leadingStatus || '').toLowerCase();
+            case 'trailingStatus': return (r.trailingStatus || '').toLowerCase();
+            default: return 0;
+          }
+        };
+        out = out.slice().sort((a, b) => {
+          for (const s of OBF_SORT_STATE) {
+            const va = nilaiKolom(a, s.col);
+            const vb = nilaiKolom(b, s.col);
+            let cmp = 0;
+            if (va < vb) cmp = -1; else if (va > vb) cmp = 1;
+            if (cmp !== 0) return s.dir === 'asc' ? cmp : -cmp;
+          }
+          return 0;
+        });
+      }
+
+      return out;
+    }
+
     function renderDashboardOutboundSummaryTable() {
       const tbody = document.getElementById('ob-dash-summary-tbody');
       if (!tbody) return; // Modul sedang tidak aktif di DOM -- aman, tidak perlu render.
@@ -16072,6 +16660,10 @@ async function eksekusiCancelOutbound() {
       if (!tampilkanClosedCancel) {
         summaryRows = summaryRows.filter(r => r.trailingStatus !== 'Closed' && r.trailingStatus !== 'Cancelled');
       }
+
+      // FITUR BARU: terapkan filter kolom tambahan (No SO/Grade/Qty*/Status) DAN
+      // multi-sort sebelum dirender, supaya tabel & kartu HP selalu konsisten.
+      summaryRows = obfApplyColFiltersAndSort(summaryRows);
 
       const cardsWrap = document.getElementById('ob-dash-summary-cards');
 
@@ -16656,6 +17248,152 @@ async function eksekusiCancelOutbound() {
       }
     }
 
+    // =========================================================================
+    // FITUR BARU: Multi-Sort & Multi-Filter per kolom untuk tabel Pending Validasi
+    // Transfer ke Odoo. OOV_SORT_STATE menyimpan urutan kolom yang di-sort (array,
+    // urutan elemen = prioritas -- kolom pertama diklik jadi prioritas utama).
+    // OOV_COL_FILTERS.grade_asal / grade_tujuan menyimpan Grade yang dipilih lewat
+    // pill toggle (array kosong = semua Grade ditampilkan, tidak difilter).
+    // =========================================================================
+    let OOV_SORT_STATE = []; // contoh: [{col:'waktu', dir:'asc'}, {col:'sku', dir:'desc'}]
+    let OOV_COL_FILTERS = { grade_asal: [], grade_tujuan: [] };
+    const OOV_SORTABLE_COLS = ['waktu', 'ref', 'sku', 'grade_asal', 'grade_tujuan', 'from_qty', 'to_qty'];
+    const OOV_SORT_ICON_CLASS = { asc: 'fa-sort-up', desc: 'fa-sort-down' };
+
+    // Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
+    // Kolom lain yang sudah aktif TIDAK direset, sehingga mendukung multi-sort (SKU lalu
+    // Tanggal, dst) -- prioritas ditentukan dari urutan kolom pertama kali diklik.
+    function oovToggleSort(col) {
+      const idx = OOV_SORT_STATE.findIndex(s => s.col === col);
+      if (idx === -1) {
+        OOV_SORT_STATE.push({ col: col, dir: 'asc' });
+      } else if (OOV_SORT_STATE[idx].dir === 'asc') {
+        OOV_SORT_STATE[idx].dir = 'desc';
+      } else {
+        OOV_SORT_STATE.splice(idx, 1);
+      }
+      oovUpdateSortIcons();
+      oovRenderPending();
+    }
+
+    // Perbarui ikon panah & badge nomor prioritas di header sesuai OOV_SORT_STATE saat ini.
+    function oovUpdateSortIcons() {
+      OOV_SORTABLE_COLS.forEach(col => {
+        const icon = document.getElementById('oov-sorticon-' + col);
+        const badge = document.getElementById('oov-sortbadge-' + col);
+        if (!icon) return;
+        const posisi = OOV_SORT_STATE.findIndex(s => s.col === col);
+        if (posisi === -1) {
+          icon.className = 'fa-solid fa-sort text-muted small';
+          if (badge) badge.textContent = '';
+        } else {
+          icon.className = 'fa-solid ' + OOV_SORT_ICON_CLASS[OOV_SORT_STATE[posisi].dir] + ' small';
+          icon.style.color = '#6A1B9A';
+          // Badge nomor prioritas hanya ditampilkan kalau sedang multi-sort (>1 kolom aktif).
+          if (badge) badge.textContent = OOV_SORT_STATE.length > 1 ? String(posisi + 1) : '';
+        }
+      });
+    }
+
+    // Toggle pilihan Grade (From Grade / To Grade) lewat klik pill -- bisa pilih lebih dari
+    // 1 Grade sekaligus per kolom (mis. From Grade = Bagus ATAU Minor).
+    function oovToggleGradeFilter(field, value, pillEl) {
+      const arr = OOV_COL_FILTERS[field];
+      const i = arr.indexOf(value);
+      if (i === -1) arr.push(value); else arr.splice(i, 1);
+      pillEl.classList.toggle('active');
+      oovRenderPending();
+    }
+
+    function oovApplyFilters() {
+      oovRenderPending();
+    }
+
+    // Hapus semua filter kolom (teks, tanggal, qty, Grade) & semua sort aktif sekaligus,
+    // lalu render ulang tabel dari data asli.
+    function oovResetFiltersSort() {
+      OOV_SORT_STATE = [];
+      OOV_COL_FILTERS.grade_asal = [];
+      OOV_COL_FILTERS.grade_tujuan = [];
+      ['oov-f-tgl-dari', 'oov-f-tgl-sampai', 'oov-f-ref', 'oov-f-sku',
+       'oov-f-fromqty-min', 'oov-f-fromqty-max', 'oov-f-toqty-min', 'oov-f-toqty-max'
+      ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      document.querySelectorAll('#sub-odoo-validasi .oov-grade-pill.active').forEach(el => el.classList.remove('active'));
+      oovUpdateSortIcons();
+      oovRenderPending();
+    }
+
+    // Terapkan filter (pencarian umum + filter per kolom) DAN multi-sort ke OOV_PENDING_DATA,
+    // kembalikan array baris yang sudah siap dirender (tidak mengubah OOV_PENDING_DATA asli).
+    function oovGetFilteredSortedPending() {
+      const q = (document.getElementById('oov-filter').value || '').trim().toLowerCase();
+      const elTglDari = document.getElementById('oov-f-tgl-dari');
+      const elTglSampai = document.getElementById('oov-f-tgl-sampai');
+      const tglDari = elTglDari ? elTglDari.value : '';
+      const tglSampai = elTglSampai ? elTglSampai.value : '';
+      const fRef = (document.getElementById('oov-f-ref')?.value || '').trim().toLowerCase();
+      const fSku = (document.getElementById('oov-f-sku')?.value || '').trim().toLowerCase();
+      const fromQtyMin = document.getElementById('oov-f-fromqty-min')?.value;
+      const fromQtyMax = document.getElementById('oov-f-fromqty-max')?.value;
+      const toQtyMin = document.getElementById('oov-f-toqty-min')?.value;
+      const toQtyMax = document.getElementById('oov-f-toqty-max')?.value;
+
+      let rows = OOV_PENDING_DATA.filter(r => {
+        if (q) {
+          const gabung = `${r.sku || ''} ${r.ref || ''} ${r.lokasi_asal || ''} ${r.lokasi_tujuan || ''}`.toLowerCase();
+          if (!gabung.includes(q)) return false;
+        }
+        if (fRef && !(r.ref || '').toLowerCase().includes(fRef)) return false;
+        if (fSku && !(r.sku || '').toLowerCase().includes(fSku)) return false;
+        if (OOV_COL_FILTERS.grade_asal.length && !OOV_COL_FILTERS.grade_asal.includes(r.grade_asal)) return false;
+        if (OOV_COL_FILTERS.grade_tujuan.length && !OOV_COL_FILTERS.grade_tujuan.includes(r.grade_tujuan)) return false;
+
+        if (tglDari || tglSampai) {
+          if (!r.waktu) return false;
+          const tglRow = new Date(r.waktu);
+          if (tglDari && tglRow < new Date(tglDari + 'T00:00:00')) return false;
+          if (tglSampai && tglRow > new Date(tglSampai + 'T23:59:59')) return false;
+        }
+
+        const qtyAbs = Math.abs(Number(r.qty) || 0);
+        const fromQtyVal = -qtyAbs;
+        const toQtyVal = qtyAbs;
+        if (fromQtyMin !== '' && fromQtyMin !== undefined && fromQtyVal < Number(fromQtyMin)) return false;
+        if (fromQtyMax !== '' && fromQtyMax !== undefined && fromQtyVal > Number(fromQtyMax)) return false;
+        if (toQtyMin !== '' && toQtyMin !== undefined && toQtyVal < Number(toQtyMin)) return false;
+        if (toQtyMax !== '' && toQtyMax !== undefined && toQtyVal > Number(toQtyMax)) return false;
+
+        return true;
+      });
+
+      if (OOV_SORT_STATE.length) {
+        const nilaiKolom = (r, col) => {
+          switch (col) {
+            case 'waktu': return r.waktu ? new Date(r.waktu).getTime() : 0;
+            case 'ref': return (r.ref || '').toLowerCase();
+            case 'sku': return (r.sku || '').toLowerCase();
+            case 'grade_asal': return (r.grade_asal || '').toLowerCase();
+            case 'grade_tujuan': return (r.grade_tujuan || '').toLowerCase();
+            case 'from_qty': return -Math.abs(Number(r.qty) || 0);
+            case 'to_qty': return Math.abs(Number(r.qty) || 0);
+            default: return 0;
+          }
+        };
+        rows = rows.slice().sort((a, b) => {
+          for (const s of OOV_SORT_STATE) {
+            const va = nilaiKolom(a, s.col);
+            const vb = nilaiKolom(b, s.col);
+            let cmp = 0;
+            if (va < vb) cmp = -1; else if (va > vb) cmp = 1;
+            if (cmp !== 0) return s.dir === 'asc' ? cmp : -cmp;
+          }
+          return 0;
+        });
+      }
+
+      return rows;
+    }
+
     // Ambil daftar transfer yang MASIH PENDING (belum divalidasi ke Odoo) dari server.
     function loadOdooValidasiPending() {
       const tbody = document.getElementById('oov-tbody-pending');
@@ -16672,22 +17410,19 @@ async function eksekusiCancelOutbound() {
     function oovRenderPending() {
       const tbody = document.getElementById('oov-tbody-pending');
       const countBadge = document.getElementById('oov-pending-count');
+      const infoEl = document.getElementById('oov-filter-info');
       if (!tbody) return;
-      const q = (document.getElementById('oov-filter').value || '').trim().toLowerCase();
 
-      let rows = OOV_PENDING_DATA;
-      if (q) {
-        rows = rows.filter(r =>
-          (r.sku || '').toLowerCase().includes(q) ||
-          (r.ref || '').toLowerCase().includes(q) ||
-          (r.lokasi_asal || '').toLowerCase().includes(q) ||
-          (r.lokasi_tujuan || '').toLowerCase().includes(q)
-        );
-      }
+      const rows = oovGetFilteredSortedPending();
       if (countBadge) countBadge.textContent = OOV_PENDING_DATA.length;
+      if (infoEl) {
+        infoEl.textContent = (rows.length === OOV_PENDING_DATA.length)
+          ? ''
+          : `Menampilkan ${rows.length} dari ${OOV_PENDING_DATA.length} baris (filter aktif)`;
+      }
 
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada transfer perubahan grade yang menunggu validasi.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Tidak ada transfer yang cocok dengan pencarian/filter saat ini.</td></tr>';
         return;
       }
 
@@ -16768,22 +17503,181 @@ async function eksekusiCancelOutbound() {
         });
     }
 
-    function oovRenderRiwayat() {
-      const tbody = document.getElementById('oov-tbody-riwayat');
-      if (!tbody) return;
-      const q = (document.getElementById('oov-filter-riwayat').value || '').trim().toLowerCase();
+    // =========================================================================
+    // FITUR BARU: Multi-Sort & Multi-Filter per kolom untuk tabel Riwayat Tervalidasi
+    // -- pola sama persis dengan OOV_SORT_STATE/OOV_COL_FILTERS di tabel Pending di atas,
+    // dipakai dengan prefix "oovr" (odoo-validasi-riwayat) supaya ID-nya tidak bentrok
+    // dengan yang di tabel Pending.
+    // =========================================================================
+    let OOVR_SORT_STATE = []; // contoh: [{col:'waktu', dir:'asc'}, {col:'sku', dir:'desc'}]
+    let OOVR_COL_FILTERS = { grade_asal: [], grade_tujuan: [] };
+    const OOVR_SORTABLE_COLS = ['waktu', 'ref', 'sku', 'grade_asal', 'grade_tujuan', 'from_qty', 'to_qty', 'no_odoo', 'validated_at'];
 
-      let rows = OOV_RIWAYAT_DATA;
-      if (q) {
-        rows = rows.filter(r =>
-          (r.sku || '').toLowerCase().includes(q) ||
-          (r.ref || '').toLowerCase().includes(q) ||
-          (r.no_odoo || '').toLowerCase().includes(q)
-        );
+    // Klik nama kolom: belum di-sort -> Ascending -> Descending -> hapus dari sort.
+    // Kolom lain yang sudah aktif TIDAK direset, sehingga mendukung multi-sort.
+    function oovrToggleSort(col) {
+      const idx = OOVR_SORT_STATE.findIndex(s => s.col === col);
+      if (idx === -1) {
+        OOVR_SORT_STATE.push({ col: col, dir: 'asc' });
+      } else if (OOVR_SORT_STATE[idx].dir === 'asc') {
+        OOVR_SORT_STATE[idx].dir = 'desc';
+      } else {
+        OOVR_SORT_STATE.splice(idx, 1);
+      }
+      oovrUpdateSortIcons();
+      oovRenderRiwayat();
+    }
+
+    // Perbarui ikon panah & badge nomor prioritas di header sesuai OOVR_SORT_STATE saat ini.
+    function oovrUpdateSortIcons() {
+      OOVR_SORTABLE_COLS.forEach(col => {
+        const icon = document.getElementById('oovr-sorticon-' + col);
+        const badge = document.getElementById('oovr-sortbadge-' + col);
+        if (!icon) return;
+        const posisi = OOVR_SORT_STATE.findIndex(s => s.col === col);
+        if (posisi === -1) {
+          icon.className = 'fa-solid fa-sort text-muted small';
+          if (badge) badge.textContent = '';
+        } else {
+          icon.className = 'fa-solid ' + OOV_SORT_ICON_CLASS[OOVR_SORT_STATE[posisi].dir] + ' small';
+          icon.style.color = '#6A1B9A';
+          // Badge nomor prioritas hanya ditampilkan kalau sedang multi-sort (>1 kolom aktif).
+          if (badge) badge.textContent = OOVR_SORT_STATE.length > 1 ? String(posisi + 1) : '';
+        }
+      });
+    }
+
+    // Toggle pilihan Grade (From Grade / To Grade) lewat klik pill -- bisa pilih lebih dari
+    // 1 Grade sekaligus per kolom.
+    function oovrToggleGradeFilter(field, value, pillEl) {
+      const arr = OOVR_COL_FILTERS[field];
+      const i = arr.indexOf(value);
+      if (i === -1) arr.push(value); else arr.splice(i, 1);
+      pillEl.classList.toggle('active');
+      oovRenderRiwayat();
+    }
+
+    function oovrApplyFilters() {
+      oovRenderRiwayat();
+    }
+
+    // Hapus semua filter kolom (teks, tanggal, qty, Grade) & semua sort aktif sekaligus,
+    // lalu render ulang tabel Riwayat dari data asli.
+    function oovrResetFiltersSort() {
+      OOVR_SORT_STATE = [];
+      OOVR_COL_FILTERS.grade_asal = [];
+      OOVR_COL_FILTERS.grade_tujuan = [];
+      const elFilterUmum = document.getElementById('oov-filter-riwayat');
+      if (elFilterUmum) elFilterUmum.value = '';
+      ['oovr-f-tgl-dari', 'oovr-f-tgl-sampai', 'oovr-f-ref', 'oovr-f-sku',
+       'oovr-f-fromqty-min', 'oovr-f-fromqty-max', 'oovr-f-toqty-min', 'oovr-f-toqty-max',
+       'oovr-f-no-odoo', 'oovr-f-val-dari', 'oovr-f-val-sampai'
+      ].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      document.querySelectorAll('#oovr-filter-row .oov-grade-pill.active').forEach(el => el.classList.remove('active'));
+      oovrUpdateSortIcons();
+      oovRenderRiwayat();
+    }
+
+    // Terapkan filter (pencarian umum + filter per kolom) DAN multi-sort ke OOV_RIWAYAT_DATA,
+    // kembalikan array baris yang sudah siap dirender (tidak mengubah OOV_RIWAYAT_DATA asli).
+    function oovrGetFilteredSortedRiwayat() {
+      const q = (document.getElementById('oov-filter-riwayat')?.value || '').trim().toLowerCase();
+      const tglDari = document.getElementById('oovr-f-tgl-dari')?.value || '';
+      const tglSampai = document.getElementById('oovr-f-tgl-sampai')?.value || '';
+      const fRef = (document.getElementById('oovr-f-ref')?.value || '').trim().toLowerCase();
+      const fSku = (document.getElementById('oovr-f-sku')?.value || '').trim().toLowerCase();
+      const fromQtyMin = document.getElementById('oovr-f-fromqty-min')?.value;
+      const fromQtyMax = document.getElementById('oovr-f-fromqty-max')?.value;
+      const toQtyMin = document.getElementById('oovr-f-toqty-min')?.value;
+      const toQtyMax = document.getElementById('oovr-f-toqty-max')?.value;
+      const fNoOdoo = (document.getElementById('oovr-f-no-odoo')?.value || '').trim().toLowerCase();
+      const valDari = document.getElementById('oovr-f-val-dari')?.value || '';
+      const valSampai = document.getElementById('oovr-f-val-sampai')?.value || '';
+
+      let rows = OOV_RIWAYAT_DATA.filter(r => {
+        if (q) {
+          const gabung = `${r.sku || ''} ${r.ref || ''} ${r.no_odoo || ''}`.toLowerCase();
+          if (!gabung.includes(q)) return false;
+        }
+        if (fRef && !(r.ref || '').toLowerCase().includes(fRef)) return false;
+        if (fSku && !(r.sku || '').toLowerCase().includes(fSku)) return false;
+        if (fNoOdoo && !(r.no_odoo || '').toLowerCase().includes(fNoOdoo)) return false;
+        if (OOVR_COL_FILTERS.grade_asal.length && !OOVR_COL_FILTERS.grade_asal.includes(r.grade_asal)) return false;
+        if (OOVR_COL_FILTERS.grade_tujuan.length && !OOVR_COL_FILTERS.grade_tujuan.includes(r.grade_tujuan)) return false;
+
+        if (tglDari || tglSampai) {
+          if (!r.waktu) return false;
+          const tglRow = new Date(r.waktu);
+          if (tglDari && tglRow < new Date(tglDari + 'T00:00:00')) return false;
+          if (tglSampai && tglRow > new Date(tglSampai + 'T23:59:59')) return false;
+        }
+
+        if (valDari || valSampai) {
+          if (!r.validated_at) return false;
+          const valRow = new Date(r.validated_at);
+          if (valDari && valRow < new Date(valDari + 'T00:00:00')) return false;
+          if (valSampai && valRow > new Date(valSampai + 'T23:59:59')) return false;
+        }
+
+        const qtyAbs = Math.abs(Number(r.qty) || 0);
+        const fromQtyVal = -qtyAbs;
+        const toQtyVal = qtyAbs;
+        if (fromQtyMin !== '' && fromQtyMin !== undefined && fromQtyVal < Number(fromQtyMin)) return false;
+        if (fromQtyMax !== '' && fromQtyMax !== undefined && fromQtyVal > Number(fromQtyMax)) return false;
+        if (toQtyMin !== '' && toQtyMin !== undefined && toQtyVal < Number(toQtyMin)) return false;
+        if (toQtyMax !== '' && toQtyMax !== undefined && toQtyVal > Number(toQtyMax)) return false;
+
+        return true;
+      });
+
+      if (OOVR_SORT_STATE.length) {
+        const nilaiKolom = (r, col) => {
+          switch (col) {
+            case 'waktu': return r.waktu ? new Date(r.waktu).getTime() : 0;
+            case 'ref': return (r.ref || '').toLowerCase();
+            case 'sku': return (r.sku || '').toLowerCase();
+            case 'grade_asal': return (r.grade_asal || '').toLowerCase();
+            case 'grade_tujuan': return (r.grade_tujuan || '').toLowerCase();
+            case 'from_qty': return -Math.abs(Number(r.qty) || 0);
+            case 'to_qty': return Math.abs(Number(r.qty) || 0);
+            case 'no_odoo': return (r.no_odoo || '').toLowerCase();
+            case 'validated_at': return r.validated_at ? new Date(r.validated_at).getTime() : 0;
+            default: return 0;
+          }
+        };
+        rows = rows.slice().sort((a, b) => {
+          for (const s of OOVR_SORT_STATE) {
+            const va = nilaiKolom(a, s.col);
+            const vb = nilaiKolom(b, s.col);
+            let cmp = 0;
+            if (va < vb) cmp = -1; else if (va > vb) cmp = 1;
+            if (cmp !== 0) return s.dir === 'asc' ? cmp : -cmp;
+          }
+          return 0;
+        });
       }
 
-      if (!rows.length) {
+      return rows;
+    }
+
+    function oovRenderRiwayat() {
+      const tbody = document.getElementById('oov-tbody-riwayat');
+      const infoEl = document.getElementById('oovr-filter-info');
+      if (!tbody) return;
+
+      const rows = oovrGetFilteredSortedRiwayat();
+      if (infoEl) {
+        infoEl.textContent = (rows.length === OOV_RIWAYAT_DATA.length)
+          ? ''
+          : `Menampilkan ${rows.length} dari ${OOV_RIWAYAT_DATA.length} baris (filter aktif)`;
+      }
+
+      if (!OOV_RIWAYAT_DATA.length) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Belum ada transfer yang tervalidasi.</td></tr>';
+        return;
+      }
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">Tidak ada transfer yang cocok dengan pencarian/filter saat ini.</td></tr>';
         return;
       }
 
@@ -16867,17 +17761,8 @@ async function eksekusiCancelOutbound() {
         XLSX.utils.book_append_sheet(wb, ws, "Riwayat Tervalidasi");
         XLSX.writeFile(wb, `Riwayat_Validasi_Odoo_${_tglFileSekarang()}.xlsx`);
       } else {
-        const q = (document.getElementById('oov-filter').value || '').trim().toLowerCase();
-        let rows = OOV_PENDING_DATA;
-        if (q) {
-          rows = rows.filter(r =>
-            (r.sku || '').toLowerCase().includes(q) ||
-            (r.ref || '').toLowerCase().includes(q) ||
-            (r.lokasi_asal || '').toLowerCase().includes(q) ||
-            (r.lokasi_tujuan || '').toLowerCase().includes(q)
-          );
-        }
-        if (!rows.length) { customAlert("Tidak ada data Pending untuk diexport (cek filter pencarian, atau memang belum ada transfer yang menunggu validasi)."); return; }
+        const rows = oovGetFilteredSortedPending();
+        if (!rows.length) { customAlert("Tidak ada data Pending untuk diexport (cek filter pencarian/kolom, atau memang belum ada transfer yang menunggu validasi)."); return; }
 
         const dataExport = rows.map(r => {
           const qty = Number(r.qty) || 0;
