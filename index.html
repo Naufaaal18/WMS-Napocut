@@ -15158,8 +15158,19 @@ async function submitInboundReceivingList() {
 }
 
 // Pastikan pemicu muat data berjalan saat aplikasi diakses
+// PERBAIKAN BUG: sebelumnya loadOpenPOToInboundDropdown() dipanggil TANPA SYARAT
+// begitu halaman selesai dimuat -- termasuk saat halaman LOGIN baru tampil dan
+// user belum sempat login (atau session tersimpan sudah expired/di-revoke).
+// Ini bikin RPC get_open_po_rows dipanggil dengan session_token kosong, ditolak
+// server ("Sesi tidak valid. Silakan login ulang."), dan alert-nya muncul
+// menimpa halaman login padahal user belum melakukan apa-apa. Sekarang hanya
+// jalan kalau memang ada session_token valid (login berhasil / dipulihkan dari
+// localStorage lewat inisialisasiAplikasi()).
 document.addEventListener("DOMContentLoaded", function() {
-  loadOpenPOToInboundDropdown();
+  const _tokAwal = (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '';
+  if (_tokAwal) {
+    loadOpenPOToInboundDropdown();
+  }
 });
 
 // ==========================================
