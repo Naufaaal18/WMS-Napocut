@@ -166,6 +166,34 @@ const ENDPOINTS = {
     p_catatan: payload.catatan || null
   }),
 
+  // FITUR BARU (SOP v3.0): Modul Perbaikan Vendor -- Request Outbound ke Vendor
+  // (potong dari Stock_Repair, No Request = No PO), Cetak Surat Jalan, Picking,
+  // Konfirmasi Terima dari Vendor (buka PO Repair baru), dan getter Stock_Repair /
+  // Vendor_Repair untuk ditampilkan di UI.
+  requestOutboundVendorRepair: (payload) => _callRpc('request_outbound_vendor_repair', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_po: payload.noPo, p_vendor: payload.vendor,
+    p_items: payload.items.map(it => ({ sku: it.sku || it.kodeSku, kategori: it.kategori || it.grade, qty: Number(it.qty || it.qtyRequest) })),
+    p_catatan: payload.catatan || null
+  }),
+  cetakSuratJalanVendorRepair: (payload) => _callRpc('cetak_surat_jalan_vendor_repair', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_po: payload.noPo, p_vendor: payload.vendor, p_no_surat_jalan: payload.noSuratJalan
+  }),
+  processPickingSKUVendorRepair: (data) => _callRpc('process_picking_sku_vendor_repair', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_request: data.noRequest, p_kode_sku: data.kodeSku, p_picker: data.picker,
+    p_lokasi_target: data.lokasiTarget, p_short_pick: !!data.shortPick,
+    p_qty_ketemu: data.qtyKetemu != null ? Number(data.qtyKetemu) : null
+  }),
+  konfirmasiTerimaVendorRepair: (payload) => _callRpc('konfirmasi_terima_vendor_dan_buka_po_repair', {
+    p_session_token: (typeof DEKLARASI_USER !== 'undefined' && DEKLARASI_USER.session_token) || '',
+    p_no_po: payload.noPo, p_kode_sku: payload.kodeSku, p_kategori: payload.kategori,
+    p_qty: Number(payload.qty)
+  }),
+  getVendorRepairRows: () => _callRpc('get_vendor_repair_rows', { p_session_token: _sessTok() }),
+  getStockRepairRows: () => _callRpc('get_stock_repair_rows', { p_session_token: _sessTok() }),
+
   // PERBAIKAN KEAMANAN: add_sku_to_existing_outbound_request sekarang WAJIB
   // session_token & mengecek akses OUTBOUND_REQUEST di server.
   addSkuToExistingOutboundRequest: (payload) => _callRpc('add_sku_to_existing_outbound_request', {
@@ -521,6 +549,17 @@ Object.assign(ENDPOINTS, {
   getStagingInboundData: async () => {
     const all = await _secureRows('stock_inbound');
     const data = (all || []).filter(r => (r.lokasi || '').toLowerCase() === 'staging inbound' && Number(r.qty_sisa) > 0);
+    // FITUR BARU (pembatasan grade QC untuk PO Repair): stock_inbound tidak punya kolom
+    // kategori sendiri, jadi diambil dari Open_PO lewat No PO (ref) supaya Proses QC bisa
+    // tahu kalau PO ini kategori "Repair" (hasil Konfirmasi Terima dari Vendor) dan
+    // membatasi breakdown grade jadi Bagus/Minor/Reject saja (Kotor/Perbaikan disembunyikan).
+    const kategoriByPo = {};
+    if (data.length > 0) {
+      const allPo = await _secureRows('open_po');
+      (allPo || []).forEach(po => {
+        if (po.no_po && po.kategori && !kategoriByPo[po.no_po]) kategoriByPo[po.no_po] = po.kategori;
+      });
+    }
     const poMap = {};
     (data || []).forEach(r => {
       if (!r.ref) return;
@@ -530,7 +569,7 @@ Object.assign(ENDPOINTS, {
       const bolehQC = status === '' || status === 'tervalidasi';
       if (!bolehQC) return;
       if (!poMap[r.ref]) poMap[r.ref] = [];
-      poMap[r.ref].push({ sku: r.kode_sku, maxQty: r.qty_sisa });
+      poMap[r.ref].push({ sku: r.kode_sku, maxQty: r.qty_sisa, kategori: kategoriByPo[r.ref] || '' });
     });
     return poMap;
   },
@@ -544,9 +583,20 @@ Object.assign(ENDPOINTS, {
         Number(r.qty_sisa) > 0 &&
         (r.status_validasi || '').toLowerCase() === 'pending validasi'
       );
+      // FITUR BARU (label Repair): stock_inbound tidak punya kolom kategori sendiri,
+      // jadi kategori PO (termasuk "Repair") diambil dari Open_PO lewat No PO (ref)
+      // supaya Validasi Inbound bisa menampilkan label "Repair" per PO.
+      const kategoriByPo = {};
+      if (data.length > 0) {
+        const allPo = await _secureRows('open_po');
+        (allPo || []).forEach(po => {
+          if (po.no_po && po.kategori && !kategoriByPo[po.no_po]) kategoriByPo[po.no_po] = po.kategori;
+        });
+      }
       const hasil = (data || []).map(r => ({
         supplier: r.supplier, sku: r.kode_sku, noPo: r.ref, qty: r.qty, qtyBelumQC: r.qty_sisa,
-        tglTerima: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '', deskripsi: mapDesc[r.kode_sku] || ''
+        tglTerima: r.waktu ? new Date(r.waktu).toLocaleString('id-ID') : '', deskripsi: mapDesc[r.kode_sku] || '',
+        kategori: kategoriByPo[r.ref] || ''
       }));
       return { success: true, data: hasil };
     } catch (err) {
@@ -601,6 +651,17 @@ Object.assign(ENDPOINTS, {
     const all = await _secureRows('outbound_request');
     const data = (all || []).filter(r => r.status === 'Picking Pending');
     return [...new Set((data || []).map(r => r.no_request))];
+  },
+
+  // FITUR BARU (SOP v3.0): dipakai Picking Outbound & Create Surat Jalan untuk mendeteksi
+  // apakah 1 No Request adalah tipe "Perbaikan Vendor" (perlu RPC & alur berbeda) atau
+  // Outbound biasa. Ambil juga 'tujuan' (nama Vendor untuk Perbaikan Vendor).
+  getOutboundRequestTipe: async (noRequest) => {
+    if (!noRequest) return null;
+    const all = await _secureRows('outbound_request');
+    const row = (all || []).find(r => r.no_request === noRequest);
+    if (!row) return null;
+    return { tipeOutbound: row.tipe_outbound, tujuan: row.tujuan };
   },
 
   // --- FITUR BARU: Klaim Baris Picking (Picker klaim sendiri per baris SKU+Lokasi) ---
@@ -1231,8 +1292,14 @@ Object.assign(ENDPOINTS, {
       const statusMap = {};
       (reqData || []).forEach(r => {
         if (!r.no_request) return;
-        if (!statusMap[r.no_request]) statusMap[r.no_request] = { skuWajibSet: new Set(), kodeStore: r.tujuan, tglRequest: _tglDMY(r.tanggal_request) };
+        if (!statusMap[r.no_request]) statusMap[r.no_request] = { skuWajibSet: new Set(), kodeStore: r.tujuan, tglRequest: _tglDMY(r.tanggal_request), tipeOutbound: r.tipe_outbound, sudahTerkirimVendor: true };
         if (r.kode_sku && (r.status || '').toLowerCase() !== 'cancelled') statusMap[r.no_request].skuWajibSet.add(r.kode_sku);
+        // FITUR BARU (SOP v3.0): No Request Perbaikan Vendor yang SUDAH diproses cetakSuratJalanVendorRepair
+        // statusnya berubah jadi 'Terkirim ke Vendor' -- selama masih ada baris yang BELUM
+        // berstatus itu, request masih dianggap perlu diproses Surat Jalan.
+        if (r.tipe_outbound === 'Perbaikan Vendor' && r.status !== 'Terkirim ke Vendor') {
+          statusMap[r.no_request].sudahTerkirimVendor = false;
+        }
       });
       const mapRequest = {};
       (chkData || []).forEach(r => {
@@ -1243,12 +1310,13 @@ Object.assign(ENDPOINTS, {
         mapRequest[r.no_request].totalQty += Number(r.qty_checker || 0);
       });
       const result = Object.keys(mapRequest).map(noReq => {
-        const info = statusMap[noReq] || { skuWajibSet: new Set(), kodeStore: '-', tglRequest: '-' };
+        const info = statusMap[noReq] || { skuWajibSet: new Set(), kodeStore: '-', tglRequest: '-', tipeOutbound: '', sudahTerkirimVendor: false };
         const ringkasan = mapRequest[noReq];
         const skuWajibArr = Array.from(info.skuWajibSet);
         const lengkap = skuWajibArr.length > 0 && skuWajibArr.every(s => ringkasan.skuSet.has(s));
-        return { noRequest: noReq, kodeStore: info.kodeStore, tglRequest: info.tglRequest, jumlahSku: ringkasan.skuSet.size, totalQty: ringkasan.totalQty, lengkap };
-      }).sort((a, b) => b.noRequest.localeCompare(a.noRequest));
+        return { noRequest: noReq, kodeStore: info.kodeStore, tglRequest: info.tglRequest, jumlahSku: ringkasan.skuSet.size, totalQty: ringkasan.totalQty, lengkap, tipeOutbound: info.tipeOutbound, sudahTerkirimVendor: info.sudahTerkirimVendor };
+      }).filter(r => !(r.tipeOutbound === 'Perbaikan Vendor' && r.sudahTerkirimVendor))
+        .sort((a, b) => b.noRequest.localeCompare(a.noRequest));
       return { success: true, data: result };
     } catch (err) {
       return { success: false, message: 'Gagal memuat daftar Request: ' + err.message };
@@ -3672,6 +3740,15 @@ window.fetch = function (url, options) {
           <span class="sub-module-name">SKU Master</span>
           <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
         </div>
+        <!-- FITUR BARU (SOP v3.0): SUB-MODUL "Konfirmasi Terima dari Vendor" -- barang
+             perbaikan (Kotor/Perbaikan) yang sudah balik secara fisik dari Vendor,
+             dikonfirmasi di sini supaya otomatis membuka PO Repair baru (lihat
+             konfirmasiTerimaVendorRepair / RPC konfirmasi_terima_vendor_dan_buka_po_repair). -->
+        <div class="sub-module-row" onclick="bukaModulDariHome('tab-openpo', 'modul-openpo', 'sub-konfirmasi-vendor'); setTimeout(loadKonfirmasiVendorRepairData, 300);">
+          <span class="sub-dot dot-po"></span>
+          <span class="sub-module-name">Konfirmasi Terima dari Vendor</span>
+          <i class="fa-solid fa-chevron-right sub-module-arrow"></i>
+        </div>
       </div>
     </div>
 
@@ -3960,7 +4037,12 @@ window.fetch = function (url, options) {
 
               <div class="col-12 mb-1">
                 <label class="form-label small fw-bold mb-0">Kategori Inbound</label>
-                <input type="text" id="ib-kategori" class="form-control form-control-sm fw-bold bg-light" readonly placeholder="- Otomatis -">
+                <div class="d-flex align-items-center gap-2">
+                  <input type="text" id="ib-kategori" class="form-control form-control-sm fw-bold bg-light" readonly placeholder="- Otomatis -">
+                  <!-- FITUR BARU: badge "Repair" untuk PO hasil Konfirmasi Terima dari
+                       Vendor, supaya operator langsung sadar SOP receiving-nya khusus. -->
+                  <span id="ib-repair-badge" class="badge bg-danger" style="display:none; white-space:nowrap;">🔧 REPAIR</span>
+                </div>
               </div>
             </div>
             <!-- FITUR BARU: memilih Nomor PO sekarang otomatis membuka halaman/modal terpisah
@@ -4405,6 +4487,57 @@ window.fetch = function (url, options) {
             </div>
           </div>
         </div>
+
+        <!-- ===== SUB-MODUL BARU: KONFIRMASI TERIMA DARI VENDOR (SOP v3.0) ===== -->
+        <div id="sub-konfirmasi-vendor" class="d-none">
+          <div class="card p-3 mb-3 border-start border-4 border-info">
+            <h6 class="fw-bold text-info mb-2"><i class="fa-solid fa-truck-ramp-box me-2"></i>Konfirmasi Terima dari Vendor</h6>
+            <p class="text-muted small mb-2">Barang <strong>Kotor/Perbaikan</strong> yang sudah dikirim ke Vendor dan
+              <strong>sudah kembali secara fisik</strong> ke gudang, dikonfirmasi di sini. <strong>Pilih No PO</strong>
+              terlebih dahulu, centang SKU yang sudah diterima, isi <strong>Qty Diterima</strong>, lalu klik
+              <strong>Konfirmasi Terima Terpilih</strong> — boleh sebagian (partial). Setiap SKU yang dikonfirmasi akan
+              otomatis membuka <strong>PO Repair baru</strong> (Kategori "Repair") dengan No PO yang sama, siap
+              diproses lewat <strong>Inbound Receiving</strong> seperti PO biasa.</p>
+
+            <div class="d-flex gap-2 align-items-end mb-2">
+              <div class="flex-grow-1">
+                <label class="form-label small fw-bold mb-1">Pilih No PO</label>
+                <select id="ktv-select-po" class="form-select form-select-sm fw-bold" onchange="renderKonfirmasiVendorTable()">
+                  <option value="">— Pilih No. PO —</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="loadKonfirmasiVendorRepairData()" title="Muat Ulang Daftar">
+                <i class="fa-solid fa-rotate"></i>
+              </button>
+            </div>
+            <div id="ktv-po-info" class="small text-muted mb-2" style="display:none;"></div>
+
+            <div id="ktv-table-wrap" style="display:none;">
+              <div class="table-responsive mb-2" style="max-height: 320px; overflow-y: auto;">
+                <table class="table table-sm table-bordered align-middle mb-0" style="font-size: 11px;">
+                  <thead class="table-light" style="position: sticky; top: 0;">
+                    <tr>
+                      <th class="text-center" style="width: 34px;">
+                        <input type="checkbox" id="ktv-check-all" onchange="toggleAllKtv(this)">
+                      </th>
+                      <th>SKU</th>
+                      <th>Kategori</th>
+                      <th>Vendor</th>
+                      <th class="text-center" style="width: 110px;">Qty Diterima</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ktv-tbody">
+                    <tr><td colspan="5" class="text-center text-muted py-3">Pilih No PO terlebih dahulu.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-info btn-sm fw-bold w-100 text-white" onclick="submitKonfirmasiVendorTerpilih()">
+                <i class="fa-solid fa-check-double me-1"></i>Konfirmasi Terima Terpilih
+              </button>
+            </div>
+            <div id="ktv-alert-container" class="mt-2"></div>
+          </div>
+        </div>
       </div>
 
       </div>
@@ -4466,15 +4599,22 @@ window.fetch = function (url, options) {
                 <label class="form-label">Grade Reject</label>
                 <input type="number" id="g-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
-              <div class="col-6 mb-2">
+              <div class="col-6 mb-2" id="g-kotor-wrap">
                 <label class="form-label">Grade Kotor</label>
                 <input type="number" id="g-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
-              <div class="col-12 mb-2">
+              <div class="col-12 mb-2" id="g-perbaikan-wrap">
                 <label class="form-label">Grade Perbaikan</label>
                 <input type="number" id="g-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
             </div>
+            <!-- FITUR BARU: kalau PO yang dipilih berkategori "Repair" (hasil Konfirmasi
+                 Terima dari Vendor), breakdown grade dibatasi hanya Bagus/Minor/Reject --
+                 lihat toggleQcGradeRepairMode() yang menyembunyikan Grade Kotor & Perbaikan
+                 di atas supaya barang hasil perbaikan tidak dikirim ulang ke Repair lagi. -->
+            <p id="qc-repair-info" class="small text-danger fw-bold mb-2" style="display:none;">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i>PO ini kategori <strong>Repair</strong> — Grade Kotor &amp; Perbaikan disembunyikan, breakdown hanya Bagus/Minor/Reject.
+            </p>
             <button type="button" id="qc-submit-btn" class="btn btn-success btn-sm w-100 fw-bold" onclick="submitFormQC(event)" disabled>
   <i class="fa-solid fa-paper-plane me-1"></i>Kirim Data Hasil QC
 </button>
@@ -5246,14 +5386,24 @@ window.fetch = function (url, options) {
               <label class="form-label small fw-bold mb-0">Tanggal Request Pengiriman</label>
               <input type="date" id="ob-tanggal-req" class="form-control form-control-sm" required>
             </div>
-            <div class="col-6">
+            <div class="col-6" id="ob-wrap-tujuan-toko">
               <label class="form-label small fw-bold mb-0">Tujuan / Kode Store</label>
               <input type="text" id="ob-kode-store" class="form-control form-control-sm" placeholder="Ketik untuk cari Kode Store..." list="dl-master-store" autocomplete="off" required>
               <datalist id="dl-master-store"></datalist>
             </div>
+            <!-- FITUR BARU (SOP v3.0): field khusus Tipe Outbound "Perbaikan Vendor" -- No PO
+                 (yang otomatis dipakai sebagai No Request) dan nama Vendor tujuan. -->
+            <div class="col-6 d-none" id="ob-wrap-vendor-repair">
+              <label class="form-label small fw-bold mb-0">No PO (=No Request)</label>
+              <input type="text" id="ob-no-po-repair" class="form-control form-control-sm" placeholder="Contoh: PO-REPAIR-001" autocomplete="off">
+            </div>
+            <div class="col-6 d-none" id="ob-wrap-vendor-nama">
+              <label class="form-label small fw-bold mb-0">Vendor</label>
+              <input type="text" id="ob-vendor-repair" class="form-control form-control-sm" placeholder="Nama Vendor Perbaikan" autocomplete="off">
+            </div>
             <div class="col-12">
               <label class="form-label small fw-bold mb-0">Tipe Outbound</label>
-              <select id="ob-tipe" class="form-select form-select-sm" required>
+              <select id="ob-tipe" class="form-select form-select-sm" required onchange="toggleTipeOutboundVendorRepair()">
           <option value="Toko/Dept Store">Toko/Dept Store</option>
           <option value="Perbaikan Vendor">Perbaikan Vendor</option>
           <option value="Mfg Order">Mfg Order</option>
@@ -5278,7 +5428,7 @@ window.fetch = function (url, options) {
                 <thead class="table-light sticky-top">
                   <tr>
                     <th>Kode SKU</th>
-                    <th style="width: 120px;">Grade</th>
+                    <th style="width: 120px;" id="th-ob-item-grade">Grade</th>
                     <th style="width: 90px;">Qty Req</th>
                     <th class="text-center" style="width: 40px;">Aksi</th>
                   </tr>
@@ -5404,6 +5554,74 @@ window.fetch = function (url, options) {
       
 
     <script>
+      // FITUR BARU (SOP v3.0): saat Tipe Outbound = "Perbaikan Vendor", form berganti mode:
+      // - "Tujuan/Kode Store" diganti "No PO" (=No Request) + "Vendor"
+      // - Upload Excel dinonaktifkan (dipaksa Input Manual), karena alurnya beda RPC
+      // - Kolom "Grade" pada tabel item berganti label "Kategori" & opsi dibatasi hanya
+      //   Kotor / Perbaikan (sesuai stock yang tersedia di Stock_Repair)
+      function isTipeVendorRepair() {
+        var el = document.getElementById("ob-tipe");
+        return el && el.value === "Perbaikan Vendor";
+      }
+
+      function toggleTipeOutboundVendorRepair() {
+        var repairMode = isTipeVendorRepair();
+        var wrapToko = document.getElementById("ob-wrap-tujuan-toko");
+        var wrapNoPo = document.getElementById("ob-wrap-vendor-repair");
+        var wrapVendorNama = document.getElementById("ob-wrap-vendor-nama");
+        var kodeStoreInput = document.getElementById("ob-kode-store");
+        var noPoInput = document.getElementById("ob-no-po-repair");
+        var vendorInput = document.getElementById("ob-vendor-repair");
+        var excelRadio = document.getElementById("methodExcel");
+        var manualRadio = document.getElementById("methodManual");
+
+        if (repairMode) {
+          wrapToko.classList.add("d-none");
+          wrapNoPo.classList.remove("d-none");
+          wrapVendorNama.classList.remove("d-none");
+          kodeStoreInput.required = false;
+          noPoInput.required = true;
+          vendorInput.required = true;
+
+          // Paksa mode Input Manual (upload Excel belum didukung untuk Perbaikan Vendor)
+          if (excelRadio && excelRadio.checked) {
+            manualRadio.checked = true;
+            toggleOutboundMethod();
+          }
+          if (excelRadio) excelRadio.disabled = true;
+        } else {
+          wrapToko.classList.remove("d-none");
+          wrapNoPo.classList.add("d-none");
+          wrapVendorNama.classList.add("d-none");
+          kodeStoreInput.required = true;
+          noPoInput.required = false;
+          vendorInput.required = false;
+          if (excelRadio) excelRadio.disabled = false;
+        }
+
+        // Sesuaikan label & opsi setiap select Grade/Kategori pada baris item yang sudah ada
+        document.querySelectorAll("#tbody-outbound-items .ob-item-grade").forEach(function(sel) {
+          setOpsiGradeOutboundItem(sel, repairMode);
+        });
+        var thGrade = document.getElementById("th-ob-item-grade");
+        if (thGrade) thGrade.textContent = repairMode ? "Kategori" : "Grade";
+      }
+
+      function setOpsiGradeOutboundItem(selectEl, repairMode) {
+        var current = selectEl.value;
+        if (repairMode) {
+          selectEl.innerHTML = '<option value="Kotor">Kotor</option><option value="Perbaikan">Perbaikan</option>';
+        } else {
+          selectEl.innerHTML =
+            '<option value="Bagus">Bagus</option><option value="Minor">Minor</option>' +
+            '<option value="Reject">Reject</option><option value="Kotor">Kotor</option>' +
+            '<option value="Perbaikan">Perbaikan</option>';
+        }
+        if ([...selectEl.options].some(function(o) { return o.value === current; })) {
+          selectEl.value = current;
+        }
+      }
+
       function toggleOutboundMethod() {
   var radios = document.getElementsByName("methodOutbound");
   var method = "manual";
@@ -5456,6 +5674,7 @@ function tambahBarisItemOutbound() {
     </td>
   `;
   tbody.appendChild(row);
+  setOpsiGradeOutboundItem(row.querySelector(".ob-item-grade"), isTipeVendorRepair());
 }
 
 function hapusBarisOutbound(btn) {
@@ -5493,7 +5712,14 @@ function submitOutboundRequestAplikasi() {
   const tglRequest = document.getElementById("ob-tanggal-req").value;
   const kodeStore = document.getElementById("ob-kode-store").value;
   const tipeOutbound = document.getElementById("ob-tipe").value;
-  
+
+  // FITUR BARU (SOP v3.0): Tipe Outbound "Perbaikan Vendor" pakai alur & RPC
+  // terpisah (potong Stock_Repair, No Request = No PO), bukan submit_outbound_request_multi biasa.
+  if (tipeOutbound === "Perbaikan Vendor") {
+    submitOutboundRequestVendorRepair();
+    return;
+  }
+
   var radios = document.getElementsByName("methodOutbound");
   var method = "manual";
   for (var i = 0; i < radios.length; i++) {
@@ -5666,6 +5892,88 @@ async function kirimPayloadOutboundKeServer(payload) {
       customAlert("Terjadi kendala server: " + err.message);
     })
     .submitOutboundRequestMulti(payload);
+}
+
+// FITUR BARU (SOP v3.0): submit Outbound Request khusus Tipe "Perbaikan Vendor".
+// Beda dengan submitOutboundRequestAplikasi biasa: No PO dipakai langsung sebagai No Request,
+// item dipotong dari Stock_Repair (bukan Stock_FG), dan kategori item dibatasi Kotor/Perbaikan.
+function submitOutboundRequestVendorRepair() {
+  const tglRequest = document.getElementById("ob-tanggal-req").value;
+  const noPo = document.getElementById("ob-no-po-repair").value.trim();
+  const vendor = document.getElementById("ob-vendor-repair").value.trim();
+
+  if (!tglRequest || !noPo || !vendor) {
+    customAlert("Harap isi Tanggal Request, No PO, dan Vendor.");
+    return;
+  }
+
+  const payload = {
+    noPo: noPo,
+    vendor: vendor,
+    catatan: (document.getElementById("ob-catatan") ? document.getElementById("ob-catatan").value.trim() : ""),
+    items: []
+  };
+
+  const rows = document.querySelectorAll("#tbody-outbound-items tr");
+  rows.forEach(row => {
+    let sku = row.querySelector(".ob-item-sku").value.trim();
+    let kategori = row.querySelector(".ob-item-grade").value;
+    let qty = row.querySelector(".ob-item-qty").value;
+    if (sku && qty) {
+      payload.items.push({ sku: sku, kategori: kategori, qty: parseInt(qty, 10) });
+    }
+  });
+
+  if (payload.items.length === 0) {
+    customAlert("Harap isi minimal 1 item barang.");
+    return;
+  }
+  const kategoriInvalid = payload.items.find(it => it.kategori !== 'Kotor' && it.kategori !== 'Perbaikan');
+  if (kategoriInvalid) {
+    customAlert(`Gagal: Kategori "${kategoriInvalid.kategori}" untuk SKU "${kategoriInvalid.sku}" harus Kotor atau Perbaikan.`);
+    return;
+  }
+
+  kirimPayloadOutboundVendorRepairKeServer(payload);
+}
+
+async function kirimPayloadOutboundVendorRepairKeServer(payload) {
+  const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(payload.items.map(it => it.sku));
+  if (skuBelumTerdaftar.length > 0) {
+    customAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar));
+    return;
+  }
+
+  const konfirmasiOB = await customConfirm(`Proses & daftarkan Outbound Request Perbaikan Vendor untuk No PO "${payload.noPo}" ke Vendor "${payload.vendor}" (${payload.items.length} SKU) sekarang?`);
+  if (!konfirmasiOB) return;
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      customAlert(res.message);
+      if (res.success) {
+        document.getElementById("form-outbound-main").reset();
+        document.getElementById("tbody-outbound-items").innerHTML = `
+          <tr>
+            <td><input type="text" class="form-control form-control-sm ob-item-sku" placeholder="Contoh: SKU-001" required></td>
+            <td>
+              <select class="form-select form-select-sm ob-item-grade" required>
+                <option value="Kotor">Kotor</option>
+                <option value="Perbaikan">Perbaikan</option>
+              </select>
+            </td>
+            <td><input type="number" class="form-control form-control-sm ob-item-qty" placeholder="0" min="1" required></td>
+            <td class="text-center">
+              <button type="button" class="btn btn-outline-danger btn-sm border-0 py-0" onclick="hapusBarisOutbound(this)"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          </tr>
+        `;
+        toggleTipeOutboundVendorRepair();
+      }
+    })
+    .withFailureHandler(function(err) {
+      customAlert("Terjadi kendala server: " + err.message);
+    })
+    .requestOutboundVendorRepair(payload);
 }
 
 // ===== ADD SKU KE REQUEST OUTBOUND YANG SUDAH TERBENTUK =====
@@ -9122,7 +9430,7 @@ async function eksekusiAddSkuOutbound() {
           'modul-ops': ['sub-validate-qc', 'sub-putaway', 'sub-putaway-return', 'sub-admin-validate-qc'],
           'modul-dashob': ['sub-dashob-outbound', 'sub-dashob-inbound'],
           'modul-livemovement': ['sub-livemovement-live', 'sub-export-movhistory', 'sub-odoo-validasi'],
-          'modul-openpo': ['sub-po-buat', 'sub-po-data', 'sub-sku-master']
+          'modul-openpo': ['sub-po-buat', 'sub-po-data', 'sub-sku-master', 'sub-konfirmasi-vendor']
         };
         const daftarSub = mapSubCards[modulId];
         if (daftarSub) {
@@ -9401,6 +9709,7 @@ async function eksekusiAddSkuOutbound() {
 
     // State picking saat ini
     let PC_CURRENT_REQUEST = "";
+    let PC_CURRENT_IS_VENDOR_REPAIR = false; // FITUR BARU (SOP v3.0)
     let PC_PICKING_LIST = []; // flat list dari server, per lokasi
     let PC_DONE_SET = new Set(); // key = "kodeSku||lokasi" yang sudah selesai diproses
 
@@ -9445,6 +9754,7 @@ async function eksekusiAddSkuOutbound() {
 
       PC_CURRENT_REQUEST = noRequest;
       PC_DONE_SET = new Set();
+      PC_CURRENT_IS_VENDOR_REPAIR = false;
 
       if (!noRequest) {
         container.style.display = 'none';
@@ -9458,9 +9768,11 @@ async function eksekusiAddSkuOutbound() {
 
       Promise.all([
         _gsr('getSkuListForPicking', noRequest),
-        ENDPOINTS.getPickingClaimsForRequest(noRequest)
-      ]).then(([flatList, claims]) => {
+        ENDPOINTS.getPickingClaimsForRequest(noRequest),
+        ENDPOINTS.getOutboundRequestTipe(noRequest)
+      ]).then(([flatList, claims, info]) => {
         PC_PICKING_LIST = flatList || [];
+        PC_CURRENT_IS_VENDOR_REPAIR = !!(info && info.tipeOutbound === 'Perbaikan Vendor');
         _terapkanKlaimKeList(PC_PICKING_LIST, claims);
         renderPickingRows();
       }).catch(err => {
@@ -9570,7 +9882,10 @@ async function eksekusiAddSkuOutbound() {
               </div>
               <!-- Fitur OVERRIDE LOKASI: dipakai kalau lokasi allocated di atas TIDAK ADA barangnya
                    secara fisik (rak kosong/beda posisi/dsb), picker bisa pilih lokasi lain yang
-                   memang tercatat punya stok SKU+Grade yang sama, tanpa harus Short Pick dulu. -->
+                   memang tercatat punya stok SKU+Grade yang sama, tanpa harus Short Pick dulu.
+                   TIDAK tersedia untuk Picking Perbaikan Vendor (process_picking_sku_vendor_repair
+                   belum mendukung override lokasi). -->
+              ${PC_CURRENT_IS_VENDOR_REPAIR ? '' : `
               <div class="mb-2">
                 <button type="button" class="btn btn-outline-secondary btn-sm w-100" style="font-size:11px;" onclick="toggleOverrideLokasi(${idx})">
                   <i class="fa-solid fa-map-location-dot me-1"></i>${item.isOverride ? 'Ganti Lokasi Lain' : 'Lokasi Tidak Ada Barangnya? Pilih Lokasi Lain'}
@@ -9584,6 +9899,7 @@ async function eksekusiAddSkuOutbound() {
                   </button>
                 </div>
               </div>
+              `}
               <!-- Input Validasi -->
               <div class="row g-1 mb-2">
                 <div class="col-12">
@@ -9979,7 +10295,7 @@ async function eksekusiAddSkuOutbound() {
           showAlert("🚨 Gagal Picking: " + err.message, "danger");
           if (btnProses) { btnProses.disabled = false; btnProses.innerHTML = '<i class="fa-solid fa-check me-1"></i>Proses'; }
         })
-        .processPickingSKU(payload);
+        [PC_CURRENT_IS_VENDOR_REPAIR ? 'processPickingSKUVendorRepair' : 'processPickingSKU'](payload);
     }
 
     // Short Pick dari baris tertentu (di-scope KHUSUS untuk lokasi baris ini)
@@ -10035,7 +10351,7 @@ async function eksekusiAddSkuOutbound() {
         .withFailureHandler(err => {
           showAlert("🚨 Gagal Short Pick: " + err.message, "danger");
         })
-        .processPickingSKU(payload);
+        [PC_CURRENT_IS_VENDOR_REPAIR ? 'processPickingSKUVendorRepair' : 'processPickingSKU'](payload);
     }
 
     // Muat daftar Request Picking & Checking saat halaman pertama kali dibuka
@@ -12384,10 +12700,16 @@ function onPoSelected() {
   resetQcConfirmSku();
   
   // Jika PO kosong, stop di sini
-  if (!poSelected) return;
+  if (!poSelected) { toggleQcGradeRepairMode(false); return; }
 
   // Ambil list item SKU berdasarkan kunci PO yang dipilih
   let listItems = stagingDataMaster[poSelected];
+
+  // FITUR BARU: kalau PO ini kategori "Repair" (hasil Konfirmasi Terima dari Vendor),
+  // batasi breakdown grade hanya Bagus/Minor/Reject (Kotor/Perbaikan disembunyikan) --
+  // barang hasil perbaikan tidak boleh dikirim ulang ke Repair lagi.
+  const isRepairPo = !!(listItems && listItems.length > 0 && listItems[0].kategori === 'Repair');
+  toggleQcGradeRepairMode(isRepairPo);
 
   if (listItems && listItems.length > 0) {
     listItems.forEach(function(item) {
@@ -12400,6 +12722,31 @@ function onPoSelected() {
   } else {
     console.warn("Kunci PO ditemukan, tetapi tidak ada list SKU di dalamnya.");
     skuSelect.innerHTML = '<option value="">-- SKU Tidak Ditemukan --</option>';
+  }
+}
+
+// FITUR BARU: sembunyikan & kunci Grade Kotor/Perbaikan (paksa nilai 0) kalau PO yang
+// dipilih kategori "Repair". Dipanggil dari onPoSelected() setiap kali PO berubah, dan
+// statusnya dijaga tetap konsisten oleh onQcConfirmSkuChanged() (lihat QC_CURRENT_PO_IS_REPAIR).
+let QC_CURRENT_PO_IS_REPAIR = false;
+function toggleQcGradeRepairMode(isRepair) {
+  QC_CURRENT_PO_IS_REPAIR = !!isRepair;
+  const kotorWrap = document.getElementById("g-kotor-wrap");
+  const perbaikanWrap = document.getElementById("g-perbaikan-wrap");
+  const infoEl = document.getElementById("qc-repair-info");
+  const kotorInput = document.getElementById("g-kotor");
+  const perbaikanInput = document.getElementById("g-perbaikan");
+
+  if (kotorWrap) kotorWrap.style.display = QC_CURRENT_PO_IS_REPAIR ? "none" : "";
+  if (perbaikanWrap) perbaikanWrap.style.display = QC_CURRENT_PO_IS_REPAIR ? "none" : "";
+  if (infoEl) infoEl.style.display = QC_CURRENT_PO_IS_REPAIR ? "block" : "none";
+
+  if (QC_CURRENT_PO_IS_REPAIR) {
+    // Paksa nilai 0 & tetap disabled supaya tidak ikut terhitung di Total QTY QC,
+    // walaupun onQcConfirmSkuChanged() nanti melepas disabled utk field lain.
+    if (kotorInput) { kotorInput.value = "0"; kotorInput.disabled = true; }
+    if (perbaikanInput) { perbaikanInput.value = "0"; perbaikanInput.disabled = true; }
+    hitungOtomatisTotalQC();
   }
 }
 
@@ -12483,7 +12830,12 @@ function onQcConfirmSkuChanged() {
     msgEl.style.display = "block";
     if (totalInput) totalInput.removeAttribute("readonly");
     if (submitBtn) submitBtn.disabled = false;
-    gradeIds.forEach(function(id) { const el = document.getElementById(id); if (el) el.disabled = false; });
+    gradeIds.forEach(function(id) {
+      // FITUR BARU: Grade Kotor/Perbaikan TETAP disabled kalau PO kategori Repair,
+      // walaupun SKU sudah dikonfirmasi cocok -- lihat toggleQcGradeRepairMode().
+      if (QC_CURRENT_PO_IS_REPAIR && (id === "g-kotor" || id === "g-perbaikan")) return;
+      const el = document.getElementById(id); if (el) el.disabled = false;
+    });
   } else {
     msgEl.innerHTML = '<span class="text-danger"><i class="fa-solid fa-circle-xmark me-1"></i>SKU tidak cocok dengan yang dipilih di dropdown!</span>';
     msgEl.style.display = "block";
@@ -13867,7 +14219,10 @@ function loadOpenPOToInboundDropdown() {
         // perlu pilih dulu satu-satu. Data kategori sudah ada di poMap (dipakai juga oleh
         // onInboundPoSelected setelah PO dipilih), jadi tidak perlu request tambahan ke server.
         const kategoriPo = (poMap[poNumber] && poMap[poNumber].kategori) ? poMap[poNumber].kategori : "";
-        opt.textContent = kategoriPo ? `${poNumber} - ${kategoriPo}` : poNumber;
+        // FITUR BARU: tandai dengan 🔧 kalau kategori-nya "Repair" (PO hasil Konfirmasi
+        // Terima dari Vendor), supaya langsung terlihat dari daftar dropdown.
+        const markRepair = kategoriPo.toLowerCase() === "repair" ? " 🔧" : "";
+        opt.textContent = kategoriPo ? `${poNumber} - ${kategoriPo}${markRepair}` : poNumber;
         poSelect.appendChild(opt);
       });
     })
@@ -13891,6 +14246,8 @@ function onInboundPoSelected() {
   listTbody.innerHTML = "";
   listContainer.style.display = "none";
   document.getElementById("ib-check-all").checked = false;
+  const repairBadgeReset = document.getElementById("ib-repair-badge");
+  if (repairBadgeReset) repairBadgeReset.style.display = "none";
 
   // FITUR BARU: reset field Nomor Odoo (Receiving) setiap kali PO berubah
   const nomorOdooWrap = document.getElementById("ib-nomor-odoo-wrap");
@@ -13907,6 +14264,11 @@ function onInboundPoSelected() {
   let detailPO = globalInboundPOData[poSelected];
   kategoriInput.value = detailPO.kategori;
   const kat = detailPO.kategori.toLowerCase();
+
+  // FITUR BARU: tampilkan badge "Repair" kalau PO ini hasil Konfirmasi Terima
+  // dari Vendor (kategori "Repair"), supaya operator sadar ini SOP khusus.
+  const repairBadge = document.getElementById("ib-repair-badge");
+  if (repairBadge) repairBadge.style.display = (kat === "repair") ? "inline-block" : "none";
 
   // FITUR BARU: tampilkan field Nomor Odoo (WAJIB) khusus untuk kategori Finish Good
   if (nomorOdooWrap) nomorOdooWrap.style.display = (kat === "finish good") ? "block" : "none";
@@ -14440,7 +14802,11 @@ function loadValidasiInboundData() {
             const baseSkuSet = [...new Set(
               VI_DATA_PENDING.filter(it => it.noPo === po).map(it => (it.sku || '').split('-')[0]).filter(Boolean)
             )];
-            const label = baseSkuSet.length > 0 ? `${po} - ${_viCommonPrefix(baseSkuSet)}` : po;
+            let label = baseSkuSet.length > 0 ? `${po} - ${_viCommonPrefix(baseSkuSet)}` : po;
+            // FITUR BARU: tandai PO hasil Konfirmasi Terima dari Vendor (Kategori "Repair")
+            // supaya operator langsung tahu sebelum membuka detailnya.
+            const isRepairPo = VI_DATA_PENDING.some(it => it.noPo === po && it.kategori === 'Repair');
+            if (isRepairPo) label += ' 🔧 [REPAIR]';
             return `<option value="${po}">${label}</option>`;
           }).join('');
         // FITUR PERBAIKAN: SELALU reset ke placeholder kosong setiap kali daftar dimuat
@@ -14481,9 +14847,13 @@ function renderValidasiInboundTable() {
 
   const supplierPo = VI_DATA_CURRENT_PO.length > 0 ? VI_DATA_CURRENT_PO[0].supplier : '-';
   const totalQty = VI_DATA_CURRENT_PO.reduce((sum, it) => sum + Number(it.qtyBelumQC || 0), 0);
+  // FITUR BARU: badge "Repair" kalau PO ini kategori-nya Repair (hasil Konfirmasi
+  // Terima dari Vendor), supaya Admin/SPV tahu ini bukan PO Finish Good/Raw Material biasa.
+  const isRepairPoInfo = VI_DATA_CURRENT_PO.some(it => it.kategori === 'Repair');
+  const badgeRepairInfo = isRepairPoInfo ? ' <span class="badge bg-danger">🔧 REPAIR</span>' : '';
   if (infoEl) {
     infoEl.style.display = 'block';
-    infoEl.innerHTML = `<i class="fa-solid fa-circle-info me-1"></i>Supplier: <strong>${supplierPo}</strong> &nbsp;|&nbsp; Total SKU Pending: <strong>${VI_DATA_CURRENT_PO.length}</strong> &nbsp;|&nbsp; Total Qty Pending: <strong>${totalQty}</strong>`;
+    infoEl.innerHTML = `<i class="fa-solid fa-circle-info me-1"></i>Supplier: <strong>${supplierPo}</strong> &nbsp;|&nbsp; Total SKU Pending: <strong>${VI_DATA_CURRENT_PO.length}</strong> &nbsp;|&nbsp; Total Qty Pending: <strong>${totalQty}</strong>${badgeRepairInfo}`;
   }
   if (tableWrap) tableWrap.style.display = 'block';
 
@@ -14679,6 +15049,202 @@ async function eksekusiCancelPO() {
       customAlert("Sistem Gagal Memproses Pembatalan PO: " + error.message);
     })
     .cancelPO(noPo);
+}
+
+// =========================================================================
+// KONFIRMASI TERIMA DARI VENDOR (SOP v3.0) -- barang Kotor/Perbaikan yang
+// sudah kembali secara fisik dari Vendor dikonfirmasi di sini. Tiap SKU yang
+// dikonfirmasi memanggil RPC konfirmasi_terima_vendor_dan_buka_po_repair,
+// yang otomatis: (1) mengurangi saldo Vendor_Repair, (2) membuka PO Repair
+// baru di Open_PO (kategori "Repair", status OPEN) dengan No PO yang sama,
+// siap diproses lewat Inbound Receiving seperti PO biasa.
+// =========================================================================
+let KTV_DATA_PENDING = [];
+let KTV_DATA_CURRENT_PO = [];
+
+function showKtvAlert(message, type = "success") {
+  const box = document.getElementById('ktv-alert-container');
+  if (!box) return;
+  box.innerHTML = `<div class="alert alert-${type} alert-sm py-2 px-2 mb-0" style="font-size:12px;">${message}</div>`;
+}
+
+async function loadKonfirmasiVendorRepairData() {
+  const selectPo = document.getElementById('ktv-select-po');
+  const tbody = document.getElementById('ktv-tbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memuat data...</td></tr>';
+  if (selectPo) selectPo.value = "";
+  renderKonfirmasiVendorTable();
+
+  try {
+    const rows = await ENDPOINTS.getVendorRepairRows();
+    KTV_DATA_PENDING = (rows || []).filter(r => Number(r.qty) > 0);
+  } catch (err) {
+    showKtvAlert('Gagal memuat daftar barang di Vendor: ' + err.message, 'danger');
+    KTV_DATA_PENDING = [];
+  }
+
+  const daftarPo = [...new Set(KTV_DATA_PENDING.map(it => it.no_po).filter(Boolean))].sort();
+  if (selectPo) {
+    selectPo.innerHTML = '<option value="">— Pilih No. PO —</option>' +
+      daftarPo.map(po => `<option value="${po}">${po}</option>`).join('');
+    selectPo.value = "";
+  }
+  renderKonfirmasiVendorTable();
+}
+
+// Render tabel SKU yang sedang di Vendor HANYA untuk No PO yang sedang
+// dipilih di dropdown. Jika belum ada PO dipilih, tabel disembunyikan.
+function renderKonfirmasiVendorTable() {
+  const selectPo = document.getElementById('ktv-select-po');
+  const poTerpilih = selectPo ? selectPo.value : "";
+  const tableWrap = document.getElementById('ktv-table-wrap');
+  const infoEl = document.getElementById('ktv-po-info');
+  const tbody = document.getElementById('ktv-tbody');
+  const checkAll = document.getElementById('ktv-check-all');
+  if (checkAll) { checkAll.checked = false; checkAll.indeterminate = false; }
+
+  if (!poTerpilih) {
+    if (tableWrap) tableWrap.style.display = 'none';
+    if (infoEl) infoEl.style.display = 'none';
+    KTV_DATA_CURRENT_PO = [];
+    return;
+  }
+
+  KTV_DATA_CURRENT_PO = KTV_DATA_PENDING.filter(it => it.no_po === poTerpilih);
+
+  const vendorPo = KTV_DATA_CURRENT_PO.length > 0 ? (KTV_DATA_CURRENT_PO[0].vendor || '-') : '-';
+  const totalQty = KTV_DATA_CURRENT_PO.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+  if (infoEl) {
+    infoEl.style.display = 'block';
+    infoEl.innerHTML = `<i class="fa-solid fa-circle-info me-1"></i>Vendor: <strong>${vendorPo}</strong> &nbsp;|&nbsp; Total SKU di Vendor: <strong>${KTV_DATA_CURRENT_PO.length}</strong> &nbsp;|&nbsp; Total Qty di Vendor: <strong>${totalQty}</strong>`;
+  }
+  if (tableWrap) tableWrap.style.display = 'block';
+
+  if (KTV_DATA_CURRENT_PO.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><i class="fa-solid fa-circle-check me-1 text-success"></i>Tidak ada barang yang sedang di Vendor untuk PO ini.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = KTV_DATA_CURRENT_PO.map((item, idx) => `
+    <tr>
+      <td class="text-center"><input type="checkbox" class="ktv-item-check" data-idx="${idx}" onchange="updateKtvCheckAllState()"></td>
+      <td class="fw-bold">${item.kode_sku || '-'}</td>
+      <td>${item.kategori || '-'}</td>
+      <td>${item.vendor || '-'}</td>
+      <td class="text-center">
+        <input type="number" class="form-control form-control-sm ktv-item-qty text-center fw-bold"
+               data-idx="${idx}" value="0" min="0" max="${item.qty || 0}" style="width:80px; display:inline-block;" oninput="onKtvRowQtyChanged(this)" onfocus="this.select()" onblur="onKtvRowQtyBlur(this)">
+        <div class="text-muted" style="font-size:10px;">dari ${item.qty || 0}</div>
+      </td>
+    </tr>`).join('');
+}
+
+function toggleAllKtv(sourceCheckbox) {
+  document.querySelectorAll('.ktv-item-check').forEach(cb => { cb.checked = sourceCheckbox.checked; });
+}
+
+// Isi Qty Diterima > 0 pada suatu baris otomatis mencentang baris tsb (dan
+// sebaliknya), sinkron dengan pola yang sama seperti Validasi Inbound.
+function onKtvRowQtyChanged(inputEl) {
+  let rawVal = inputEl.value;
+  if (rawVal.length > 1 && rawVal.charAt(0) === '0') {
+    rawVal = rawVal.replace(/^0+/, '') || '0';
+    inputEl.value = rawVal;
+  }
+  const idx = inputEl.getAttribute('data-idx');
+  const cb = document.querySelector(`.ktv-item-check[data-idx="${idx}"]`);
+  const qty = parseInt(inputEl.value) || 0;
+  if (cb) cb.checked = qty > 0;
+  updateKtvCheckAllState();
+}
+
+function onKtvRowQtyBlur(inputEl) {
+  if (inputEl.value === "" || inputEl.value === null) {
+    inputEl.value = "0";
+    onKtvRowQtyChanged(inputEl);
+  }
+}
+
+function updateKtvCheckAllState() {
+  const checkAll = document.getElementById('ktv-check-all');
+  if (!checkAll) return;
+  const semuaCheckbox = document.querySelectorAll('.ktv-item-check');
+  if (semuaCheckbox.length === 0) {
+    checkAll.checked = false;
+    checkAll.indeterminate = false;
+    return;
+  }
+  const jumlahTercentang = document.querySelectorAll('.ktv-item-check:checked').length;
+  checkAll.checked = jumlahTercentang === semuaCheckbox.length;
+  checkAll.indeterminate = jumlahTercentang > 0 && jumlahTercentang < semuaCheckbox.length;
+}
+
+// Ambil item yang tercentang dari cache PO yang sedang dipilih (mendukung
+// konfirmasi PARTIAL -- hanya baris tercentang dgn qty > 0 yang dikirim).
+function getCheckedKtvItems() {
+  const terpilih = [];
+  document.querySelectorAll('.ktv-item-check:checked').forEach(cb => {
+    const idx = parseInt(cb.getAttribute('data-idx'));
+    if (isNaN(idx) || !KTV_DATA_CURRENT_PO[idx]) return;
+    const item = KTV_DATA_CURRENT_PO[idx];
+    const qtyInput = document.querySelector(`.ktv-item-qty[data-idx="${idx}"]`);
+    let qtyDiterima = qtyInput ? Number(qtyInput.value) : 0;
+    const qtyMax = Number(item.qty || 0);
+    if (!qtyDiterima || qtyDiterima <= 0) return;
+    if (qtyDiterima > qtyMax) qtyDiterima = qtyMax;
+    terpilih.push(Object.assign({}, item, { qtyDiterima: qtyDiterima }));
+  });
+  return terpilih;
+}
+
+// Kirim konfirmasi per-SKU ke server. Setiap baris terpilih memanggil RPC
+// konfirmasi_terima_vendor_dan_buka_po_repair sendiri-sendiri (tiap SKU/
+// Kategori punya saldo Vendor_Repair masing-masing), lalu hasilnya
+// dirangkum jadi 1 notifikasi (sukses semua / sebagian / gagal semua).
+async function submitKonfirmasiVendorTerpilih() {
+  const terpilih = getCheckedKtvItems();
+  if (terpilih.length === 0) {
+    showKtvAlert('Mohon centang minimal 1 SKU dan isi Qty Diterima terlebih dahulu.', 'warning');
+    return;
+  }
+
+  const konfirmasi = await customConfirm(`Konfirmasi ${terpilih.length} SKU diterima kembali dari Vendor sekarang? Setiap SKU akan otomatis membuka PO Repair baru dengan No PO yang sama, siap diproses lewat Inbound Receiving.`);
+  if (!konfirmasi) return;
+
+  showKtvAlert('<i class="fa-solid fa-spinner fa-spin me-1"></i>Memproses konfirmasi...', 'info');
+
+  let sukses = 0, gagal = 0;
+  const pesanGagal = [];
+  for (const item of terpilih) {
+    try {
+      const res = await ENDPOINTS.konfirmasiTerimaVendorRepair({
+        noPo: item.no_po, kodeSku: item.kode_sku, kategori: item.kategori, qty: item.qtyDiterima
+      });
+      if (res && res.success) {
+        sukses++;
+      } else {
+        gagal++;
+        pesanGagal.push(`${item.kode_sku}: ${(res && res.message) || 'Gagal tidak diketahui'}`);
+      }
+    } catch (err) {
+      gagal++;
+      pesanGagal.push(`${item.kode_sku}: ${err.message}`);
+    }
+  }
+
+  if (sukses > 0 && gagal === 0) {
+    showKtvAlert(`Sukses! ${sukses} SKU dikonfirmasi diterima dari Vendor. PO Repair baru sudah dibuka & siap diproses di Inbound Receiving.`, 'success');
+  } else if (sukses > 0 && gagal > 0) {
+    showKtvAlert(`${sukses} SKU berhasil dikonfirmasi, ${gagal} SKU gagal:<br>${pesanGagal.join('<br>')}`, 'warning');
+  } else {
+    showKtvAlert(`Gagal memproses konfirmasi:<br>${pesanGagal.join('<br>')}`, 'danger');
+  }
+
+  loadKonfirmasiVendorRepairData();
+  // Sinkronkan dropdown PO di Inbound Receiving & Data PO supaya PO Repair
+  // yang baru dibuka langsung terlihat tanpa perlu reload manual.
+  if (typeof loadOpenPOToInboundDropdown === 'function') loadOpenPOToInboundDropdown();
+  if (typeof loadDataPOList === 'function') loadDataPOList();
 }
 
 // Function untuk memproses pembatalan Request Outbound dari Frontend
@@ -15626,8 +16192,9 @@ async function eksekusiCancelOutbound() {
           }
           res.data.forEach(d => {
             const labelStatus = d.lengkap ? '' : ' [SEBAGIAN]';
-            sel.innerHTML += `<option value="${d.noRequest}" data-sku="${d.jumlahSku}" data-qty="${d.totalQty}" data-store="${d.kodeStore}" data-tgl="${d.tglRequest}" data-lengkap="${d.lengkap}">
-              ${d.noRequest} — ${d.kodeStore} (${d.jumlahSku} SKU, ${d.totalQty} Pcs)${labelStatus}
+            const labelTipe = d.tipeOutbound === 'Perbaikan Vendor' ? ' 🔧[PERBAIKAN VENDOR]' : '';
+            sel.innerHTML += `<option value="${d.noRequest}" data-sku="${d.jumlahSku}" data-qty="${d.totalQty}" data-store="${d.kodeStore}" data-tgl="${d.tglRequest}" data-lengkap="${d.lengkap}" data-tipe="${d.tipeOutbound || ''}">
+              ${d.noRequest} — ${d.kodeStore} (${d.jumlahSku} SKU, ${d.totalQty} Pcs)${labelStatus}${labelTipe}
             </option>`;
           });
           sel.addEventListener('change', onChangeSJRequest);
@@ -15664,8 +16231,18 @@ async function eksekusiCancelOutbound() {
     // modal DILEWATI dan langsung lanjut ke preview memakai SO/Customer Reference yang sudah
     // tersimpan (auto-terisi), supaya cetak ulang tidak perlu input ulang & validasi tetap 1x saja.
     function mulaiProsesSuratJalan() {
-      const noReq = document.getElementById('sj-select-request').value;
+      const sel = document.getElementById('sj-select-request');
+      const noReq = sel.value;
       if (!noReq) { showSJAlert('Pilih No. Request terlebih dahulu.', 'warning'); return; }
+
+      // FITUR BARU (SOP v3.0): No Request tipe "Perbaikan Vendor" pakai alur Surat Jalan
+      // tersendiri (No PO -> Vendor, RPC cetak_surat_jalan_vendor_repair), TIDAK memakai
+      // modal SO Number/Customer Reference & template dokumen retail biasa.
+      const opt = sel.options[sel.selectedIndex];
+      if (opt && opt.dataset.tipe === 'Perbaikan Vendor') {
+        prosesSuratJalanVendorRepair(noReq, opt.dataset.store);
+        return;
+      }
 
       showSJAlert('<i class="fa-solid fa-spinner fa-spin me-1"></i>Memvalidasi No. Request...', 'info');
 
@@ -15686,6 +16263,30 @@ async function eksekusiCancelOutbound() {
         })
         .withFailureHandler(err => showSJAlert(err.message, 'danger'))
         .validasiAwalSuratJalan(noReq);
+    }
+
+    // FITUR BARU (SOP v3.0): Surat Jalan Perbaikan Vendor -- No PO = noReq, Vendor = tujuan
+    // (kolom outbound_request.tujuan, sudah diisi vendor saat request dibuat). Cukup minta
+    // Nomor Surat Jalan, lalu panggil RPC yang menutup baris & mencatat ke Vendor_Repair.
+    async function prosesSuratJalanVendorRepair(noReq, vendor) {
+      const noSuratJalan = await customPrompt(`Surat Jalan Perbaikan Vendor untuk No PO "${noReq}" ke Vendor "${vendor}".\n\nMasukkan Nomor Surat Jalan:`);
+      if (!noSuratJalan || !noSuratJalan.trim()) return;
+
+      const konfirmasi = await customConfirm(`Terbitkan Surat Jalan "${noSuratJalan.trim()}" untuk No PO "${noReq}" ke Vendor "${vendor}"?\n\nSetelah ini, SKU Kotor/Perbaikan yang sudah Ready to Ship akan tercatat terkirim ke Vendor.`);
+      if (!konfirmasi) return;
+
+      showSJAlert('<i class="fa-solid fa-spinner fa-spin me-1"></i>Memproses Surat Jalan Perbaikan Vendor...', 'info');
+
+      google.script.run
+        .withSuccessHandler(res => {
+          showSJAlert(res.message, res.success ? 'success' : 'danger');
+          if (res.success) {
+            document.getElementById('sj-preview-area').style.display = 'none';
+            loadListNoRequestSuratJalan();
+          }
+        })
+        .withFailureHandler(err => showSJAlert('Gagal: ' + err.message, 'danger'))
+        .cetakSuratJalanVendorRepair({ noPo: noReq, vendor: vendor, noSuratJalan: noSuratJalan.trim() });
     }
 
     // Langkah 2: Tampilkan modal untuk Admin memasukkan Sales Order Number & Customer Reference
