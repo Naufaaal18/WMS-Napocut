@@ -439,6 +439,55 @@ async function _getMasterSkuDescMap() {
   return map;
 }
 
+// =========================================================================
+// FITUR BARU: VALIDASI WAJIB "SKU harus ada di SKU Master" -- dipakai di SEMUA
+// proses yang menambah/mengurangi SKU & Qty (Open PO, Outbound Request, Adjustment
+// Stock, QC Swarovski, SKU Tambahan Inbound Receiving, dsb) supaya SKU yang belum
+// terdaftar di tabel master_sku tidak bisa dipakai untuk transaksi apa pun. SKU baru
+// wajib didaftarkan dulu lewat sub-modul "SKU Master" (Tambah SKU Baru / Import
+// Massal Excel) sebelum bisa dipakai di modul lain manapun.
+// =========================================================================
+let _MASTER_SKU_SET_CACHE = null;
+let _MASTER_SKU_SET_CACHE_AT = 0;
+const _MASTER_SKU_CACHE_TTL_MS = 2 * 60 * 1000; // cache 2 menit supaya tidak fetch 14rb+ baris tiap kali submit
+
+// Ambil Set berisi semua Kode SKU (huruf besar semua, sudah di-trim) yang terdaftar di
+// master_sku. Pakai cache singkat supaya tidak membebani server tiap kali user submit
+// form; panggil dengan forceRefresh=true (mis. setelah berhasil tambah SKU baru) supaya
+// SKU yang baru saja didaftarkan langsung dikenali tanpa perlu menunggu cache kedaluwarsa.
+async function getMasterSkuSet(forceRefresh) {
+  const now = Date.now();
+  if (!forceRefresh && _MASTER_SKU_SET_CACHE && (now - _MASTER_SKU_SET_CACHE_AT) < _MASTER_SKU_CACHE_TTL_MS) {
+    return _MASTER_SKU_SET_CACHE;
+  }
+  const map = await _getMasterSkuDescMap();
+  _MASTER_SKU_SET_CACHE = new Set(Object.keys(map || {}).map(k => String(k).trim().toUpperCase()));
+  _MASTER_SKU_SET_CACHE_AT = now;
+  return _MASTER_SKU_SET_CACHE;
+}
+
+// Dipanggil setelah berhasil menambahkan SKU baru (manual atau import Excel) di modul
+// SKU Master, supaya cache langsung dianggap basi dan di-refresh di pengecekan berikutnya.
+function invalidateMasterSkuCache() {
+  _MASTER_SKU_SET_CACHE = null;
+  _MASTER_SKU_SET_CACHE_AT = 0;
+}
+
+// Terima array Kode SKU (boleh ada duplikat/kosong), kembalikan daftar Kode SKU (versi
+// asli, bukan huruf besar) yang BELUM terdaftar di SKU Master. Array kosong berarti semua
+// SKU valid / tidak ada yang perlu dicek.
+async function cariSkuBelumTerdaftarDiMaster(daftarKodeSku) {
+  const unik = [...new Set((daftarKodeSku || []).map(s => String(s || '').trim()).filter(Boolean))];
+  if (unik.length === 0) return [];
+  const skuSet = await getMasterSkuSet();
+  return unik.filter(s => !skuSet.has(s.toUpperCase()));
+}
+
+// Pesan standar yang dipakai di semua modul saat ada SKU yang belum terdaftar.
+function pesanSkuBelumTerdaftar(daftarSkuInvalid) {
+  return `SKU berikut belum terdaftar di SKU Master, silakan tambahkan dulu lewat menu SKU Master (Tambah SKU Baru / Import Massal Excel) sebelum digunakan di sini:\n${daftarSkuInvalid.join(', ')}`;
+}
+
 async function _getLokasiByKodeStore(kodeStore) {
   if (!kodeStore) return null;
   // PERBAIKAN KEAMANAN: master_store sudah dikunci dari baca langsung tanpa login,
@@ -5490,6 +5539,15 @@ function submitOutboundRequestAplikasi() {
 }
 
 async function kirimPayloadOutboundKeServer(payload) {
+  // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa dipakai untuk
+  // Outbound Request baru (berlaku untuk Input Manual maupun Upload Massal Excel, karena
+  // keduanya bermuara ke fungsi ini).
+  const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(payload.items.map(it => it.sku));
+  if (skuBelumTerdaftar.length > 0) {
+    customAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar));
+    return;
+  }
+
   const konfirmasiOB = await customConfirm(`Proses & daftarkan Outbound Request untuk Kode Store "${payload.kodeStore}" (${payload.items.length} SKU) sekarang?`);
   if (!konfirmasiOB) return;
 
@@ -5579,6 +5637,14 @@ async function eksekusiAddSkuOutbound() {
 
   if (items.length === 0) {
     customAlert("Harap isi minimal 1 item SKU yang ingin ditambahkan.");
+    return;
+  }
+
+  // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa ditambahkan ke
+  // Request Outbound yang sudah ada.
+  const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(items.map(it => it.sku));
+  if (skuBelumTerdaftar.length > 0) {
+    customAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar));
     return;
   }
 
@@ -10446,6 +10512,14 @@ async function eksekusiAddSkuOutbound() {
         return;
       }
 
+      // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa dipakai di Open PO.
+      showAlert("Memeriksa Kode SKU ke SKU Master...", "info");
+      const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(itemsArray.map(it => it.sku));
+      if (skuBelumTerdaftar.length > 0) {
+        showAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar), "danger");
+        return;
+      }
+
       const payload = {
         noPo: noPo,
         supplier: supplier,
@@ -10516,6 +10590,7 @@ async function eksekusiAddSkuOutbound() {
           showAlert(`SKU "${kodeSku}" berhasil ditambahkan ke SKU Master.`, "success");
           document.getElementById('form-sku-master-baru').reset();
           document.getElementById('skm-tersedia-pos').checked = true;
+          invalidateMasterSkuCache();
         })
         .withFailureHandler(err => showAlert("🚨 Gagal menambahkan SKU: " + err.message, "danger"))
         .createMasterSku(payload);
@@ -10635,6 +10710,7 @@ async function eksekusiAddSkuOutbound() {
 
         uploadBtn.disabled = false;
         fileInput.value = "";
+        invalidateMasterSkuCache();
 
         if (gagal === 0) {
           showAlert(`✅ Semua ${sukses} SKU berhasil ditambahkan ke SKU Master.`, "success");
@@ -10659,7 +10735,7 @@ async function eksekusiAddSkuOutbound() {
 
   showAlert("Sedang membaca format file Excel...", "info");
   
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: 'array' });
@@ -10693,6 +10769,14 @@ async function eksekusiAddSkuOutbound() {
 
       if (rowsArray.length === 0) {
         showAlert("⚠️ File kosong atau format baris tidak sesuai template!", "danger");
+        return;
+      }
+
+      // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa diimport lewat Excel.
+      showAlert("Memeriksa Kode SKU ke SKU Master...", "info");
+      const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(rowsArray.map(r => r[2]));
+      if (skuBelumTerdaftar.length > 0) {
+        showAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar), "danger");
         return;
       }
 
@@ -13550,6 +13634,17 @@ async function submitInboundReceivingList() {
     return;
   }
 
+  // FITUR BARU: SKU Tambahan (di luar PO) diketik manual, jadi wajib dicek dulu ke SKU
+  // Master sebelum bisa dikirim (SKU dari PO sendiri tidak perlu dicek ulang di sini karena
+  // sudah tervalidasi saat PO dibuat).
+  if (itemsExtra.length > 0) {
+    const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(itemsExtra.map(it => it.kodeSku));
+    if (skuBelumTerdaftar.length > 0) {
+      customAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar));
+      return;
+    }
+  }
+
   // FITUR BARU: konfirmasi Ya/Tidak SELALU ditampilkan sebelum data receiving dikirim,
   // supaya operator benar-benar yakin sebelum eksekusi -- bukan cuma untuk baris Short Putaway.
   // Pesan dibedakan untuk SKU yang Qty-nya 0 (sama sekali tidak diterima) pada baris Short
@@ -14483,6 +14578,14 @@ async function eksekusiCancelOutbound() {
         return;
       }
 
+      // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa dipakai untuk
+      // Adjustment Stock (Tambah/Kurang).
+      const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster([payload.kodeSku]);
+      if (skuBelumTerdaftar.length > 0) {
+        showAlert(pesanSkuBelumTerdaftar(skuBelumTerdaftar), "danger");
+        return;
+      }
+
       if (!(await customConfirm(`Konfirmasi Adjustment ${payload.tipeAdjustment} SKU ${payload.kodeSku} (${payload.grade}) di lokasi ${payload.lokasi} sebanyak ${payload.qty} PCS?`))) return;
 
       google.script.run
@@ -14581,6 +14684,15 @@ async function eksekusiCancelOutbound() {
 
           if (rowsPayload.length === 0) {
             alertEl.innerHTML = '<div class="alert alert-danger small py-2">Gagal: File Excel kosong atau tidak ada baris data yang sesuai template.</div>';
+            return;
+          }
+
+          // FITUR BARU: SKU wajib sudah terdaftar di SKU Master sebelum bisa diimport lewat
+          // Excel Adjustment Stock_FG.
+          alertEl.innerHTML = '<div class="alert alert-info small py-2"><i class="fa-solid fa-spinner fa-spin me-1"></i>Memeriksa Kode SKU ke SKU Master...</div>';
+          const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster(rowsPayload.map(r => r.kodeSku));
+          if (skuBelumTerdaftar.length > 0) {
+            alertEl.innerHTML = `<div class="alert alert-danger small py-2" style="white-space:pre-line;">${pesanSkuBelumTerdaftar(skuBelumTerdaftar)}</div>`;
             return;
           }
 
@@ -17730,6 +17842,15 @@ async function eksekusiCancelOutbound() {
       const maxQty = Number((SWA_STAGING_DATA[noRequest] || []).find(i => i.sku.toString().trim() === kodeSkuAsal)?.maxQty || 0);
       if (maxQty > 0 && qty > maxQty) {
         showAVAlert2('swa-alert', `Qty (${qty} Pcs) melebihi sisa stok di Staging QC Swarovski (${maxQty} Pcs).`, 'danger');
+        return;
+      }
+
+      // FITUR BARU: SKU Baru hasil konversi wajib sudah terdaftar di SKU Master sebelum
+      // bisa dipakai di QC Swarovski (SKU baru yang belum terdaftar harus didaftarkan dulu
+      // lewat menu SKU Master).
+      const skuBelumTerdaftar = await cariSkuBelumTerdaftarDiMaster([kodeSkuBaru]);
+      if (skuBelumTerdaftar.length > 0) {
+        showAVAlert2('swa-alert', pesanSkuBelumTerdaftar(skuBelumTerdaftar), 'danger');
         return;
       }
 
