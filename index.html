@@ -1219,6 +1219,12 @@ Object.assign(ENDPOINTS, {
       // dipakai lewat RPC get_stock_repair_rows / get_vendor_repair_rows yang sudah ada
       // (sudah membawa validasi akses INV_DASHBOARD & join Supplier PO asal).
       ENDPOINTS.getStockRepairRows().catch(() => []),
+      // PERBAIKAN BUG: panggilan ke getVendorRepairRows() sebelumnya HILANG dari array ini
+      // (cuma ada 7 promise padahal 8 variabel di-destructure), akibatnya vendorRepairRows
+      // kebagian hasil promise QCFG-Putaway di bawah (sebuah OBJECT, bukan array), sehingga
+      // "(vendorRepairRows || []).filter(...)" error "filter is not a function" dan seluruh
+      // Dashboard Inventory gagal render. Sekarang dipanggil eksplisit sebagai promise sendiri.
+      ENDPOINTS.getVendorRepairRows().catch(() => []),
       // FITUR BARU (Dashboard Stock Pending Putaway [Hasil QC], sama seperti Stok Pending
       // Putaway Return): pakai ulang ENDPOINTS.getQCFGDataForPutaway() yang sudah ada
       // (hasil QC yang SUDAH divalidasi tapi BELUM diproses Putaway ke Stock_FG/Stock_Repair).
