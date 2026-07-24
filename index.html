@@ -14484,6 +14484,12 @@ function loadOpenPOToInboundDropdown() {
         return;
       }
 
+      // FITUR BARU: urutkan daftar Nomor PO (sebelumnya urutan mengikuti urutan baris
+      // Open_PO dari database, jadi tampil acak). Pakai natural sort (numeric: true) supaya
+      // angka di dalam Nomor PO diurutkan sebagai angka, bukan per-karakter -- misalnya
+      // "P11079" tetap tampil sebelum "P11080", bukan "P11080" duluan seperti sort string biasa.
+      poKeys.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
       poKeys.forEach(function(poNumber) {
         let opt = document.createElement("option");
         opt.value = poNumber;
