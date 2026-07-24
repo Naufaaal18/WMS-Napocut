@@ -544,6 +544,27 @@ async function muatDaftarMasterStoreUntukAutocomplete() {
   }
 }
 
+// FITUR BARU: Isi <datalist id="swa-sku-baru-datalist"> dengan seluruh Kode SKU dari SKU
+// Master, supaya muncul rekomendasi (autocomplete bawaan browser) saat user mengetik manual
+// di field "SKU Baru (Hasil Konversi)" pada QC Swarovski. Pakai _getMasterSkuDescMap yang
+// sudah menangani paging >1000 baris, dan cache ringan supaya tidak fetch 14rb+ baris tiap
+// kali sub-modul QC Swarovski dibuka.
+let _SWA_SKU_DATALIST_LOADED = false;
+async function muatDaftarSkuBaruUntukAutocompleteSwarovski(forceRefresh) {
+  const dl = document.getElementById('swa-sku-baru-datalist');
+  if (!dl) return;
+  if (_SWA_SKU_DATALIST_LOADED && !forceRefresh) return;
+  try {
+    const mapDesc = await _getMasterSkuDescMap();
+    dl.innerHTML = Object.keys(mapDesc || {}).sort().map(sku =>
+      `<option value="${sku}">${sku} — ${mapDesc[sku] || ''}</option>`
+    ).join('');
+    _SWA_SKU_DATALIST_LOADED = true;
+  } catch (err) {
+    console.error('Gagal memuat daftar SKU Master untuk autocomplete SKU Baru Swarovski:', err.message);
+  }
+}
+
 Object.assign(ENDPOINTS, {
 
   getStagingInboundData: async () => {
@@ -4736,23 +4757,23 @@ window.fetch = function (url, options) {
             <div class="row">
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Bagus</label>
-                <input type="number" id="g-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
+                <input type="number" id="g-bagus" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Minor</label>
-                <input type="number" id="g-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
+                <input type="number" id="g-minor" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Reject</label>
-                <input type="number" id="g-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
+                <input type="number" id="g-reject" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-6 mb-2" id="g-kotor-wrap">
                 <label class="form-label">Grade Kotor</label>
-                <input type="number" id="g-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
+                <input type="number" id="g-kotor" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
               <div class="col-12 mb-2" id="g-perbaikan-wrap">
                 <label class="form-label">Grade Perbaikan</label>
-                <input type="number" id="g-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
+                <input type="number" id="g-perbaikan" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalQC(); cekKosong(this)" disabled>
               </div>
             </div>
             <!-- FITUR BARU: kalau PO yang dipilih berkategori "Repair" (hasil Konfirmasi
@@ -4977,23 +4998,23 @@ window.fetch = function (url, options) {
             <div class="row">
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Bagus</label>
-                <input type="number" id="rg-bagus" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
+                <input type="number" id="rg-bagus" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Minor</label>
-                <input type="number" id="rg-minor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
+                <input type="number" id="rg-minor" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Reject</label>
-                <input type="number" id="rg-reject" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
+                <input type="number" id="rg-reject" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-6 mb-2">
                 <label class="form-label">Grade Kotor</label>
-                <input type="number" id="rg-kotor" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
+                <input type="number" id="rg-kotor" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
               <div class="col-12 mb-2">
                 <label class="form-label">Grade Perbaikan</label>
-                <input type="number" id="rg-perbaikan" class="form-control" value="0" min="0" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
+                <input type="number" id="rg-perbaikan" class="form-control" value="0" min="0" onfocus="this.select()" oninput="hitungOtomatisTotalRecheck(); cekKosongRecheck(this)" disabled>
               </div>
             </div>
             <div class="mb-2">
@@ -5031,9 +5052,18 @@ window.fetch = function (url, options) {
             <small id="swa-max-info" class="text-muted"></small>
           </div>
 
+          <!-- FITUR BARU: Scan Barcode & rekomendasi SKU (autocomplete) untuk SKU Baru hasil konversi --
+               sama seperti Konfirmasi SKU via Scan/Ketik di QC Finish Good/Re-Check QC, dan datalist
+               diisi dari seluruh SKU Master supaya muncul rekomendasi saat mengetik manual. -->
           <div class="mb-3">
             <label class="form-label">SKU Baru (Hasil Konversi)</label>
-            <input type="text" id="swa-sku-baru" class="form-control" placeholder="Kode SKU baru hasil QC">
+            <div class="input-group">
+              <input type="text" id="swa-sku-baru" class="form-control" list="swa-sku-baru-datalist" placeholder="Scan barcode atau ketik Kode SKU baru hasil QC" autocomplete="off">
+              <button type="button" class="btn btn-outline-info" onclick="openBarcodeScannerFor('swa-sku-baru','Scan Barcode SKU Baru')" title="Scan Barcode 2D dengan Kamera">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
+            <datalist id="swa-sku-baru-datalist"></datalist>
           </div>
 
           <div class="row">
@@ -9015,6 +9045,7 @@ async function eksekusiAddSkuOutbound() {
       // get_master_store_list), jadi daftar autocomplete dimuat di sini (setelah
       // sesi valid tersedia) -- bukan lagi di DOMContentLoaded sebelum login.
       muatDaftarMasterStoreUntukAutocomplete();
+      muatDaftarSkuBaruUntukAutocompleteSwarovski();
 
       // Tampilkan halaman home, sembunyikan nav-bottom
       const halamanHome = document.getElementById('halaman-home');
@@ -13352,11 +13383,16 @@ async function submitFormQC(e) {
     .submitQCFG(payload);
 }
 
-// 1. Fungsi pengaman: Jika input dihapus (kosong), otomatis isi kembali dengan angka 0
+// 1. Fungsi pengaman: Jika input dihapus (kosong), otomatis isi kembali dengan angka 0.
+// PERBAIKAN: kalau user mengetik angka lain setelah "0" (mis. field masih "0" lalu diketik "5"),
+// hilangkan angka 0 di depan supaya tidak jadi "05" -- angka baru langsung mengikuti tanpa 0.
 function cekKosong(inputElemen) {
   if (inputElemen.value === "" || inputElemen.value === null) {
     inputElemen.value = "0";
     hitungOtomatisTotalQC(); // Picu hitung ulang total
+  } else if (inputElemen.value.length > 1 && inputElemen.value.charAt(0) === "0") {
+    inputElemen.value = inputElemen.value.replace(/^0+/, "") || "0";
+    hitungOtomatisTotalQC();
   }
 }
 
@@ -14009,10 +14045,15 @@ function onRqcConfirmSkuChanged() {
   }
 }
 
-// Fungsi pengaman: jika input breakdown grade dihapus (kosong), otomatis isi kembali dengan 0
+// Fungsi pengaman: jika input breakdown grade dihapus (kosong), otomatis isi kembali dengan 0.
+// PERBAIKAN: sama seperti QC Finish Good -- hilangkan angka 0 di depan saat diisi angka lain
+// (mis. "0" lalu diketik "5" jadi langsung "5", bukan "05").
 function cekKosongRecheck(inputElemen) {
   if (inputElemen.value === "" || inputElemen.value === null) {
     inputElemen.value = "0";
+    hitungOtomatisTotalRecheck();
+  } else if (inputElemen.value.length > 1 && inputElemen.value.charAt(0) === "0") {
+    inputElemen.value = inputElemen.value.replace(/^0+/, "") || "0";
     hitungOtomatisTotalRecheck();
   }
 }
@@ -20004,6 +20045,7 @@ async function eksekusiCancelOutbound() {
       const noReqSel = document.getElementById('swa-noreq');
       const skuSel = document.getElementById('swa-sku-asal');
       if (!noReqSel) return;
+      muatDaftarSkuBaruUntukAutocompleteSwarovski(); // FITUR BARU: pastikan rekomendasi SKU Baru selalu tersedia
       noReqSel.innerHTML = '<option value="">-- Memuat Data Staging QC Swarovski... --</option>';
       if (skuSel) skuSel.innerHTML = '<option value="">-- Pilih SKU Awal --</option>';
       const infoEl = document.getElementById('swa-max-info');
